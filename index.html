@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Court File Tracker</title>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <h1>Court File Tracker</h1>
+  </header>
+
+  <nav>
+    <button onclick="navigate('dashboard')">Dashboard</button>
+    <button onclick="navigate('newFile')">New File Entry</button>
+    <button onclick="navigate('deliver')">Deliver File</button>
+    <button onclick="navigate('return')">Return File</button>
+    <button onclick="navigate('search')">Search</button>
+    <button onclick="navigate('settings')">Settings</button>
+  </nav>
+
+  <main>
+    <section id="dashboard" class="screen active">
+      <h2>Welcome to Court File Tracker</h2>
+      <p>Today's summary will appear here.</p>
+    </section>
+
+    <section id="newFile" class="screen">
+      <h2>New File Entry</h2>
+      <form id="fileForm">
+        <label>Case Type:
+          <select id="caseType" required>
+            <option value="">Select</option>
+            <option value="civil">Civil</option>
+            <option value="criminal">Criminal</option>
+          </select>
+        </label><br />
+        <label>CMS No:<input type="text" id="cmsNo" required /></label><br />
+        <label>Title:<input type="text" id="title" required /></label><br />
+        <label>Nature:<input type="text" id="nature" required /></label><br />
+        <label>Decision Date:<input type="date" id="decisionDate" required /></label><br />
+        <label>Next Hearing:<input type="date" id="hearingDate" required /></label><br />
+        <button type="submit">Save File</button>
+      </form>
+    </section>
+
+    <section id="deliver" class="screen">
+      <h2>Deliver File</h2>
+      <form id="deliverForm">
+        <label>CMS No:<input type="text" id="deliverCms" required /></label><br />
+        <label>Delivered To:<input type="text" id="deliveredTo" required /></label><br />
+        <button type="submit">Mark Delivered</button>
+      </form>
+    </section>
+
+    <section id="return" class="screen">
+      <h2>Return File</h2>
+      <form id="returnForm">
+        <label>CMS No:<input type="text" id="returnCms" required /></label><br />
+        <button type="submit">Mark Returned</button>
+      </form>
+    </section>
+
+    <section id="search" class="screen">
+      <h2>Search</h2>
+      <input type="text" id="searchBox" placeholder="Enter CMS or Title..." />
+      <div id="searchResults"></div>
+    </section>
+
+    <section id="settings" class="screen">
+      <h2>Settings</h2>
+      <label>Clerk Name:<input type="text" id="clerkName" /></label><br />
+      <label>Judge Name:<input type="text" id="judgeName" /></label><br />
+      <button onclick="saveSettings()">Save</button>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
