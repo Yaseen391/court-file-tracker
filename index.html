@@ -99,23 +99,31 @@
       <div id="searchResults" style="margin-top: 10px;"></div>
     </section>
 
-    <section id="profiles" class="screen">
-      <h2>Manage Profiles</h2>
-      <form id="profileForm">
-        <label>Name:<input type="text" id="profileName" required /></label><br />
-        <label>Type:
-          <select id="profileType" required>
-            <option value="">Select</option>
-            <option value="advocate">Advocate</option>
-            <option value="munshi">Munshi</option>
-            <option value="colleague">Colleague</option>
-          </select>
-        </label><br />
-        <button type="submit">Add Profile</button>
-      </form>
-      <ul id="profileList" style="margin-top:20px;"></ul>
-    </section>
+  <section id="profiles" class="screen">
+  <h2>Manage Profiles</h2>
 
+  <form id="profileForm">
+    <label>Profile Type:
+      <select id="profileType" required onchange="toggleProfileFields()">
+        <option value="">Select</option>
+        <option value="munshi">Munshi/Clerk</option>
+        <option value="advocate">Advocate</option>
+        <option value="colleague">Colleague</option>
+        <option value="other">Other</option>
+      </select>
+    </label><br />
+
+    <label>Name:<input type="text" id="profileName" required /></label><br />
+    <div id="profileFields"></div>
+
+    <label>Upload Photo:<input type="file" id="profilePhoto" accept="image/*" /></label><br />
+    <img id="photoPreview" src="" style="max-width:100px;display:none;margin-top:5px;border:1px solid #ccc;" />
+
+    <button type="submit">Add Profile</button>
+  </form>
+
+  <ul id="profileList" style="margin-top:20px;"></ul>
+</section>
     <section id="settings" class="screen">
       <h2>Settings</h2>
       <label>Clerk Name:<input type="text" id="clerkName" /></label><br />
