@@ -101,3 +101,25 @@ button:hover {
   border-radius: 8px;
   font-size: 16px;
 }
+#suggestions {
+  list-style: none;
+  padding: 0;
+  margin: 4px 0 0;
+  background: #fff;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  max-height: 120px;
+  overflow-y: auto;
+  position: absolute;
+  z-index: 1000;
+  width: calc(100% - 30px);
+}
+
+#suggestions li {
+  padding: 8px;
+  cursor: pointer;
+}
+
+#suggestions li:hover {
+  background-color: #f0f0f0;
+}
