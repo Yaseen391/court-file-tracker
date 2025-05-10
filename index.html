@@ -21,11 +21,16 @@
   </nav>
 
   <main>
-    <section id="dashboard" class="screen active">
-      <h2>Welcome to Court File Tracker</h2>
-      <p>Today's summary will appear here.</p>
-    </section>
-
+<section id="dashboard" class="screen active">
+  <h2>Dashboard Summary</h2>
+  <div id="dashboardCards" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin-top: 20px;">
+    <div class="card" id="cardDeliveries">Deliveries Today: 0</div>
+    <div class="card" id="cardReturns">Returns Today: 0</div>
+    <div class="card" id="cardPending">Files Not Returned: 0</div>
+    <div class="card" id="cardTomorrow">Hearings Tomorrow: 0</div>
+    <div class="card" id="cardOverdue">Files Pending >10 Days: 0</div>
+  </div>
+</section>
     <section id="newFile" class="screen">
       <h2>New File Entry & Delivery</h2>
       <form id="fileForm">
