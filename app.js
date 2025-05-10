@@ -1,27 +1,19 @@
-// Navigation
 function navigate(screenId) {
-  document.querySelectorAll(".screen").forEach(section => {
-    section.classList.remove("active");
-  });
+  document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
   document.getElementById(screenId).classList.add("active");
 }
 
-// Settings Save
 function saveSettings() {
-  const clerk = document.getElementById("clerkName").value.trim();
-  const judge = document.getElementById("judgeName").value.trim();
-  localStorage.setItem("clerkName", clerk);
-  localStorage.setItem("judgeName", judge);
+  localStorage.setItem("clerkName", document.getElementById("clerkName").value.trim());
+  localStorage.setItem("judgeName", document.getElementById("judgeName").value.trim());
   alert("Settings saved.");
 }
 
-// Load Settings on Start
 window.onload = function () {
   document.getElementById("clerkName").value = localStorage.getItem("clerkName") || "";
   document.getElementById("judgeName").value = localStorage.getItem("judgeName") || "";
 };
 
-// File Storage Helper
 function getFiles() {
   return JSON.parse(localStorage.getItem("courtFiles") || "[]");
 }
@@ -29,43 +21,48 @@ function saveFiles(files) {
   localStorage.setItem("courtFiles", JSON.stringify(files));
 }
 
-// Add New File
+function toggleCriminalFields() {
+  const type = document.getElementById("caseType").value;
+  document.getElementById("criminalFields").style.display = type === "criminal" ? "block" : "none";
+}
+
 document.getElementById("fileForm").addEventListener("submit", function (e) {
   e.preventDefault();
   const files = getFiles();
+
+  const caseType = document.getElementById("caseType").value;
+  const petitioner = document.getElementById("petitioner").value.trim();
+  const respondent = document.getElementById("respondent").value.trim();
+  const title = `${petitioner} vs ${respondent}`;
+
   const newFile = {
     cmsNo: document.getElementById("cmsNo").value.trim(),
-    title: document.getElementById("title").value.trim(),
-    caseType: document.getElementById("caseType").value,
+    title,
+    caseType,
     nature: document.getElementById("nature").value.trim(),
-    decisionDate: document.getElementById("decisionDate").value,
-    hearingDate: document.getElementById("hearingDate").value,
-    deliveredTo: null,
+    decisionDate: null,
+    hearingDate: null,
+    firNo: document.getElementById("firNo").value.trim(),
+    firYear: document.getElementById("firYear").value,
+    firUs: document.getElementById("firUs").value.trim(),
+    policeStation: document.getElementById("policeStation").value.trim(),
+    deliveredTo: document.getElementById("deliveredTo").value.trim(),
+    deliveredType: document.getElementById("deliveredType").value,
     returnDate: null
   };
+
+  const dateType = document.getElementById("dateType").value;
+  const date = document.getElementById("date").value;
+  if (dateType === "decision") newFile.decisionDate = date;
+  else newFile.hearingDate = date;
+
   files.push(newFile);
   saveFiles(files);
-  alert("File saved.");
+  alert("File saved and marked as delivered.");
   document.getElementById("fileForm").reset();
   navigate("dashboard");
 });
 
-// Deliver File
-document.getElementById("deliverForm").addEventListener("submit", function (e) {
-  e.preventDefault();
-  const cmsNo = document.getElementById("deliverCms").value.trim();
-  const recipient = document.getElementById("deliveredTo").value.trim();
-  const files = getFiles();
-  const file = files.find(f => f.cmsNo === cmsNo);
-  if (!file) return alert("File not found.");
-  file.deliveredTo = recipient;
-  saveFiles(files);
-  alert("Marked as delivered.");
-  document.getElementById("deliverForm").reset();
-  navigate("dashboard");
-});
-
-// Return File
 document.getElementById("returnForm").addEventListener("submit", function (e) {
   e.preventDefault();
   const cmsNo = document.getElementById("returnCms").value.trim();
@@ -79,22 +76,27 @@ document.getElementById("returnForm").addEventListener("submit", function (e) {
   navigate("dashboard");
 });
 
-// Search
 document.getElementById("searchBox").addEventListener("input", function () {
   const term = this.value.trim().toLowerCase();
+  if (term.length === 0) {
+    document.getElementById("searchResults").innerHTML = "";
+    return;
+  }
+
   const results = getFiles().filter(file =>
-    file.cmsNo.toLowerCase().includes(term) ||
-    file.title.toLowerCase().includes(term)
+    file.cmsNo.toLowerCase().includes(term) || file.title.toLowerCase().includes(term)
   );
-  const resultHTML = results.map(file => `
+
+  const html = results.map(f => `
     <div class="search-result">
-      <strong>${file.title}</strong><br>
-      CMS: ${file.cmsNo}<br>
-      Type: ${file.caseType}<br>
-      Delivered To: ${file.deliveredTo || 'Not yet delivered'}<br>
-      Returned: ${file.returnDate || 'Pending'}<br>
-      -------------------------------
+      <strong>${f.title}</strong><br>
+      CMS: ${f.cmsNo}<br>
+      Type: ${f.caseType}<br>
+      Nature: ${f.nature}<br>
+      Delivered To: ${f.deliveredTo} (${f.deliveredType})<br>
+      Returned: ${f.returnDate || 'Pending'}<br>
+      --------------------------
     </div>
   `).join("");
-  document.getElementById("searchResults").innerHTML = resultHTML || "<p>No matching files found.</p>";
+  document.getElementById("searchResults").innerHTML = html || "<p>No matches found.</p>";
 });
