@@ -201,3 +201,121 @@ function deleteProfile(index) {
   saveProfiles(profiles);
   renderProfiles();
 }
+function toggleProfileFields() {
+  const type = document.getElementById("profileType").value;
+  const container = document.getElementById("profileFields");
+  container.innerHTML = "";
+
+  if (type === "munshi") {
+    container.innerHTML = `
+      <label>Cell No:<input type="text" id="cellNo" required /></label>
+      <label>Advocate Name:<input type="text" id="advocateName" required /></label>
+      <label>Advocate Cell No:<input type="text" id="advocateCell" /></label>
+      <label>Chamber No:<input type="text" id="chamberNo" /></label>
+    `;
+  } else if (type === "advocate") {
+    container.innerHTML = `
+      <label>Cell No:<input type="text" id="cellNo" required /></label>
+      <label>Chamber No:<input type="text" id="chamberNo" required /></label>
+    `;
+  } else if (type === "colleague") {
+    container.innerHTML = `
+      <label>Designation:<input type="text" id="designation" required /></label>
+      <label>Cell No:<input type="text" id="cellNo" required /></label>
+      <label>Court Name:<input type="text" id="courtName" /></label>
+    `;
+  } else if (type === "other") {
+    container.innerHTML = `
+      <label>Cell No:<input type="text" id="cellNo" required /></label>
+      <label>Address:<input type="text" id="address" /></label>
+      <label>ID No:<input type="text" id="idNo" /></label>
+      <label>Relation to Case:<input type="text" id="relation" /></label>
+    `;
+  }
+}
+
+// Resize and convert image to base64
+document.getElementById("profilePhoto").addEventListener("change", function () {
+  const file = this.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = function (e) {
+    const img = new Image();
+    img.onload = function () {
+      const canvas = document.createElement("canvas");
+      const maxSize = 100;
+      let w = img.width;
+      let h = img.height;
+
+      if (w > h) {
+        if (w > maxSize) {
+          h *= maxSize / w;
+          w = maxSize;
+        }
+      } else {
+        if (h > maxSize) {
+          w *= maxSize / h;
+          h = maxSize;
+        }
+      }
+
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0, w, h);
+      const base64 = canvas.toDataURL("image/jpeg", 0.7);
+      document.getElementById("photoPreview").src = base64;
+      document.getElementById("photoPreview").style.display = "block";
+      document.getElementById("photoPreview").setAttribute("data-img", base64);
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+});
+
+document.getElementById("profileForm").addEventListener("submit", function (e) {
+  e.preventDefault();
+  const type = document.getElementById("profileType").value;
+  const name = document.getElementById("profileName").value.trim();
+  const img = document.getElementById("photoPreview").getAttribute("data-img") || "";
+
+  const extra = {};
+  document.querySelectorAll("#profileFields input").forEach(input => {
+    extra[input.id] = input.value.trim();
+  });
+
+  const profile = {
+    type,
+    name,
+    photo: img,
+    ...extra
+  };
+
+  const all = getProfiles();
+  if (all.some(p => p.name === name)) return alert("Profile already exists.");
+  all.push(profile);
+  saveProfiles(all);
+  document.getElementById("profileForm").reset();
+  document.getElementById("photoPreview").style.display = "none";
+  document.getElementById("photoPreview").src = "";
+  renderProfiles();
+});
+
+function renderProfiles() {
+  const list = document.getElementById("profileList");
+  list.innerHTML = "";
+  const profiles = getProfiles();
+
+  profiles.forEach((p, i) => {
+    const li = document.createElement("li");
+    li.innerHTML = `
+      <div style="margin-bottom:8px;">
+        ${p.photo ? `<img src="${p.photo}" style="width:30px;height:30px;border-radius:50%;vertical-align:middle;"> ` : ""}
+        <b>${p.name}</b> (${p.type}) 
+        <button onclick="deleteProfile(${i})" style="float:right;background:red;color:white;border:none;border-radius:4px;padding:4px;">Delete</button>
+      </div>
+    `;
+    list.appendChild(li);
+  });
+}
