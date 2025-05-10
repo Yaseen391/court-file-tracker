@@ -1,5 +1,4 @@
-<!DOCTYPE html>
-<html lang="en">
+<!DOCTYPE html><html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -10,18 +9,14 @@
 <body>
   <header>
     <h1>Court File Tracker</h1>
-  </header>
-
-  <nav>
+  </header>  <nav>
     <button onclick="navigate('dashboard')">Dashboard</button>
     <button onclick="navigate('newFile')">New File Entry</button>
     <button onclick="navigate('return')">Return File</button>
     <button onclick="navigate('search')">Search</button>
     <button onclick="navigate('settings')">Settings</button>
     <button onclick="navigate('profiles')">Manage Profiles</button>
-  </nav>
-
-  <main>
+  </nav>  <main>
     <section id="dashboard" class="screen active">
       <h2>Dashboard Summary</h2>
       <div id="dashboardCards" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin-top: 20px;">
@@ -31,78 +26,77 @@
         <div class="card" id="cardTomorrow">Hearings Tomorrow: 0</div>
         <div class="card" id="cardOverdue">Files Pending >10 Days: 0</div>
       </div>
-    </section>
+    </section><section id="newFile" class="screen">
+  <h2>New File Entry & Delivery</h2>
+  <form id="fileForm">
+    <label>Case Type:
+      <select id="caseType" required onchange="toggleCriminalFields()">
+        <option value="">Select</option>
+        <option value="civil">Civil</option>
+        <option value="criminal">Criminal</option>
+      </select>
+    </label><br />
 
-    <section id="newFile" class="screen">
-      <h2>New File Entry & Delivery</h2>
-      <form id="fileForm">
-        <label>Case Type:
-          <select id="caseType" required onchange="toggleCriminalFields()">
-            <option value="">Select</option>
-            <option value="civil">Civil</option>
-            <option value="criminal">Criminal</option>
-          </select>
-        </label><br />
+    <label>CMS No:<input type="number" id="cmsNo" required /></label><br />
+    <label>Petitioner:<input type="text" id="petitioner" required /></label><br />
+    <label>Respondent:<input type="text" id="respondent" required /></label><br />
+    <label>Nature:<input type="text" id="nature" required /></label><br />
 
-        <label>CMS No:<input type="number" id="cmsNo" required /></label><br />
-        <label>Petitioner:<input type="text" id="petitioner" required /></label><br />
-        <label>Respondent:<input type="text" id="respondent" required /></label><br />
-        <label>Nature:<input type="text" id="nature" required /></label><br />
+    <div id="criminalFields" style="display:none">
+      <label>FIR No:<input type="text" id="firNo" /></label><br />
+      <label>FIR Year:<input type="number" id="firYear" min="1947" /></label><br />
+      <label>FIR U/S:<input type="text" id="firUs" /></label><br />
+      <label>Police Station:<input type="text" id="policeStation" /></label><br />
+    </div>
 
-        <div id="criminalFields" style="display:none">
-          <label>FIR No:<input type="text" id="firNo" /></label><br />
-          <label>FIR Year:<input type="number" id="firYear" min="1947" /></label><br />
-          <label>FIR U/S:<input type="text" id="firUs" /></label><br />
-          <label>Police Station:<input type="text" id="policeStation" /></label><br />
-        </div>
+    <label>Date Type:
+      <select id="dateType" required>
+        <option value="">Select</option>
+        <option value="decision">Decision Date</option>
+        <option value="hearing">Next Hearing Date</option>
+      </select>
+    </label><br />
+    <label>Date:<input type="date" id="date" required /></label><br />
 
-        <label>Date Type:
-          <select id="dateType" required>
-            <option value="">Select</option>
-            <option value="decision">Decision Date</option>
-            <option value="hearing">Next Hearing Date</option>
-          </select>
-        </label><br />
-        <label>Date:<input type="date" id="date" required /></label><br />
+    <hr />
 
-        <hr />
+    <label>Delivered To (Name):<input type="text" id="deliveredTo" list="profileSuggestions" required /></label><br />
+    <datalist id="profileSuggestions"></datalist>
 
-<label>Delivered To (Name):<input type="text" id="deliveredTo" list="profileSuggestions" required /></label><br />
-<datalist id="profileSuggestions"></datalist>
-        <label>Delivered To Type:
-          <select id="deliveredType" required>
-            <option value="">Select</option>
-            <option value="advocate">Advocate</option>
-            <option value="munshi">Munshi</option>
-            <option value="colleague">Colleague</option>
-          </select>
-        </label><br />
+    <label>Delivered To Type:
+      <select id="deliveredType" required>
+        <option value="">Select</option>
+        <option value="advocate">Advocate</option>
+        <option value="munshi">Munshi</option>
+        <option value="colleague">Colleague</option>
+      </select>
+    </label><br />
 
-        <button type="submit">Save and Deliver File</button>
-      </form>
-    </section>
+    <button type="submit">Save and Deliver File</button>
+  </form>
+</section>
 
-    <section id="return" class="screen">
-      <h2>Return File</h2>
-      <form id="returnForm">
-        <label>CMS No:<input type="number" id="returnCms" required /></label><br />
-        <button type="submit">Mark Returned</button>
-      </form>
-    </section>
+<section id="return" class="screen">
+  <h2>Return File</h2>
+  <form id="returnForm">
+    <label>CMS No:<input type="number" id="returnCms" required /></label><br />
+    <button type="submit">Mark Returned</button>
+  </form>
+</section>
 
-    <section id="search" class="screen">
-      <h2>Search</h2>
-      <input type="text" id="searchBox" placeholder="Enter CMS or Title..." />
-      <div id="searchResults" style="margin-top: 10px;"></div>
-    </section>
+<section id="search" class="screen">
+  <h2>Search</h2>
+  <input type="text" id="searchBox" placeholder="Enter CMS or Title..." />
+  <div id="searchResults" style="margin-top: 10px;"></div>
+</section>
 
-    <section id="settings" class="screen">
-      <h2>Settings</h2>
-      <label>Clerk Name:<input type="text" id="clerkName" /></label><br />
-      <label>Judge Name:<input type="text" id="judgeName" /></label><br />
-      <button onclick="saveSettings()">Save</button>
-    </section>
-  </main>
+<section id="settings" class="screen">
+  <h2>Settings</h2>
+  <label>Clerk Name:<input type="text" id="clerkName" /></label><br />
+  <label>Judge Name:<input type="text" id="judgeName" /></label><br />
+  <button onclick="saveSettings()">Save</button>
+</section>
+
 <section id="profiles" class="screen">
   <h2>Manage Profiles</h2>
   <form id="profileForm">
@@ -122,8 +116,8 @@
   <h3 style="margin-top:20px;">Saved Profiles</h3>
   <div id="profileList"></div>
 </section>
-  <script src="app.js"></script>
-  <script>
+
+  </main>  <script src="app.js"></script>  <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', function () {
         navigator.serviceWorker.register('service-worker.js')
@@ -137,6 +131,5 @@
       deferredPrompt = e;
       console.log("PWA install prompt ready.");
     });
-  </script>
-</body>
+  </script></body>
 </html>
