@@ -123,3 +123,7 @@ button:hover {
 #suggestions li:hover {
   background-color: #f0f0f0;
 }
+#profileFields label {
+  margin-top: 8px;
+  display: block;
+}
