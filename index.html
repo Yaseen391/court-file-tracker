@@ -30,6 +30,26 @@
         <div class="card" id="cardPending">Files Not Returned: 0</div>
         <div class="card" id="cardTomorrow">Hearings Tomorrow: 0</div>
         <div class="card" id="cardOverdue">Files Pending >10 Days: 0</div>
+        <div id="dashboardReportPanel" style="display:none; margin-top: 20px;">
+  <h3 id="reportTitle"></h3>
+  <button onclick="printDashboardReport()">Print</button>
+  <button onclick="exportDashboardReport()">Export to Excel</button>
+  <table id="dashboardReportTable" border="1" style="width:100%; border-collapse:collapse; margin-top:10px;">
+    <thead>
+      <tr>
+        <th>Sr#</th>
+        <th>CMS No</th>
+        <th>Title</th>
+        <th>Case Type</th>
+        <th>Nature</th>
+        <th>Delivered To</th>
+        <th>Delivery Date</th>
+        <th>Return Date</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+</div>
       </div>
     </section>
 
