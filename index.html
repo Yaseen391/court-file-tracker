@@ -18,6 +18,7 @@
     <button onclick="navigate('return')">Return File</button>
     <button onclick="navigate('search')">Search</button>
     <button onclick="navigate('settings')">Settings</button>
+    <button onclick="navigate('profiles')">Manage Profiles</button>
   </nav>
 
   <main>
@@ -66,7 +67,8 @@
 
         <hr />
 
-        <label>Delivered To (Name):<input type="text" id="deliveredTo" required /></label><br />
+<label>Delivered To (Name):<input type="text" id="deliveredTo" list="profileSuggestions" required /></label><br />
+<datalist id="profileSuggestions"></datalist>
         <label>Delivered To Type:
           <select id="deliveredType" required>
             <option value="">Select</option>
@@ -101,7 +103,25 @@
       <button onclick="saveSettings()">Save</button>
     </section>
   </main>
+<section id="profiles" class="screen">
+  <h2>Manage Profiles</h2>
+  <form id="profileForm">
+    <label>Name:<input type="text" id="profileName" required /></label><br />
+    <label>Type:
+      <select id="profileType" required>
+        <option value="">Select</option>
+        <option value="advocate">Advocate</option>
+        <option value="munshi">Munshi</option>
+        <option value="colleague">Colleague</option>
+      </select>
+    </label><br />
+    <label>Details:<input type="text" id="profileDetails" placeholder="e.g. Chamber No, Cell No" /></label><br />
+    <button type="submit">Save Profile</button>
+  </form>
 
+  <h3 style="margin-top:20px;">Saved Profiles</h3>
+  <div id="profileList"></div>
+</section>
   <script src="app.js"></script>
   <script>
     if ('serviceWorker' in navigator) {
