@@ -100,6 +100,16 @@ document.getElementById("fileForm").addEventListener("submit", function (e) {
   const date = document.getElementById("date").value;
   if (dateType === "decision") newFile.decisionDate = date;
   else newFile.hearingDate = date;
+  newFile.sentToCopyAgency = document.getElementById("copyAgency").checked;
+
+if (newFile.sentToCopyAgency) {
+  newFile.swalFormNo = document.getElementById("swalFormNo").value.trim();
+  newFile.swalDate = document.getElementById("swalDate").value;
+  if (!newFile.swalFormNo || !newFile.swalDate) {
+    alert("Swal Form No and Date are required.");
+    return;
+  }
+}
 
   files.push(newFile);
   saveFiles(files);
