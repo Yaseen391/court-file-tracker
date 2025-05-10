@@ -33,58 +33,63 @@
       </div>
     </section>
 
-    <section id="newFile" class="screen">
-      <h2>New File Entry & Delivery</h2>
-      <form id="fileForm">
-        <label>Case Type:
-          <select id="caseType" required onchange="toggleCriminalFields()">
-            <option value="">Select</option>
-            <option value="civil">Civil</option>
-            <option value="criminal">Criminal</option>
-          </select>
-        </label><br />
+  <section id="newFile" class="screen">
+  <h2>New File Entry & Delivery</h2>
+  <form id="fileForm">
+    <label>Case Type:
+      <select id="caseType" required onchange="toggleCriminalFields()">
+        <option value="">Select</option>
+        <option value="civil">Civil</option>
+        <option value="criminal">Criminal</option>
+      </select>
+    </label><br />
 
-        <label>CMS No:<input type="number" id="cmsNo" required /></label><br />
-        <label>Petitioner:<input type="text" id="petitioner" required /></label><br />
-        <label>Respondent:<input type="text" id="respondent" required /></label><br />
-        <label>Nature:<input type="text" id="nature" required /></label><br />
+    <label>CMS No:<input type="number" id="cmsNo" required /></label><br />
+    <label>Petitioner:<input type="text" id="petitioner" required /></label><br />
+    <label>Respondent:<input type="text" id="respondent" required /></label><br />
+    <label>Nature:<input type="text" id="nature" required /></label><br />
 
-        <div id="criminalFields" style="display:none">
-          <label>FIR No:<input type="text" id="firNo" /></label><br />
-          <label>FIR Year:<input type="number" id="firYear" min="1947" /></label><br />
-          <label>FIR U/S:<input type="text" id="firUs" /></label><br />
-          <label>Police Station:<input type="text" id="policeStation" /></label><br />
-        </div>
+    <div id="criminalFields" style="display:none">
+      <label>FIR No:<input type="text" id="firNo" /></label><br />
+      <label>FIR Year:<input type="number" id="firYear" min="1947" /></label><br />
+      <label>FIR U/S:<input type="text" id="firUs" /></label><br />
+      <label>Police Station:<input type="text" id="policeStation" /></label><br />
+    </div>
 
-        <label>Date Type:
-          <select id="dateType" required>
-            <option value="">Select</option>
-            <option value="decision">Decision Date</option>
-            <option value="hearing">Next Hearing Date</option>
-          </select>
-        </label><br />
-        <label>Date:<input type="date" id="date" required /></label><br />
+    <label>Date Type:
+      <select id="dateType" required>
+        <option value="">Select</option>
+        <option value="decision">Decision Date</option>
+        <option value="hearing">Next Hearing Date</option>
+      </select>
+    </label><br />
+    <label>Date:<input type="date" id="date" required /></label><br />
 
-        <hr />
+    <label>Delivered To (Name):
+      <input type="text" id="deliveredTo" oninput="suggestProfiles(this.value)" required autocomplete="off" />
+      <ul id="suggestions"></ul>
+    </label><br />
 
-        <label>Delivered To (Name):
-          <input type="text" id="deliveredTo" oninput="suggestProfiles(this.value)" required autocomplete="off" />
-          <ul id="suggestions"></ul>
-        </label><br />
+    <label>Delivered To Type:
+      <select id="deliveredType" required>
+        <option value="">Select</option>
+        <option value="advocate">Advocate</option>
+        <option value="munshi">Munshi</option>
+        <option value="colleague">Colleague</option>
+        <option value="other">Other</option>
+      </select>
+    </label><br />
 
-        <label>Delivered To Type:
-          <select id="deliveredType" required>
-            <option value="">Select</option>
-            <option value="advocate">Advocate</option>
-            <option value="munshi">Munshi</option>
-            <option value="colleague">Colleague</option>
-          </select>
-        </label><br />
+    <label><input type="checkbox" id="copyAgency" onchange="toggleCopyAgency()"> Sent to Copy Agency</label><br />
 
-        <button type="submit">Save and Deliver File</button>
-      </form>
-    </section>
+    <div id="copyAgencyFields" style="display:none;">
+      <label>Swal Farm No:<input type="number" id="swalFormNo" required /></label><br />
+      <label>Swal Date:<input type="date" id="swalDate" required /></label><br />
+    </div>
 
+    <button type="submit">Save and Deliver File</button>
+  </form>
+</section>
     <section id="return" class="screen">
       <h2>Return File</h2>
       <form id="returnForm">
