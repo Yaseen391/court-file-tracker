@@ -328,4 +328,7 @@ function renderProfiles() {
     `;
     list.appendChild(li);
   });
+}function toggleCopyAgency() {
+  const checked = document.getElementById("copyAgency").checked;
+  document.getElementById("copyAgencyFields").style.display = checked ? "block" : "none";
 }
