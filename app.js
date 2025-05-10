@@ -332,3 +332,31 @@ function renderProfiles() {
   const checked = document.getElementById("copyAgency").checked;
   document.getElementById("copyAgencyFields").style.display = checked ? "block" : "none";
 }
+function autoFillCMS() {
+  const cmsNo = document.getElementById("cmsNo").value.trim();
+  if (!cmsNo) return;
+
+  const files = getFiles();
+  const existing = files.find(f => f.cmsNo === cmsNo);
+  if (!existing) return;
+
+  // Auto-fill the form fields
+  document.getElementById("caseType").value = existing.caseType;
+  const [petitioner, respondent] = existing.title.split(" vs ");
+  document.getElementById("petitioner").value = petitioner || "";
+  document.getElementById("respondent").value = respondent || "";
+  document.getElementById("nature").value = existing.nature || "";
+
+  document.getElementById("firNo").value = existing.firNo || "";
+  document.getElementById("firYear").value = existing.firYear || "";
+  document.getElementById("firUs").value = existing.firUs || "";
+  document.getElementById("policeStation").value = existing.policeStation || "";
+
+  if (existing.decisionDate) {
+    document.getElementById("dateType").value = "decision";
+    document.getElementById("date").value = existing.decisionDate;
+  } else if (existing.hearingDate) {
+    document.getElementById("dateType").value = "hearing";
+    document.getElementById("date").value = existing.hearingDate;
+  }
+}
