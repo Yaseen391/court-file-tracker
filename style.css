@@ -1,103 +1,36 @@
-body {
-  font-family: 'Segoe UI', sans-serif;
-  margin: 0;
-  background: #f9f9f9;
-}
+body { font-family: 'Segoe UI', sans-serif; margin: 0; background: #f9f9f9; }
 
-header {
-  background: #003366;
-  color: white;
-  text-align: center;
-  padding: 20px;
-  font-size: 24px;
-}
+header { background: #003366; color: white; text-align: center; padding: 20px; font-size: 24px; }
 
-nav {
-  background: #e0e0e0;
-  padding: 10px;
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 10px;
-}
+nav { background: #e0e0e0; padding: 10px; display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
 
-nav button {
-  padding: 10px 15px;
-  background: #0066cc;
-  color: white;
-  border: none;
-  border-radius: 5px;
-  cursor: pointer;
-}
+nav button { padding: 10px 15px; background: #0066cc; color: white; border: none; border-radius: 5px; cursor: pointer; }
 
-nav button:hover {
-  background: #004c99;
-}
+nav button:hover { background: #004c99; }
 
-main {
-  padding: 20px;
-}
+main { padding: 20px; }
 
-.screen {
-  display: none;
-}
+.screen { display: none; }
 
-.screen.active {
-  display: block;
-}
+.screen.active { display: block; }
 
-form {
-  max-width: 500px;
-  margin: auto;
-  background: #fff;
-  padding: 15px;
-  border-radius: 8px;
-  box-shadow: 0 0 10px rgba(0,0,0,0.05);
-}
+form { max-width: 500px; margin: auto; background: #fff; padding: 15px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.05); }
 
-label {
-  display: block;
-  margin-top: 10px;
-  font-weight: bold;
-}
+label { display: block; margin-top: 10px; font-weight: bold; }
 
-input, select {
-  width: 100%;
-  padding: 8px;
-  margin-top: 5px;
-  box-sizing: border-box;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-}
+input, select { width: 100%; padding: 8px; margin-top: 5px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; }
 
-button[type="submit"], button {
-  margin-top: 15px;
-  padding: 10px;
-  width: 100%;
-  background-color: #003366;
-  color: white;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-}
+button[type="submit"], button { margin-top: 15px; padding: 10px; width: 100%; background-color: #003366; color: white; border: none; border-radius: 6px; cursor: pointer; }
 
-button:hover {
-  background-color: #00509e;
-}
+button:hover { background-color: #00509e; }
 
-.search-result {
-  background: #ffffff;
-  padding: 10px;
-  margin-bottom: 10px;
-  border-left: 4px solid #0066cc;
-  border-radius: 4px;
-}
+.search-result { background: #ffffff; padding: 10px; margin-bottom: 10px; border-left: 4px solid #0066cc; border-radius: 4px; }
 
-.card {
-  background-color: #ffffff;
-  padding: 15px;
-  border-left: 5px solid #0066cc;
-  box-shadow: 0 0 5px rgba(0,0,0,0.05);
-  border-radius: 8px;
-  font-size: 16px;
-}
+.card { background-color: #ffffff; padding: 15px; border-left: 5px solid #0066cc; box-shadow: 0 0 5px rgba(0,0,0,0.05); border-radius: 8px; font-size: 16px; }
+
+#profileList { margin-top: 10px; }
+
+.profile-item { background: #fff; border-left: 4px solid #0066cc; padding: 10px; margin-bottom: 8px; border-radius: 6px; }
+
+.profile-item button { float: right; background-color: red; color: white; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; }
+
