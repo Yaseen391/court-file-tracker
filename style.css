@@ -8,8 +8,9 @@ header {
   background: #003366;
   color: white;
   text-align: center;
-  padding: 20px;
-  font-size: 24px;
+  padding: 15px 10px;
+  font-size: 22px;
+  font-weight: bold;
 }
 
 nav {
@@ -47,10 +48,10 @@ main {
 }
 
 form {
-  max-width: 500px;
+  max-width: 600px;
   margin: auto;
   background: #fff;
-  padding: 15px;
+  padding: 20px;
   border-radius: 8px;
   box-shadow: 0 0 10px rgba(0,0,0,0.05);
 }
@@ -101,18 +102,25 @@ button:hover {
   border-radius: 8px;
   font-size: 16px;
 }
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+}
+
 #suggestions {
   list-style: none;
   padding: 0;
-  margin: 4px 0 0;
+  margin: 0;
   background: #fff;
   border: 1px solid #ccc;
   border-radius: 4px;
-  max-height: 120px;
+  max-height: 150px;
   overflow-y: auto;
   position: absolute;
   z-index: 1000;
-  width: calc(100% - 30px);
+  width: calc(100% - 20px);
 }
 
 #suggestions li {
@@ -122,4 +130,12 @@ button:hover {
 
 #suggestions li:hover {
   background-color: #f0f0f0;
+}
+
+#copyAgencyFields,
+#profileExtraFields {
+  margin-top: 10px;
+  padding: 10px;
+  background: #f2f2f2;
+  border-radius: 6px;
 }
