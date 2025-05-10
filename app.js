@@ -1,6 +1,9 @@
 function navigate(screenId) {
   document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
   document.getElementById(screenId).classList.add("active");
+  if (screenId === "dashboard") updateDashboard();
+}  document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
+  document.getElementById(screenId).classList.add("active");
 }
 
 function saveSettings() {
@@ -55,7 +58,8 @@ document.getElementById("fileForm").addEventListener("submit", function (e) {
   const date = document.getElementById("date").value;
   if (dateType === "decision") newFile.decisionDate = date;
   else newFile.hearingDate = date;
-
+newFile.createdDate = new Date().toISOString().split("T")[0];
+newFile.deliveredDate = newFile.createdDate;
   files.push(newFile);
   saveFiles(files);
   alert("File saved and marked as delivered.");
@@ -100,3 +104,31 @@ document.getElementById("searchBox").addEventListener("input", function () {
   `).join("");
   document.getElementById("searchResults").innerHTML = html || "<p>No matches found.</p>";
 });
+function updateDashboard() {
+  const files = getFiles();
+  const today = new Date().toISOString().split("T")[0];
+  const tomorrow = new Date(Date.now() + 86400000).toISOString().split("T")[0];
+  const tenDaysAgo = new Date(Date.now() - 10 * 86400000).toISOString().split("T")[0];
+
+  const deliveriesToday = files.filter(f => {
+    const date = f.deliveredDate || f.createdDate;
+    return date === today;
+  });
+
+  const returnsToday = files.filter(f => f.returnDate === today);
+
+  const notReturned = files.filter(f => !f.returnDate);
+
+  const dueTomorrow = files.filter(f => f.hearingDate === tomorrow && !f.returnDate);
+
+  const overdue = files.filter(f => {
+    const delivery = f.deliveredDate || f.createdDate;
+    return !f.returnDate && delivery < tenDaysAgo;
+  });
+
+  document.getElementById("cardDeliveries").innerText = `Deliveries Today: ${deliveriesToday.length}`;
+  document.getElementById("cardReturns").innerText = `Returns Today: ${returnsToday.length}`;
+  document.getElementById("cardPending").innerText = `Files Not Returned: ${notReturned.length}`;
+  document.getElementById("cardTomorrow").innerText = `Hearings Tomorrow: ${dueTomorrow.length}`;
+  document.getElementById("cardOverdue").innerText = `Files Pending >10 Days: ${overdue.length}`;
+}
