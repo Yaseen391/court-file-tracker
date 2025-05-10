@@ -18,7 +18,7 @@
     <button onclick="navigate('return')">Return File</button>
     <button onclick="navigate('search')">Search</button>
     <button onclick="navigate('profiles')">Manage Profiles</button>
-    <button onclick="navigate('settings')">User Profile</button>
+    <button onclick="navigate('settings')">Settings</button>
   </nav>
 
   <main>
@@ -36,8 +36,6 @@
     <section id="newFile" class="screen">
       <h2>New File Entry & Delivery</h2>
       <form id="fileForm">
-        <label>CMS No:<input type="number" id="cmsNo" required onblur="autoFillFromCMS()" /></label><br />
-
         <label>Case Type:
           <select id="caseType" required onchange="toggleCriminalFields()">
             <option value="">Select</option>
@@ -46,6 +44,7 @@
           </select>
         </label><br />
 
+        <label>CMS No:<input type="number" id="cmsNo" required /></label><br />
         <label>Petitioner:<input type="text" id="petitioner" required /></label><br />
         <label>Respondent:<input type="text" id="respondent" required /></label><br />
         <label>Nature:<input type="text" id="nature" required /></label><br />
@@ -74,22 +73,13 @@
         </label><br />
 
         <label>Delivered To Type:
-          <select id="deliveredType" required onchange="loadProfileFields(this.value)">
+          <select id="deliveredType" required>
             <option value="">Select</option>
             <option value="advocate">Advocate</option>
             <option value="munshi">Munshi</option>
             <option value="colleague">Colleague</option>
-            <option value="other">Other</option>
           </select>
         </label><br />
-
-        <div id="profileExtraFields"></div>
-
-        <label><input type="checkbox" id="copyAgencyCheck" onchange="toggleCopyAgencyFields()"> File taken to Copy Agency?</label><br />
-        <div id="copyAgencyFields" style="display:none">
-          <label>Swal Form No:<input type="number" id="swalNo" required /></label><br />
-          <label>Date:<input type="date" id="swalDate" required /></label><br />
-        </div>
 
         <button type="submit">Save and Deliver File</button>
       </form>
@@ -110,36 +100,26 @@
     </section>
 
     <section id="profiles" class="screen">
-  <h2>Manage Profiles</h2>
+      <h2>Manage Profiles</h2>
+      <form id="profileForm">
+        <label>Name:<input type="text" id="profileName" required /></label><br />
+        <label>Type:
+          <select id="profileType" required>
+            <option value="">Select</option>
+            <option value="advocate">Advocate</option>
+            <option value="munshi">Munshi</option>
+            <option value="colleague">Colleague</option>
+          </select>
+        </label><br />
+        <button type="submit">Add Profile</button>
+      </form>
+      <ul id="profileList" style="margin-top:20px;"></ul>
+    </section>
 
-  <form id="profileForm">
-    <label>Profile Type:
-      <select id="profileType" required onchange="toggleProfileFields()">
-        <option value="">Select</option>
-        <option value="munshi">Munshi/Clerk</option>
-        <option value="advocate">Advocate</option>
-        <option value="colleague">Colleague</option>
-        <option value="other">Other</option>
-      </select>
-    </label><br />
-
-    <label>Name:<input type="text" id="profileName" required /></label><br />
-    <div id="profileFields"></div>
-
-    <label>Upload Photo:<input type="file" id="profilePhoto" accept="image/*" /></label><br />
-    <img id="photoPreview" src="" style="max-width:100px;display:none;margin-top:5px;border:1px solid #ccc;" />
-
-    <button type="submit">Add Profile</button>
-  </form>
-
-  <ul id="profileList" style="margin-top:20px;"></ul>
-</section>
     <section id="settings" class="screen">
-      <h2>User Profile</h2>
-      <label>Full Name:<input type="text" id="clerkName" /></label><br />
-      <label>Designation:<input type="text" id="designation" /></label><br />
-      <label>Court Name:<input type="text" id="judgeName" /></label><br />
-      <label>Cell No:<input type="text" id="clerkCell" /></label><br />
+      <h2>Settings</h2>
+      <label>Clerk Name:<input type="text" id="clerkName" /></label><br />
+      <label>Judge Name:<input type="text" id="judgeName" /></label><br />
       <button onclick="saveSettings()">Save</button>
     </section>
   </main>
