@@ -2,6 +2,7 @@ function navigate(screenId) {
   document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
   document.getElementById(screenId).classList.add("active");
   if (screenId === "dashboard") updateDashboard();
+  if (screenId === "profiles") renderProfiles();
 }
 
 function saveSettings() {
@@ -22,6 +23,37 @@ function saveFiles(files) {
   localStorage.setItem("courtFiles", JSON.stringify(files));
 }
 
+function getProfiles() {
+  return JSON.parse(localStorage.getItem("profiles") || "[]");
+}
+function saveProfiles(profiles) {
+  localStorage.setItem("profiles", JSON.stringify(profiles));
+}
+
+// Auto-suggestions for deliveredTo field
+function suggestProfiles(inputValue) {
+  const list = document.getElementById("suggestions");
+  const profiles = getProfiles();
+  list.innerHTML = "";
+
+  if (inputValue.trim().length === 0) return;
+
+  const matches = profiles.filter(p =>
+    p.name.toLowerCase().includes(inputValue.toLowerCase())
+  );
+
+  matches.forEach(match => {
+    const li = document.createElement("li");
+    li.innerText = match.name;
+    li.onclick = () => {
+      document.getElementById("deliveredTo").value = match.name;
+      document.getElementById("deliveredType").value = match.type;
+      list.innerHTML = "";
+    };
+    list.appendChild(li);
+  });
+}
+
 function toggleCriminalFields() {
   const type = document.getElementById("caseType").value;
   document.getElementById("criminalFields").style.display = type === "criminal" ? "block" : "none";
@@ -36,6 +68,16 @@ document.getElementById("fileForm").addEventListener("submit", function (e) {
   const respondent = document.getElementById("respondent").value.trim();
   const title = `${petitioner} vs ${respondent}`;
 
+  const name = document.getElementById("deliveredTo").value.trim();
+  const type = document.getElementById("deliveredType").value;
+
+  // Auto-save profile if not already saved
+  const existing = getProfiles();
+  if (!existing.some(p => p.name === name)) {
+    existing.push({ name, type });
+    saveProfiles(existing);
+  }
+
   const newFile = {
     cmsNo: document.getElementById("cmsNo").value.trim(),
     title,
@@ -47,8 +89,8 @@ document.getElementById("fileForm").addEventListener("submit", function (e) {
     firYear: document.getElementById("firYear").value,
     firUs: document.getElementById("firUs").value.trim(),
     policeStation: document.getElementById("policeStation").value.trim(),
-    deliveredTo: document.getElementById("deliveredTo").value.trim(),
-    deliveredType: document.getElementById("deliveredType").value,
+    deliveredTo: name,
+    deliveredType: type,
     returnDate: null,
     createdDate: new Date().toISOString().split("T")[0],
     deliveredDate: new Date().toISOString().split("T")[0]
@@ -124,4 +166,38 @@ function updateDashboard() {
   document.getElementById("cardPending").innerText = `Files Not Returned: ${notReturned.length}`;
   document.getElementById("cardTomorrow").innerText = `Hearings Tomorrow: ${dueTomorrow.length}`;
   document.getElementById("cardOverdue").innerText = `Files Pending >10 Days: ${overdue.length}`;
+}
+
+// PROFILE MANAGER
+document.getElementById("profileForm").addEventListener("submit", function (e) {
+  e.preventDefault();
+  const name = document.getElementById("profileName").value.trim();
+  const type = document.getElementById("profileType").value;
+  const profiles = getProfiles();
+  if (!name || !type) return alert("Please enter both name and type.");
+  if (profiles.some(p => p.name === name)) return alert("Profile already exists.");
+  profiles.push({ name, type });
+  saveProfiles(profiles);
+  document.getElementById("profileForm").reset();
+  renderProfiles();
+});
+
+function renderProfiles() {
+  const list = document.getElementById("profileList");
+  list.innerHTML = "";
+  const profiles = getProfiles();
+
+  profiles.forEach((profile, index) => {
+    const li = document.createElement("li");
+    li.innerHTML = `<b>${profile.name}</b> (${profile.type}) 
+      <button onclick="deleteProfile(${index})" style="float:right;background:red;color:white;border:none;border-radius:4px;padding:4px;">Delete</button>`;
+    list.appendChild(li);
+  });
+}
+
+function deleteProfile(index) {
+  const profiles = getProfiles();
+  profiles.splice(index, 1);
+  saveProfiles(profiles);
+  renderProfiles();
 }
