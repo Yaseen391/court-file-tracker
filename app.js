@@ -171,12 +171,11 @@ function updateDashboard() {
     return !f.returnDate && delivery < tenDaysAgo;
   });
 
-  document.getElementById("cardDeliveries").innerText = `Deliveries Today: ${deliveriesToday.length}`;
-  document.getElementById("cardReturns").innerText = `Returns Today: ${returnsToday.length}`;
-  document.getElementById("cardPending").innerText = `Files Not Returned: ${notReturned.length}`;
-  document.getElementById("cardTomorrow").innerText = `Hearings Tomorrow: ${dueTomorrow.length}`;
-  document.getElementById("cardOverdue").innerText = `Files Pending >10 Days: ${overdue.length}`;
-}
+ document.getElementById("cardDeliveries").innerHTML = `<button onclick="showDashboardReport('deliveries')">Deliveries Today: ${deliveriesToday.length}</button>`;
+document.getElementById("cardReturns").innerHTML = `<button onclick="showDashboardReport('returns')">Returns Today: ${returnsToday.length}</button>`;
+document.getElementById("cardPending").innerHTML = `<button onclick="showDashboardReport('pending')">Files Not Returned: ${notReturned.length}</button>`;
+document.getElementById("cardTomorrow").innerHTML = `<button onclick="showDashboardReport('tomorrow')">Hearings Tomorrow: ${dueTomorrow.length}</button>`;
+document.getElementById("cardOverdue").innerHTML = `<button onclick="showDashboardReport('overdue')">Files Pending >10 Days: ${overdue.length}</button>`;}
 
 // PROFILE MANAGER
 document.getElementById("profileForm").addEventListener("submit", function (e) {
@@ -359,4 +358,84 @@ function autoFillCMS() {
     document.getElementById("dateType").value = "hearing";
     document.getElementById("date").value = existing.hearingDate;
   }
+}
+function showDashboardReport(type) {
+  const files = getFiles();
+  const today = new Date().toISOString().split("T")[0];
+  const tomorrow = new Date(Date.now() + 86400000).toISOString().split("T")[0];
+  const tenDaysAgo = new Date(Date.now() - 10 * 86400000).toISOString().split("T")[0];
+
+  let filtered = [];
+  let title = "";
+
+  if (type === "deliveries") {
+    filtered = files.filter(f => f.deliveredDate === today);
+    title = "Files Delivered Today";
+  } else if (type === "returns") {
+    filtered = files.filter(f => f.returnDate === today);
+    title = "Files Returned Today";
+  } else if (type === "pending") {
+    filtered = files.filter(f => !f.returnDate);
+    title = "Files Not Yet Returned";
+  } else if (type === "tomorrow") {
+    filtered = files.filter(f => f.hearingDate === tomorrow && !f.returnDate);
+    title = "Hearings Scheduled for Tomorrow";
+  } else if (type === "overdue") {
+    filtered = files.filter(f => {
+      const delivery = f.deliveredDate || f.createdDate;
+      return !f.returnDate && delivery < tenDaysAgo;
+    });
+    title = "Files Pending >10 Days";
+  }
+
+  const tbody = document.querySelector("#dashboardReportTable tbody");
+  tbody.innerHTML = "";
+  filtered.forEach((f, i) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${i + 1}</td>
+      <td>${f.cmsNo}</td>
+      <td>${f.title}</td>
+      <td>${f.caseType}</td>
+      <td>${f.nature}</td>
+      <td>${f.deliveredTo} (${f.deliveredType})</td>
+      <td>${formatDate(f.deliveredDate)}</td>
+      <td>${f.returnDate ? formatDate(f.returnDate) : "Pending"}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  document.getElementById("reportTitle").innerText = title + ` (${filtered.length})`;
+  document.getElementById("dashboardReportPanel").style.display = "block";
+}
+
+function formatDate(dateStr) {
+  if (!dateStr) return "";
+  const d = new Date(dateStr);
+  const day = String(d.getDate()).padStart(2, '0');
+  const mon = String(d.getMonth() + 1).padStart(2, '0');
+  const yr = d.getFullYear();
+  return `${day}/${mon}/${yr}`;
+}
+
+function printDashboardReport() {
+  const content = document.getElementById("dashboardReportPanel").innerHTML;
+  const win = window.open("", "", "width=900,height=600");
+  win.document.write("<html><head><title>Print Report</title></head><body>");
+  win.document.write(content);
+  win.document.write("</body></html>");
+  win.print();
+  win.close();
+}
+
+function exportDashboardReport() {
+  let table = document.getElementById("dashboardReportTable");
+  let rows = Array.from(table.rows);
+  let csv = rows.map(row => Array.from(row.cells).map(cell => cell.innerText).join(",")).join("\n");
+
+  const blob = new Blob([csv], { type: "text/csv" });
+  const link = document.createElement("a");
+  link.download = "dashboard_report.csv";
+  link.href = URL.createObjectURL(blob);
+  link.click();
 }
