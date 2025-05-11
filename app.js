@@ -418,3 +418,20 @@ function deleteProfile(index) {
   saveProfiles(profiles);
   renderProfiles();
 }
+// Auto-close sidebar on outside click (mobile)
+document.addEventListener("click", function (e) {
+  const sidebar = document.getElementById("sidebar");
+  if (window.innerWidth <= 768 && sidebar.classList.contains("active")) {
+    const clickedInside = sidebar.contains(e.target) || e.target.id === "menuBtn";
+    if (!clickedInside) sidebar.classList.remove("active");
+  }
+});
+
+// Handle browser back (soft) to close sidebar
+window.addEventListener("popstate", () => {
+  const sidebar = document.getElementById("sidebar");
+  if (window.innerWidth <= 768 && sidebar.classList.contains("active")) {
+    sidebar.classList.remove("active");
+    history.pushState(null, null, location.href); // prevent going back
+  }
+});
