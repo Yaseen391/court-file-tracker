@@ -127,8 +127,10 @@
             </select>
           </label>
 
-          <label><input type="checkbox" id="copyAgency" onchange="toggleCopyAgency()"> Sent to Copy Agency</label>
-
+<div id="copyAgencyRow">
+  <input type="checkbox" id="copyAgency" onchange="toggleCopyAgency()" />
+  <label for="copyAgency">Sent to Copy Agency</label>
+</div>
           <div id="copyAgencyFields" style="display:none;">
             <label>Swal Farm No: <span class="required">*</span>
               <input type="number" id="swalFormNo" />
