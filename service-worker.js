@@ -1,38 +1,38 @@
-const CACHE_NAME = "court-file-tracker-cache-v1";
-const FILES_TO_CACHE = [
-  "./",
-  "./index.html",
-  "./style.css",
-  "./app.js",
-  "./manifest.json",
-  "./icon-192.png",
-  "./icon-512.png"
+const CACHE_NAME = "court-file-tracker-v1";
+const urlsToCache = [
+  "index.html",
+  "style.css",
+  "app.js",
+  "manifest.json",
+  "icon-192.png",
+  "icon-512.png"
 ];
 
-self.addEventListener("install", (event) => {
+// Install
+self.addEventListener("install", event => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(FILES_TO_CACHE))
+    caches.open(CACHE_NAME).then(cache => {
+      return cache.addAll(urlsToCache);
+    })
   );
-  self.skipWaiting();
 });
 
-self.addEventListener("activate", (event) => {
-  event.waitUntil(
-    caches.keys().then((keyList) =>
-      Promise.all(
-        keyList.map((key) => {
-          if (key !== CACHE_NAME) return caches.delete(key);
-        })
-      )
+// Fetch
+self.addEventListener("fetch", event => {
+  event.respondWith(
+    fetch(event.request).catch(() =>
+      caches.match(event.request).then(response => response || fetch("index.html"))
     )
   );
-  self.clients.claim();
 });
 
-self.addEventListener("fetch", (event) => {
-  event.respondWith(
-    caches.match(event.request).then((response) =>
-      response || fetch(event.request)
-    ).catch(() => caches.match("./index.html"))
+// Activate
+self.addEventListener("activate", event => {
+  event.waitUntil(
+    caches.keys().then(keys => {
+      return Promise.all(
+        keys.filter(key => key !== CACHE_NAME).map(key => caches.delete(key))
+      );
+    })
   );
 });
