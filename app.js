@@ -1,3 +1,6 @@
+function toggleSidebar() {
+  document.getElementById("sidebar").classList.toggle("active");
+}
 function navigate(screenId) {
   document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
   document.getElementById(screenId).classList.add("active");
