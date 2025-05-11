@@ -2,10 +2,17 @@
 function navigate(screenId) {
   document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
   document.getElementById(screenId).classList.add("active");
+
+  // Close sidebar on mobile
+  const sidebar = document.getElementById("sidebar");
+  if (window.innerWidth <= 768) {
+    sidebar.classList.remove("active");
+  }
+
+  // Refresh sections if needed
   if (screenId === "dashboard") updateDashboard();
   if (screenId === "profiles") renderProfiles();
 }
-
 function toggleSidebar() {
   document.getElementById("sidebar").classList.toggle("active");
 }
@@ -28,13 +35,14 @@ function saveProfiles(profiles) {
 function saveSettings() {
   localStorage.setItem("clerkName", document.getElementById("clerkName").value.trim());
   localStorage.setItem("judgeName", document.getElementById("judgeName").value.trim());
+  localStorage.setItem("courtName", document.getElementById("courtName").value.trim());
   alert("User Profile Saved.");
 }
-
 window.onload = function () {
   document.getElementById("clerkName").value = localStorage.getItem("clerkName") || "";
   document.getElementById("judgeName").value = localStorage.getItem("judgeName") || "";
   updateDashboard();
+  document.getElementById("courtName").value = localStorage.getItem("courtName") || "";
 };
 
 // ----- Toggle Fields -----
