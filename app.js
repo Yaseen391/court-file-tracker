@@ -1,3 +1,8 @@
+function toggleCopyAgency() {
+  const checked = document.getElementById("copyAgency").checked;
+  document.getElementById("copyAgencyFields").style.display = checked ? "block" : "none";
+}
+
 function toggleSidebar() {
   document.getElementById("sidebar").classList.toggle("active");
 }
