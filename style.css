@@ -1,145 +1,23 @@
-body {
-  font-family: 'Segoe UI', sans-serif;
+/* General Reset */
+body, html {
   margin: 0;
-  background: #f9f9f9;
-}
-
-header {
-  background: #003366;
-  color: white;
-  text-align: center;
-  padding: 20px;
-  font-size: 24px;
-}
-
-nav {
-  background: #e0e0e0;
-  padding: 10px;
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 10px;
-}
-
-nav button {
-  padding: 10px 15px;
-  background: #0066cc;
-  color: white;
-  border: none;
-  border-radius: 5px;
-  cursor: pointer;
-}
-
-nav button:hover {
-  background: #004c99;
-}
-
-main {
-  padding: 20px;
-}
-
-.screen {
-  display: none;
-}
-
-.screen.active {
-  display: block;
-}
-
-form {
-  max-width: 500px;
-  margin: auto;
-  background: #fff;
-  padding: 15px;
-  border-radius: 8px;
-  box-shadow: 0 0 10px rgba(0,0,0,0.05);
-}
-
-label {
-  display: block;
-  margin-top: 10px;
-  font-weight: bold;
-}
-
-input, select {
-  width: 100%;
-  padding: 8px;
-  margin-top: 5px;
-  box-sizing: border-box;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-}
-
-button[type="submit"], button {
-  margin-top: 15px;
-  padding: 10px;
-  width: 100%;
-  background-color: #003366;
-  color: white;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-}
-
-button:hover {
-  background-color: #00509e;
-}
-
-.search-result {
-  background: #ffffff;
-  padding: 10px;
-  margin-bottom: 10px;
-  border-left: 4px solid #0066cc;
-  border-radius: 4px;
-}
-
-.card {
-  background-color: #ffffff;
-  padding: 15px;
-  border-left: 5px solid #0066cc;
-  box-shadow: 0 0 5px rgba(0,0,0,0.05);
-  border-radius: 8px;
-  font-size: 16px;
-}
-#suggestions {
-  list-style: none;
   padding: 0;
-  margin: 4px 0 0;
-  background: #fff;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  max-height: 120px;
-  overflow-y: auto;
-  position: absolute;
-  z-index: 1000;
-  width: calc(100% - 30px);
+  font-family: 'Segoe UI', sans-serif;
+  background-color: #f4f7fa;
 }
 
-#suggestions li {
-  padding: 8px;
-  cursor: pointer;
+h1, h2 {
+  margin: 10px 0;
 }
 
-#suggestions li:hover {
-  background-color: #f0f0f0;
-}
-#profileFields label {
-  margin-top: 8px;
-  display: block;
-}
-
-body {
-  display: flex;
-  flex-direction: column;
-  margin: 0;
-}
-
+/* App Container */
 .app-container {
   display: flex;
   flex-direction: row;
   min-height: 100vh;
 }
 
+/* Sidebar */
 .sidebar {
   width: 220px;
   background-color: #003366;
@@ -150,6 +28,7 @@ body {
   position: sticky;
   top: 0;
   height: 100vh;
+  z-index: 10;
 }
 
 .sidebar h2 {
@@ -169,12 +48,14 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
+  border-radius: 4px;
 }
 
 .sidebar button:hover {
   background-color: #00509e;
 }
 
+/* Topbar */
 .topbar {
   background: #0066cc;
   color: white;
@@ -199,7 +80,144 @@ body {
   display: none;
 }
 
-/* Responsive */
+/* Main Content */
+main {
+  padding: 20px;
+  flex-grow: 1;
+  background: #f9f9f9;
+}
+
+/* Screens */
+.screen {
+  display: none;
+}
+
+.screen.active {
+  display: block;
+}
+
+/* Forms */
+form {
+  background: white;
+  max-width: 600px;
+  margin: auto;
+  padding: 20px;
+  border-radius: 10px;
+  box-shadow: 0 0 8px rgba(0,0,0,0.05);
+}
+
+label {
+  display: block;
+  margin-top: 12px;
+  font-weight: bold;
+}
+
+label .required {
+  color: red;
+  margin-left: 4px;
+}
+
+input, select, textarea {
+  width: 100%;
+  padding: 8px;
+  margin-top: 6px;
+  box-sizing: border-box;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+button[type="submit"], button {
+  margin-top: 15px;
+  padding: 10px 15px;
+  background-color: #003366;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 16px;
+}
+
+button:hover {
+  background-color: #00509e;
+}
+
+/* Suggestions List */
+#suggestions {
+  list-style: none;
+  padding: 0;
+  margin: 4px 0 0;
+  background: #fff;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  max-height: 120px;
+  overflow-y: auto;
+  position: absolute;
+  z-index: 1000;
+  width: calc(100% - 20px);
+}
+
+#suggestions li {
+  padding: 8px;
+  cursor: pointer;
+}
+
+#suggestions li:hover {
+  background-color: #f0f0f0;
+}
+
+/* Dashboard Cards */
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 15px;
+  margin-top: 20px;
+}
+
+.card {
+  background-color: #ffffff;
+  padding: 15px;
+  border-left: 5px solid #0066cc;
+  box-shadow: 0 0 5px rgba(0,0,0,0.05);
+  border-radius: 8px;
+  font-size: 16px;
+  cursor: pointer;
+  transition: transform 0.2s ease;
+}
+
+.card:hover {
+  background-color: #e6f0ff;
+  transform: scale(1.01);
+}
+
+.card button {
+  background: none;
+  border: none;
+  padding: 0;
+  color: #003366;
+  font-weight: bold;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.card button:hover {
+  text-decoration: underline;
+}
+
+/* Tables */
+table {
+  background-color: white;
+  border: 1px solid #ccc;
+  width: 100%;
+  margin-top: 10px;
+}
+
+table th, table td {
+  padding: 8px;
+  border: 1px solid #ccc;
+  font-size: 14px;
+}
+
+/* Media Responsive */
 @media (max-width: 768px) {
   .sidebar {
     position: absolute;
