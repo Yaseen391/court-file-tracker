@@ -247,3 +247,63 @@ table th, table td {
     flex-direction: column;
   }
 }
+/* Match header and sidebar color */
+.topbar {
+  background: #003366;
+}
+
+.topbar h1, .topbar p {
+  color: white;
+}
+
+/* Desktop spacing */
+@media (min-width: 1024px) {
+  main {
+    max-width: 1000px;
+    margin: auto;
+    padding-left: 40px;
+    padding-right: 40px;
+  }
+}
+
+/* Sidebar full height */
+.sidebar {
+  min-height: calc(100vh - 0px);
+}
+
+/* Align form titles */
+.screen > h2 {
+  text-align: center;
+  font-size: 20px;
+  margin-bottom: 16px;
+}
+
+/* Beautify copy agency row */
+#copyAgencyRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  font-weight: bold;
+}
+
+/* Remove gray line under suggestion list */
+#suggestions {
+  border-top: none !important;
+}
+
+/* Darken overlay for mobile */
+.sidebar::after {
+  content: "";
+  display: none;
+  position: fixed;
+  top: 60px;
+  left: 0;
+  width: 100%;
+  height: calc(100% - 60px);
+  background: rgba(0, 0, 0, 0.3);
+  z-index: 1;
+}
+.sidebar.active::after {
+  display: block;
+}
