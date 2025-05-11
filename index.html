@@ -1,155 +1,194 @@
 <!DOCTYPE html>
 <html lang="en">
-<div class="app-container">
-  <aside id="sidebar" class="sidebar">
-    <h2>CFT</h2>
-    <button onclick="navigate('dashboard')"><span>🏠</span> Dashboard</button>
-    <button onclick="navigate('newFile')"><span>📂</span> New Entry</button>
-    <button onclick="navigate('return')"><span>↩️</span> Return File</button>
-    <button onclick="navigate('search')"><span>🔍</span> Search</button>
-    <button onclick="navigate('profiles')"><span>👤</span> Profiles</button>
-    <button onclick="navigate('settings')"><span>⚙️</span> User Profile</button>
-  </aside>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Court File Tracker</title>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="app-container">
+    <!-- Sidebar -->
+    <aside id="sidebar" class="sidebar">
+      <h2>CFT</h2>
+      <button onclick="navigate('dashboard')"><span>🏠</span> Dashboard</button>
+      <button onclick="navigate('newFile')"><span>📂</span> New Entry</button>
+      <button onclick="navigate('return')"><span>↩️</span> Return File</button>
+      <button onclick="navigate('search')"><span>🔍</span> Search</button>
+      <button onclick="navigate('profiles')"><span>👤</span> Profiles</button>
+      <button onclick="navigate('settings')"><span>⚙️</span> User Profile</button>
+    </aside>
 
-  <header class="topbar">
-    <button id="menuBtn" onclick="toggleSidebar()">☰</button>
-    <h1>Court File Tracker</h1>
-  </header>
-  <main>
-    <section id="dashboard" class="screen active">
-      <h2>Dashboard Summary</h2>
-      <div id="dashboardCards" class="dashboard-grid">
-        <div class="card" id="cardDeliveries">Deliveries Today: 0</div>
-        <div class="card" id="cardReturns">Returns Today: 0</div>
-        <div class="card" id="cardPending">Files Not Returned: 0</div>
-        <div class="card" id="cardTomorrow">Hearings Tomorrow: 0</div>
-        <div class="card" id="cardOverdue">Files Pending >10 Days: 0</div>
+    <!-- Top Bar -->
+    <header class="topbar">
+      <button id="menuBtn" onclick="toggleSidebar()">☰</button>
+      <h1>Court File Tracker</h1>
+    </header>
+
+    <!-- Main Screens -->
+    <main>
+      <!-- Dashboard -->
+      <section id="dashboard" class="screen active">
+        <h2>Dashboard Summary</h2>
+        <div id="dashboardCards" class="dashboard-grid">
+          <div class="card" id="cardDeliveries"></div>
+          <div class="card" id="cardReturns"></div>
+          <div class="card" id="cardPending"></div>
+          <div class="card" id="cardTomorrow"></div>
+          <div class="card" id="cardOverdue"></div>
+        </div>
+
         <div id="dashboardReportPanel" style="display:none; margin-top: 20px;">
-  <h3 id="reportTitle"></h3>
-  <button onclick="printDashboardReport()">Print</button>
-  <button onclick="exportDashboardReport()">Export to Excel</button>
-  <table id="dashboardReportTable" border="1" style="width:100%; border-collapse:collapse; margin-top:10px;">
-    <thead>
-      <tr>
-        <th>Sr#</th>
-        <th>CMS No</th>
-        <th>Title</th>
-        <th>Case Type</th>
-        <th>Nature</th>
-        <th>Delivered To</th>
-        <th>Delivery Date</th>
-        <th>Return Date</th>
-      </tr>
-    </thead>
-    <tbody></tbody>
-  </table>
-</div>
-      </div>
-    </section>
+          <h3 id="reportTitle"></h3>
+          <button onclick="printDashboardReport()">Print</button>
+          <button onclick="exportDashboardReport()">Export to Excel</button>
+          <table id="dashboardReportTable" border="1" style="width:100%; border-collapse:collapse; margin-top:10px;">
+            <thead>
+              <tr>
+                <th>Sr#</th>
+                <th>CMS No</th>
+                <th>Title</th>
+                <th>Case Type</th>
+                <th>Nature</th>
+                <th>Delivered To</th>
+                <th>Delivery Date</th>
+                <th>Return Date</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
 
-  <section id="newFile" class="screen">
-  <h2>New File Entry & Delivery</h2>
-  <form id="fileForm">
-    <label>Case Type:
-      <select id="caseType" required onchange="toggleCriminalFields()">
-        <option value="">Select</option>
-        <option value="civil">Civil</option>
-        <option value="criminal">Criminal</option>
-      </select>
-    </label><br />
+      <!-- New File Entry -->
+      <section id="newFile" class="screen">
+        <h2>New File Entry & Delivery</h2>
+        <form id="fileForm">
+          <label>Case Type: <span class="required">*</span>
+            <select id="caseType" required onchange="toggleCriminalFields()">
+              <option value="">Select</option>
+              <option value="civil">Civil</option>
+              <option value="criminal">Criminal</option>
+            </select>
+          </label>
 
-    <label>CMS No:<input type="number" id="cmsNo" required /></label><br />
-    <label>Petitioner:<input type="text" id="petitioner" required /></label><br />
-    <label>Respondent:<input type="text" id="respondent" required /></label><br />
-    <label>Nature:<input type="text" id="nature" required /></label><br />
+          <label>CMS No: <span class="required">*</span>
+            <input type="number" id="cmsNo" required onblur="autoFillCMS()" />
+          </label>
 
-    <div id="criminalFields" style="display:none">
-      <label>FIR No:<input type="text" id="firNo" /></label><br />
-      <label>FIR Year:<input type="number" id="firYear" min="1947" /></label><br />
-      <label>FIR U/S:<input type="text" id="firUs" /></label><br />
-      <label>Police Station:<input type="text" id="policeStation" /></label><br />
-    </div>
+          <label>Petitioner: <span class="required">*</span>
+            <input type="text" id="petitioner" required />
+          </label>
 
-    <label>Date Type:
-      <select id="dateType" required>
-        <option value="">Select</option>
-        <option value="decision">Decision Date</option>
-        <option value="hearing">Next Hearing Date</option>
-      </select>
-    </label><br />
-    <label>Date:<input type="date" id="date" required /></label><br />
+          <label>Respondent: <span class="required">*</span>
+            <input type="text" id="respondent" required />
+          </label>
 
-    <label>Delivered To (Name):
-      <input type="text" id="deliveredTo" oninput="suggestProfiles(this.value)" required autocomplete="off" />
-      <ul id="suggestions"></ul>
-    </label><br />
+          <label>Nature of Suit: <span class="required">*</span>
+            <input type="text" id="nature" required />
+          </label>
 
-    <label>Delivered To Type:
-      <select id="deliveredType" required>
-        <option value="">Select</option>
-        <option value="advocate">Advocate</option>
-        <option value="munshi">Munshi</option>
-        <option value="colleague">Colleague</option>
-        <option value="other">Other</option>
-      </select>
-    </label><br />
+          <div id="criminalFields" style="display:none">
+            <label>FIR No: <input type="text" id="firNo" /></label>
+            <label>FIR Year: <input type="number" id="firYear" min="1947" /></label>
+            <label>FIR U/S: <input type="text" id="firUs" /></label>
+            <label>Police Station: <input type="text" id="policeStation" /></label>
+          </div>
 
-    <label><input type="checkbox" id="copyAgency" onchange="toggleCopyAgency()"> Sent to Copy Agency</label><br />
+          <label>Date Type: <span class="required">*</span>
+            <select id="dateType" required>
+              <option value="">Select</option>
+              <option value="decision">Decision Date</option>
+              <option value="hearing">Next Hearing Date</option>
+            </select>
+          </label>
 
-    <div id="copyAgencyFields" style="display:none;">
-      <label>Swal Farm No:<input type="number" id="swalFormNo" required /></label><br />
-      <label>Swal Date:<input type="date" id="swalDate" required /></label><br />
-    </div>
+          <label>Date: <span class="required">*</span>
+            <input type="date" id="date" required />
+          </label>
 
-    <button type="submit">Save and Deliver File</button>
-  </form>
-</section>
-    <section id="return" class="screen">
-      <h2>Return File</h2>
-      <form id="returnForm">
-<label>CMS No:<input type="number" id="cmsNo" required onblur="autoFillCMS()" /></label><br />
-        <button type="submit">Mark Returned</button>
-      </form>
-    </section>
+          <label>Delivered To (Name): <span class="required">*</span>
+            <input type="text" id="deliveredTo" oninput="suggestProfiles(this.value)" required autocomplete="off" />
+            <ul id="suggestions"></ul>
+          </label>
 
-    <section id="search" class="screen">
-      <h2>Search</h2>
-      <input type="text" id="searchBox" placeholder="Enter CMS or Title..." />
-      <div id="searchResults" style="margin-top: 10px;"></div>
-    </section>
+          <label>Delivered To Type: <span class="required">*</span>
+            <select id="deliveredType" required>
+              <option value="">Select</option>
+              <option value="advocate">Advocate</option>
+              <option value="munshi">Munshi</option>
+              <option value="colleague">Colleague</option>
+              <option value="other">Other</option>
+            </select>
+          </label>
 
-  <section id="profiles" class="screen">
-  <h2>Manage Profiles</h2>
+          <label><input type="checkbox" id="copyAgency" onchange="toggleCopyAgency()"> Sent to Copy Agency</label>
 
-  <form id="profileForm">
-    <label>Profile Type:
-      <select id="profileType" required onchange="toggleProfileFields()">
-        <option value="">Select</option>
-        <option value="munshi">Munshi/Clerk</option>
-        <option value="advocate">Advocate</option>
-        <option value="colleague">Colleague</option>
-        <option value="other">Other</option>
-      </select>
-    </label><br />
+          <div id="copyAgencyFields" style="display:none;">
+            <label>Swal Farm No: <span class="required">*</span>
+              <input type="number" id="swalFormNo" />
+            </label>
+            <label>Swal Date: <span class="required">*</span>
+              <input type="date" id="swalDate" />
+            </label>
+          </div>
 
-    <label>Name:<input type="text" id="profileName" required /></label><br />
-    <div id="profileFields"></div>
+          <button type="submit">Save and Deliver File</button>
+        </form>
+      </section>
 
-    <label>Upload Photo:<input type="file" id="profilePhoto" accept="image/*" /></label><br />
-    <img id="photoPreview" src="" style="max-width:100px;display:none;margin-top:5px;border:1px solid #ccc;" />
+      <!-- Return -->
+      <section id="return" class="screen">
+        <h2>Return File</h2>
+        <form id="returnForm">
+          <label>CMS No:<input type="number" id="returnCms" required /></label>
+          <button type="submit">Mark Returned</button>
+        </form>
+      </section>
 
-    <button type="submit">Add Profile</button>
-  </form>
+      <!-- Search -->
+      <section id="search" class="screen">
+        <h2>Search</h2>
+        <input type="text" id="searchBox" placeholder="Enter CMS or Title..." />
+        <div id="searchResults" style="margin-top: 10px;"></div>
+      </section>
 
-  <ul id="profileList" style="margin-top:20px;"></ul>
-</section>
-    <section id="settings" class="screen">
-      <h2>Settings</h2>
-      <label>Clerk Name:<input type="text" id="clerkName" /></label><br />
-      <label>Judge Name:<input type="text" id="judgeName" /></label><br />
-      <button onclick="saveSettings()">Save</button>
-    </section>
-  </main>
+      <!-- Profiles -->
+      <section id="profiles" class="screen">
+        <h2>Manage Profiles</h2>
+        <form id="profileForm">
+          <label>Profile Type: <span class="required">*</span>
+            <select id="profileType" required onchange="toggleProfileFields()">
+              <option value="">Select</option>
+              <option value="munshi">Munshi/Clerk</option>
+              <option value="advocate">Advocate</option>
+              <option value="colleague">Colleague</option>
+              <option value="other">Other</option>
+            </select>
+          </label>
+
+          <label>Name: <span class="required">*</span><input type="text" id="profileName" required /></label>
+          <div id="profileFields"></div>
+
+          <label>Upload Photo:<input type="file" id="profilePhoto" accept="image/*" /></label>
+          <img id="photoPreview" src="" style="max-width:100px;display:none;margin-top:5px;border:1px solid #ccc;" />
+
+          <button type="submit">Add Profile</button>
+        </form>
+
+        <ul id="profileList" style="margin-top:20px;"></ul>
+      </section>
+
+      <!-- Settings/User Profile -->
+      <section id="settings" class="screen">
+        <h2>User Profile</h2>
+        <label>Full Name:<input type="text" id="clerkName" /></label>
+        <label>Designation:<input type="text" id="judgeName" /></label>
+        <button onclick="saveSettings()">Save</button>
+      </section>
+    </main>
+  </div>
 
   <script src="app.js"></script>
   <script>
