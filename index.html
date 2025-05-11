@@ -1,26 +1,20 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Court File Tracker</title>
-  <link rel="manifest" href="manifest.json" />
-  <link rel="stylesheet" href="style.css" />
-</head>
-<body>
-  <header>
+<div class="app-container">
+  <aside id="sidebar" class="sidebar">
+    <h2>CFT</h2>
+    <button onclick="navigate('dashboard')"><span>🏠</span> Dashboard</button>
+    <button onclick="navigate('newFile')"><span>📂</span> New Entry</button>
+    <button onclick="navigate('return')"><span>↩️</span> Return File</button>
+    <button onclick="navigate('search')"><span>🔍</span> Search</button>
+    <button onclick="navigate('profiles')"><span>👤</span> Profiles</button>
+    <button onclick="navigate('settings')"><span>⚙️</span> User Profile</button>
+  </aside>
+
+  <header class="topbar">
+    <button id="menuBtn" onclick="toggleSidebar()">☰</button>
     <h1>Court File Tracker</h1>
   </header>
-
-  <nav>
-    <button onclick="navigate('dashboard')">Dashboard</button>
-    <button onclick="navigate('newFile')">New File Entry</button>
-    <button onclick="navigate('return')">Return File</button>
-    <button onclick="navigate('search')">Search</button>
-    <button onclick="navigate('profiles')">Manage Profiles</button>
-    <button onclick="navigate('settings')">Settings</button>
-  </nav>
-
   <main>
     <section id="dashboard" class="screen active">
       <h2>Dashboard Summary</h2>
