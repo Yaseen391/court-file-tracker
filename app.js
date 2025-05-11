@@ -165,25 +165,28 @@ function editUserProfile() {
 
 document.getElementById("settingsForm").addEventListener("submit", function (e) {
   e.preventDefault();
-  showPinPrompt(() => {
-    const clerkName = document.getElementById("clerkName").value.trim();
-    const judgeName = document.getElementById("judgeName").value.trim();
-    const courtName = document.getElementById("courtName").value.trim();
-    const mobile = document.getElementById("mobile").value.trim();
-    const cnic = document.getElementById("cnic").value.trim();
-    const pin = document.getElementById("pin").value;
-    const userPhoto = document.getElementById("userPhotoPreview").getAttribute("data-img") || "";
+  const clerkName = document.getElementById("clerkName").value.trim();
+  const judgeName = document.getElementById("judgeName").value.trim();
+  const courtName = document.getElementById("courtName").value.trim();
+  const mobile = document.getElementById("mobile").value.trim();
+  const cnic = document.getElementById("cnic").value.trim();
+  const pin = document.getElementById("pin").value;
+  const userPhoto = document.getElementById("userPhotoPreview").getAttribute("data-img") || "";
 
-    if (!clerkName || !judgeName || !courtName || !mobile || !pin) {
-      showToast("All required fields must be filled.");
-      return;
-    }
+  if (!clerkName || !judgeName || !courtName || !mobile || !pin) {
+    showToast("All required fields must be filled.");
+    return;
+  }
 
-    if (pin.length !== 4) {
-      showToast("PIN must be 4 digits.");
-      return;
-    }
+  if (pin.length !== 4) {
+    showToast("PIN must be 4 digits.");
+    return;
+  }
 
+  // Check if this is the initial save (no pinHash exists)
+  const isInitialSave = !localStorage.getItem("pinHash");
+
+  const saveProfile = () => {
     localStorage.setItem("clerkName", clerkName);
     localStorage.setItem("judgeName", judgeName);
     localStorage.setItem("courtName", courtName);
@@ -195,7 +198,14 @@ document.getElementById("settingsForm").addEventListener("submit", function (e) 
     showSavedProfile();
     showToast("User Profile Saved.");
     navigate("dashboard");
-  });
+  };
+
+  // Bypass PIN prompt for initial save; require it for edits
+  if (isInitialSave) {
+    saveProfile();
+  } else {
+    showPinPrompt(saveProfile);
+  }
 });
 
 document.getElementById("userPhoto").addEventListener("change", function () {
@@ -831,7 +841,7 @@ document.getElementById("profilePhoto").addEventListener("change", function () {
     };
     img.src = e.target.result;
   };
-  reader.readAsDataURL(file);
+  reader.readAsText(file);
 });
 
 document.getElementById("profileForm").addEventListener("submit", function (e) {
