@@ -39,12 +39,12 @@ function saveSettings() {
   alert("User Profile Saved.");
 }
 window.onload = function () {
+  history.pushState(null, null, location.href); // handle back button
   document.getElementById("clerkName").value = localStorage.getItem("clerkName") || "";
   document.getElementById("judgeName").value = localStorage.getItem("judgeName") || "";
-  updateDashboard();
   document.getElementById("courtName").value = localStorage.getItem("courtName") || "";
+  updateDashboard();
 };
-
 // ----- Toggle Fields -----
 function toggleCriminalFields() {
   const type = document.getElementById("caseType").value;
