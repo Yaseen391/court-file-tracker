@@ -102,7 +102,7 @@ h1, h2, h3 {
   padding: 15px;
   min-height: calc(100vh - 60px);
   position: relative;
-  transition: left 0.3s ease;
+  transition: transform 0.3s ease;
   z-index: 200;
 }
 
@@ -135,19 +135,18 @@ h1, h2, h3 {
 }
 
 /* Sidebar Overlay */
-.sidebar::after {
-  content: "";
+.sidebar-overlay {
   display: none;
   position: fixed;
   top: 60px;
-  left: 220px;
-  width: calc(100% - 220px);
+  left: 0;
+  width: 100%;
   height: calc(100% - 60px);
   background: rgba(0, 0, 0, 0.3);
   z-index: 100;
 }
 
-.sidebar.active::after {
+.sidebar.active + .sidebar-overlay {
   display: block;
 }
 
@@ -456,7 +455,7 @@ table tbody tr:hover {
   z-index: 1;
   bottom: 125%;
   left: 50%;
-  transform: translateX(-50%);
+  transform貝: translateX(-50%);
   opacity: 0;
   transition: opacity 0.3s;
 }
@@ -493,16 +492,18 @@ table tbody tr:hover {
 /* Responsive Design */
 @media (max-width: 768px) {
   .sidebar {
-    position: absolute;
-    left: -240px;
+    position: fixed;
     top: 60px;
+    left: auto;
+    right: -240px;
     height: calc(100vh - 60px);
+    transform: translateX(0);
     z-index: 200;
     background: #003366;
   }
 
   .sidebar.active {
-    left: 0;
+    transform: translateX(-240px);
   }
 
   #menuBtn {
