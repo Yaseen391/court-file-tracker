@@ -1,11 +1,20 @@
 // ----- Utility Functions -----
-function formatDate(dateStr) {
-  if (!dateStr) return "";
+function formatDate(dateStr, includeTime = false) {
+  if (!dateStr) return includeTime ? "" : "Pending";
   const d = new Date(dateStr);
+  // Adjust to Pakistan Standard Time (UTC+5)
+  const offset = 5 * 60; // PKT is UTC+5
+  d.setMinutes(d.getMinutes() + offset);
   const day = String(d.getDate()).padStart(2, '0');
   const mon = String(d.getMonth() + 1).padStart(2, '0');
   const yr = d.getFullYear();
-  return `${day}/${mon}/${yr}`;
+  if (!includeTime) return `${day}/${mon}/${yr}`;
+  const hours = d.getHours();
+  const ampm = hours >= 12 ? 'PM' : 'AM';
+  const hr12 = hours % 12 || 12;
+  const min = String(d.getMinutes()).padStart(2, '0');
+  const sec = String(d.getSeconds()).padStart(2, '0');
+  return `${day}/${mon}/${yr}, ${hr12}:${min}:${sec} ${ampm} PKT`;
 }
 
 function calculateDuration(startDate, endDate) {
@@ -38,15 +47,15 @@ function hashPin(pin) {
 
 function formatMobile(input) {
   let value = input.value.replace(/[^\d]/g, '');
-  if (value.length > 10) value = value.slice(0, 10);
-  if (value.length > 3) {
-    value = `03${value.slice(0, 2)}-${value.slice(2)}`;
-  } else if (value.length > 0) {
-    value = `03${value}`;
-  } else {
-    value = '';
+  if (value.length > 11) value = value.slice(0, 11);
+  if (value.length >= 4) {
+    value = `${value.slice(0, 4)}-${value.slice(4)}`;
   }
   input.value = value;
+}
+
+function validateMobile(value) {
+  return /^03\d{2}-\d{7}$/.test(value);
 }
 
 function formatCnic(input) {
@@ -67,10 +76,16 @@ function showToast(message) {
   setTimeout(() => { toast.style.display = "none"; }, 3000);
 }
 
+function showDisclaimerModal() {
+  document.getElementById("disclaimerModal").style.display = "block";
+}
+
 // ----- Navigation -----
 function navigate(screenId) {
   document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
-  document.getElementById(screenId).classList.add("active");
+  const screen = document.getElementById(screenId);
+  if (!screen) return;
+  screen.classList.add("active");
 
   const sidebar = document.getElementById("sidebar");
   if (window.innerWidth <= 768) {
@@ -80,7 +95,7 @@ function navigate(screenId) {
   if (screenId === "dashboard") updateDashboard();
   if (screenId === "profiles") renderProfiles();
   if (screenId === "return") filterPendingFiles();
-  if (screenId === "search") performSearch();
+  if (screenId === "search") setTimeout(performSearch, 0); // Delay to ensure DOM is ready
 }
 
 // ----- Sidebar Toggle -----
@@ -114,9 +129,11 @@ function saveProfiles(profiles) {
 window.onload = function () {
   history.pushState(null, null, location.href);
   const clerkName = localStorage.getItem("clerkName");
+  const currentScreen = document.querySelector(".screen.active")?.id || "settings";
+
   if (clerkName) {
     showSavedProfile();
-    navigate("dashboard");
+    navigate(currentScreen); // Stay on current page
   } else {
     navigate("settings");
     document.getElementById("setupMessage").style.display = "block";
@@ -127,9 +144,12 @@ window.onload = function () {
   document.getElementById("mobile").addEventListener("input", () => formatMobile(document.getElementById("mobile")));
   document.getElementById("cnic").addEventListener("input", () => formatCnic(document.getElementById("cnic")));
   document.getElementById("resetCnic").addEventListener("input", () => formatCnic(document.getElementById("resetCnic")));
-  document.querySelectorAll("#profileFields input[id='cellNo']").forEach(input => {
+  document.querySelectorAll("#profileFields input[id='cellNo'], #profileFields input[id='advocateCell']").forEach(input => {
     input.addEventListener("input", () => formatMobile(input));
   });
+
+  // Initialize save button state
+  document.getElementById("saveProfileBtn").disabled = !document.getElementById("agreeTerms").checked;
 };
 
 // ----- Window Controls -----
@@ -183,7 +203,8 @@ function editUserProfile() {
   document.getElementById("cnic").value = localStorage.getItem("cnic") || "";
   document.getElementById("userPhotoPreview").src = localStorage.getItem("userPhoto") || "";
   document.getElementById("userPhotoPreview").style.display = localStorage.getItem("userPhoto") ? "block" : "none";
-  document.getElementById("saveProfileBtn").disabled = !document.getElementById("agreeTerms").checked;
+  document.getElementById("agreeTerms").checked = false;
+  document.getElementById("saveProfileBtn").disabled = true;
 }
 
 function toggleSaveButton() {
@@ -194,7 +215,7 @@ function toggleSaveButton() {
 document.getElementById("settingsForm").addEventListener("submit", function (e) {
   e.preventDefault();
   if (!document.getElementById("agreeTerms").checked) {
-    document.getElementById("disclaimerModal").style.display = "block";
+    showDisclaimerModal();
     return;
   }
 
@@ -221,8 +242,8 @@ document.getElementById("settingsForm").addEventListener("submit", function (e) 
     return;
   }
 
-  if (!/^03\d{2}-\d{7}$/.test(mobile)) {
-    showToast("Invalid mobile number format.");
+  if (!validateMobile(mobile)) {
+    showToast("Invalid mobile number format (e.g., 0300-1234567).");
     return;
   }
 
@@ -240,6 +261,7 @@ document.getElementById("settingsForm").addEventListener("submit", function (e) 
     showSavedProfile();
     document.getElementById("disclaimerModal").style.display = "none";
     document.getElementById("agreeTerms").checked = false;
+    document.getElementById("saveProfileBtn").disabled = true;
     showToast("User Profile Saved.");
     navigate("dashboard");
   };
@@ -280,7 +302,7 @@ document.getElementById("userPhoto").addEventListener("change", function () {
       canvas.height = h;
       const ctx = canvas.getContext("2d");
       ctx.drawImage(img, 0, 0, w, h);
-      const base64 = canvas.toDataURL("image/jpeg", 0.7);
+      const base64 = canvas.toDataURL("image/jpeg", 0.85);
       document.getElementById("userPhotoPreview").src = base64;
       document.getElementById("userPhotoPreview").style.display = "block";
       document.getElementById("userPhotoPreview").setAttribute("data-img", base64);
@@ -396,7 +418,7 @@ function toggleProfileFields() {
     `;
   }
 
-  document.querySelectorAll("#profileFields input[id='cellNo']").forEach(input => {
+  document.querySelectorAll("#profileFields input[id='cellNo'], #profileFields input[id='advocateCell']").forEach(input => {
     input.addEventListener("input", () => formatMobile(input));
   });
 }
@@ -479,7 +501,7 @@ document.getElementById("fileForm").addEventListener("submit", function (e) {
     const profile = profiles.find(p => p.name === name);
     if (!profile) {
       localStorage.setItem("pendingProfileName", name);
-      showToast("Profile not found. Please add it in Profilesstl.");
+      showToast("Profile not found. Please add it in Profiles.");
       navigate("profiles");
       return;
     }
@@ -509,6 +531,7 @@ document.getElementById("fileForm").addEventListener("submit", function (e) {
       deliveredDate: new Date().toISOString(),
       sentToCopyAgency: document.getElementById("copyAgency").checked,
       courtName: localStorage.getItem("courtName"),
+      clerkName: localStorage.getItem("clerkName"), // Store clerk name
       profileSnapshot: { ...profile } // Store profile snapshot
     };
 
@@ -594,6 +617,12 @@ function markReturned(cmsNo) {
 
 // ----- Search -----
 function performSearch() {
+  const searchResults = document.getElementById("searchResults");
+  if (!searchResults) {
+    showToast("Search section not loaded. Please try again.");
+    return;
+  }
+
   const cmsNo = document.getElementById("searchCms").value.trim().toLowerCase();
   const title = document.getElementById("searchTitle").value.trim().toLowerCase();
   const startDate = document.getElementById("searchStartDate").value;
@@ -620,7 +649,7 @@ function performSearch() {
       <td>${f.title}</td>
       <td>${f.caseType}</td>
       <td>${formatDate(f.deliveredDate)}</td>
-      <td>${f.returnDate ? formatDate(f.returnDate) : 'Pending'}</td>
+      <td>${formatDate(f.returnDate)}</td>
       <td><a href="#" onclick="showProfileDetails('${f.deliveredTo}')">${f.deliveredTo}</a> (${f.deliveredType})</td>
       <td>${f.courtName || ''}</td>
       <td><button onclick="showFileDetails('${f.cmsNo}')">Details</button></td>
@@ -628,7 +657,7 @@ function performSearch() {
     tbody.appendChild(tr);
   });
 
-  document.getElementById("searchResults").innerHTML = files.length ? "" : "<p>No matches found.</p>";
+  searchResults.innerHTML = files.length ? "" : "<p>No matches found.</p>";
 }
 
 function showFileDetails(cmsNo) {
@@ -645,10 +674,11 @@ function showFileDetails(cmsNo) {
     ${file.firUs ? `FIR U/S: ${file.firUs}<br>` : ""}
     ${file.policeStation ? `Police Station: ${file.policeStation}<br>` : ""}
     Delivered To: ${file.deliveredTo} (${file.deliveredType})<br>
-    Delivery Date: ${formatDate(file.deliveredDate)}<br>
-    Return Date: ${file.returnDate ? formatDate(file.returnDate) : 'Pending'}<br>
+    Delivery Date: ${formatDate(file.deliveredDate, true)}<br>
+    Return Date: ${formatDate(file.returnDate, true)}<br>
     ${file.sentToCopyAgency ? `Swal Form No: ${file.swalFormNo}<br>Swal Date: ${formatDate(file.swalDate)}<br>` : ""}
-    Court: ${file.courtName || ''}
+    Court: ${file.courtName || ''}<br>
+    Clerk: ${file.clerkName || ''}
   `;
   alert(details); // Replace with modal in production
 }
@@ -681,11 +711,11 @@ function showProfileDetails(name) {
   const profile = profiles.find(p => p.name === name) || { name, type: "Deleted", photo: "", cellNo: "", chamberNo: "" };
 
   document.getElementById("profileModalTitle").innerText = profile.name;
-  document.getElementById("profileModalPhoto").src = profile.photo || "";
-  document.getElementById("profileModalPhoto").style.display = profile.photo ? "block" : "none";
+  document.getElementById("profileModalPhoto").style.display = "none"; // Hide DP
 
   const table = document.getElementById("profileModalTable");
   table.innerHTML = `
+    <tr><th>Name</th><td>${profile.name}</td></tr>
     <tr><th>Type</th><td>${profile.type}</td></tr>
     ${profile.cellNo ? `<tr><th>Cell</th><td><a href="tel:${profile.cellNo}">${profile.cellNo}</a></td></tr>` : ""}
     ${profile.chamberNo ? `<tr><th>Chamber</th><td>${profile.chamberNo}</td></tr>` : ""}
@@ -776,6 +806,7 @@ function showDashboardReport(type) {
 
   const tbody = document.querySelector("#dashboardReportTable tbody");
   tbody.innerHTML = "";
+  const clerkName = localStorage.getItem("clerkName") || "";
   if (type === "alertProfilers") {
     filtered.forEach((p, i) => {
       const tr = document.createElement("tr");
@@ -785,12 +816,13 @@ function showDashboardReport(type) {
         <td>-</td>
         <td>-</td>
         <td>-</td>
-        <td>${p.photo ? `<img src="${p.photo}" style="width:40px;height:40px;border-radius:50%;">` : '-'}</td>
+        <td>${p.photo ? `<img src="${p.photo}" style="width:40px;height:40px;border-radius:50%;object-fit:cover;">` : '-'}</td>
         <td><a href="#" onclick="showProfileDetails('${p.name}')">${p.name}</a> (${p.type})</td>
-        <td>-</td>
+        <td>${formatDate(p.deliveredDate, true)}</td>
         <td>-</td>
         <td>Overdue: ${p.overdueCount}</td>
         <td>-</td>
+        <td>${clerkName}</td>
         <td>${p.cellNo ? `<a href="tel:${p.cellNo}">${p.cellNo}</a>` : '-'}</td>
       `;
       tbody.appendChild(tr);
@@ -805,12 +837,13 @@ function showDashboardReport(type) {
         <td>${f.title}</td>
         <td>${f.caseType}</td>
         <td>${f.nature}</td>
-        <td>${profile.photo ? `<img src="${profile.photo}" style="width:40px;height:40px;border-radius:50%;">` : '-'}</td>
+        <td>${profile.photo ? `<img src="${profile.photo}" style="width:40px;height:40px;border-radius:50%;object-fit:cover;">` : '-'}</td>
         <td><a href="#" onclick="showProfileDetails('${f.deliveredTo}')">${f.deliveredTo}</a> (${f.deliveredType})</td>
-        <td>${formatDate(f.deliveredDate)}</td>
-        <td>${f.returnDate ? formatDate(f.returnDate) : "Pending"}</td>
+        <td>${formatDate(f.deliveredDate, true)}</td>
+        <td>${formatDate(f.returnDate, true)}</td>
         <td>${calculateDuration(f.deliveredDate, f.returnDate)}</td>
         <td>${f.courtName || ''}</td>
+        <td>${f.clerkName || clerkName}</td>
         <td>${profile.cellNo ? `<a href="tel:${profile.cellNo}">${profile.cellNo}</a>` : ''}${profile.chamberNo ? `, Chamber: ${profile.chamberNo}` : ''}</td>
       `;
       tbody.appendChild(tr);
@@ -823,7 +856,7 @@ function showDashboardReport(type) {
     if (e.target === document.getElementById("dashboardReportPanel")) {
       document.getElementById("dashboardReportPanel").style.display = "none";
     }
-  });
+  }, { once: true });
 }
 
 function exportDashboardReport() {
@@ -878,9 +911,8 @@ document.getElementById("profilePhoto").addEventListener("change", function () {
       canvas.height = h;
       const ctx = canvas.getContext("2d");
       ctx.drawImage(img, 0, 0, w, h);
-      const base64 = canvas.toDataURL("image/jpeg", 0.7);
+      const base64 = canvas.toDataURL("image/jpeg", 0.85);
       document.getElementById("photoPreview").src = base64;
-      document.get  = canvas.toDataURL("image/jpeg", 0.7);
       document.getElementById("photoPreview").style.display = "block";
       document.getElementById("photoPreview").setAttribute("data-img", base64);
     };
@@ -903,6 +935,27 @@ document.getElementById("profileForm").addEventListener("submit", function (e) {
       extra[input.id] = input.value.trim();
     });
 
+    if (type === "munshi" && extra.cellNo && !validateMobile(extra.cellNo)) {
+      showToast("Invalid cell number format (e.g., 0300-1234567).");
+      return;
+    }
+    if (type === "munshi" && extra.advocateCell && extra.advocateCell !== "" && !validateMobile(extra.advocateCell)) {
+      showToast("Invalid advocate cell number format (e.g., 0300-1234567).");
+      return;
+    }
+    if (type === "advocate" && extra.cellNo && !validateMobile(extra.cellNo)) {
+      showToast("Invalid cell number format (e.g., 0300-1234567).");
+      return;
+    }
+    if (type === "colleague" && extra.cellNo && !validateMobile(extra.cellNo)) {
+      showToast("Invalid cell number format (e.g., 0300-1234567).");
+      return;
+    }
+    if (type === "other" && extra.cellNo && !validateMobile(extra.cellNo)) {
+      showToast("Invalid cell number format (e.g., 0300-1234567).");
+      return;
+    }
+
     const profile = { type, name, photo: img, ...extra };
     const all = getProfiles();
 
@@ -923,6 +976,7 @@ document.getElementById("profileForm").addEventListener("submit", function (e) {
       document.getElementById("profileForm").dataset.editIndex = "";
       document.getElementById("photoPreview").style.display = "none";
       document.getElementById("photoPreview").src = "";
+      document.getElementById("profileFields").innerHTML = "";
       renderProfiles();
       showToast("Profile saved successfully.");
     } catch (e) {
@@ -959,7 +1013,7 @@ function renderProfiles() {
   profiles.forEach((p, i) => {
     const tr = document.createElement("tr");
     tr.innerHTML = `
-      <td>${p.photo ? `<img src="${p.photo}" style="width:40px;height:40px;border-radius:50%;">` : '-'}</td>
+      <td>${p.photo ? `<img src="${p.photo}" style="width:40px;height:40px;border-radius:50%;object-fit:cover;">` : '-'}</td>
       <td>${p.name}</td>
       <td>${p.type}</td>
       <td>${p.cellNo ? `<a href="tel:${p.cellNo}">${p.cellNo}</a>` : '-'}</td>
