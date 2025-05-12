@@ -46,16 +46,22 @@ function hashPin(pin) {
 }
 
 function formatMobile(input) {
-  let value = input.value.replace(/[^\d]/g, '');
-  if (value.length > 11) value = value.slice(0, 11);
-  if (value.length >= 4) {
-    value = `${value.slice(0, 4)}-${value.slice(4)}`;
-  }
-  input.value = value;
+  // Allow free input during typing; format only on blur
+  input.addEventListener("blur", () => {
+    let value = input.value.replace(/[^\d]/g, ''); // Remove non-digits
+    if (value.length === 11 && /^03/.test(value)) {
+      value = `${value.slice(0, 4)}-${value.slice(4)}`; // Format as 03XX-XXXXXXX
+    } else if (value.length > 0) {
+      input.value = value; // Keep raw digits if invalid
+      return;
+    }
+    input.value = value;
+  });
 }
 
 function validateMobile(value) {
-  return /^03\d{2}-\d{7}$/.test(value);
+  // Validate format: 03XX-XXXXXXX or 11 raw digits starting with 03
+  return /^03\d{2}-\d{7}$/.test(value) || /^03\d{9}$/.test(value);
 }
 
 function formatCnic(input) {
@@ -141,11 +147,11 @@ window.onload = function () {
   }
 
   // Initialize input masks
-  document.getElementById("mobile").addEventListener("input", () => formatMobile(document.getElementById("mobile")));
-  document.getElementById("cnic").addEventListener("input", () => formatCnic(document.getElementById("cnic")));
-  document.getElementById("resetCnic").addEventListener("input", () => formatCnic(document.getElementById("resetCnic")));
+  formatMobile(document.getElementById("mobile"));
+  formatCnic(document.getElementById("cnic"));
+  formatCnic(document.getElementById("resetCnic"));
   document.querySelectorAll("#profileFields input[id='cellNo'], #profileFields input[id='advocateCell']").forEach(input => {
-    input.addEventListener("input", () => formatMobile(input));
+    formatMobile(input);
   });
 
   // Initialize save button state
@@ -243,7 +249,7 @@ document.getElementById("settingsForm").addEventListener("submit", function (e) 
   }
 
   if (!validateMobile(mobile)) {
-    showToast("Invalid mobile number format (e.g., 0300-1234567).");
+    showToast("Invalid mobile number format (e.g., 0300-1234567 or 03001234567).");
     return;
   }
 
@@ -419,7 +425,7 @@ function toggleProfileFields() {
   }
 
   document.querySelectorAll("#profileFields input[id='cellNo'], #profileFields input[id='advocateCell']").forEach(input => {
-    input.addEventListener("input", () => formatMobile(input));
+    formatMobile(input);
   });
 }
 
@@ -936,23 +942,23 @@ document.getElementById("profileForm").addEventListener("submit", function (e) {
     });
 
     if (type === "munshi" && extra.cellNo && !validateMobile(extra.cellNo)) {
-      showToast("Invalid cell number format (e.g., 0300-1234567).");
+      showToast("Invalid cell number format (e.g., 0300-1234567 or 03001234567).");
       return;
     }
     if (type === "munshi" && extra.advocateCell && extra.advocateCell !== "" && !validateMobile(extra.advocateCell)) {
-      showToast("Invalid advocate cell number format (e.g., 0300-1234567).");
+      showToast("Invalid advocate cell number format (e.g., 0300-1234567 or 03001234567).");
       return;
     }
     if (type === "advocate" && extra.cellNo && !validateMobile(extra.cellNo)) {
-      showToast("Invalid cell number format (e.g., 0300-1234567).");
+      showToast("Invalid cell number format (e.g., 0300-1234567 or 03001234567).");
       return;
     }
     if (type === "colleague" && extra.cellNo && !validateMobile(extra.cellNo)) {
-      showToast("Invalid cell number format (e.g., 0300-1234567).");
+      showToast("Invalid cell number format (e.g., 0300-1234567 or 03001234567).");
       return;
     }
     if (type === "other" && extra.cellNo && !validateMobile(extra.cellNo)) {
-      showToast("Invalid cell number format (e.g., 0300-1234567).");
+      showToast("Invalid cell number format (e.g., 0300-1234567 or 03001234567).");
       return;
     }
 
