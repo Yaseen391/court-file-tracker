@@ -8,20 +8,43 @@ function formatDate(dateStr) {
   return `${day}/${mon}/${yr}`;
 }
 
-function calculateTimer(startTimestamp, endTimestamp) {
-  const start = startTimestamp;
-  const end = endTimestamp || Date.now();
+function calculateDuration(startDate, endDate) {
+  if (!startDate) return "0h 0m 0s";
+  const start = new Date(startDate);
+  const end = endDate ? new Date(endDate) : new Date();
   const diffMs = end - start;
   if (diffMs < 0) return "0h 0m 0s";
+
   const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
   const hours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
   const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
   const seconds = Math.floor((diffMs % (1000 * 60)) / 1000);
-  return days > 0 ? `${days}d ${hours}h ${minutes}m ${seconds}s` : `${hours}h ${minutes}m ${seconds}s`;
+
+  if (days > 0) {
+    return `${days}d ${hours}h ${minutes}m ${seconds}s`;
+  }
+  return `${hours}h ${minutes}m ${seconds}s`;
 }
 
-function getJudgeNameOnly(judgeName) {
-  return judgeName.split(',')[0].trim();
+function startTimer(startDate, elementId, stopCallback) {
+  const start = new Date(startDate);
+  const timer = setInterval(() => {
+    const now = new Date();
+    const diffMs = now - start;
+    if (diffMs < 0) {
+      document.getElementById(elementId).innerText = "0h 0m 0s";
+      return;
+    }
+    const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    const hours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+    const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+    const seconds = Math.floor((diffMs % (1000 * 60)) / 1000);
+    const display = days > 0 ? `${days}d ${hours}h ${minutes}m ${seconds}s` : `${hours}h ${minutes}m ${seconds}s`;
+    const el = document.getElementById(elementId);
+    if (el) el.innerText = display;
+    if (stopCallback && stopCallback()) clearInterval(timer);
+  }, 1000);
+  return timer;
 }
 
 function hashPin(pin) {
@@ -35,11 +58,10 @@ function hashPin(pin) {
 
 function formatMobile(input) {
   let value = input.value.replace(/[^\d]/g, '');
-  if (value.length > 9) value = value.slice(0, 9);
-  if (value.length > 2) {
-    value = `03${value.slice(0, 2)}-${value.slice(2)}`;
-  } else if (value.length > 0) {
-    value = `03${value}`;
+  if (value.length > 11) value = value.slice(0, 11);
+  if (value.length > 0) {
+    value = value.padStart(11, '0');
+    value = `03${value.slice(1, 4)}-${value.slice(4)}`;
   }
   input.value = value;
 }
@@ -75,7 +97,13 @@ function navigate(screenId) {
   if (screenId === "dashboard") updateDashboard();
   if (screenId === "profiles") renderProfiles();
   if (screenId === "return") filterPendingFiles();
-  if (screenId === "search") performSearch();
+  if (screenId === "search") {
+    document.getElementById("searchCms").value = "";
+    document.getElementById("searchTitle").value = "";
+    document.getElementById("searchStartDate").value = "";
+    document.getElementById("searchEndDate").value = "";
+    performSearch();
+  }
 }
 
 // ----- Local Storage -----
@@ -85,6 +113,7 @@ function getFiles() {
 
 function saveFiles(files) {
   localStorage.setItem("courtFiles", JSON.stringify(files));
+  // Placeholder for future Google Drive API integration
 }
 
 function getProfiles() {
@@ -93,6 +122,7 @@ function getProfiles() {
 
 function saveProfiles(profiles) {
   localStorage.setItem("profiles", JSON.stringify(profiles));
+  // Placeholder for future Google Drive API integration
 }
 
 // ----- Initial Setup -----
@@ -100,28 +130,19 @@ window.onload = function () {
   history.pushState(null, null, location.href);
   const clerkName = localStorage.getItem("clerkName");
   if (clerkName) {
-    navigate("dashboard");
     showSavedProfile();
+    navigate("dashboard");
   } else {
     navigate("settings");
     document.getElementById("setupMessage").style.display = "block";
     document.querySelectorAll(".sidebar button").forEach(btn => btn.disabled = true);
+    document.getElementById("disclaimerModal").style.display = "block";
   }
 
   // Initialize input masks
   document.getElementById("mobile").addEventListener("input", () => formatMobile(document.getElementById("mobile")));
   document.getElementById("cnic").addEventListener("input", () => formatCnic(document.getElementById("cnic")));
   document.getElementById("resetCnic").addEventListener("input", () => formatCnic(document.getElementById("resetCnic")));
-
-  // Hamburger menu
-  document.getElementById("menuBtn").addEventListener("click", () => {
-    document.getElementById("sidebar").classList.toggle("active");
-  });
-
-  // Disclaimer checkbox
-  document.getElementById("disclaimerCheck").addEventListener("change", () => {
-    document.getElementById("settingsSubmit").disabled = !document.getElementById("disclaimerCheck").checked;
-  });
 };
 
 // ----- Window Controls -----
@@ -139,8 +160,19 @@ document.getElementById("resizeBtn").addEventListener("click", () => {
 });
 
 document.getElementById("closeBtn").addEventListener("click", () => {
-  window.location.reload();
+  window.location.reload(); // Simulate close
 });
+
+// ----- Disclaimer Handling -----
+function handleDisclaimerAgree() {
+  const agree = document.getElementById("disclaimerAgree").checked;
+  if (agree) {
+    document.getElementById("saveProfileBtn").disabled = false;
+    document.getElementById("disclaimerModal").style.display = "none";
+  } else {
+    showToast("Please agree to the terms and privacy policy.");
+  }
+}
 
 // ----- Settings -----
 function showSavedProfile() {
@@ -150,19 +182,18 @@ function showSavedProfile() {
   const mobile = localStorage.getItem("mobile");
   const userPhoto = localStorage.getItem("userPhoto");
 
-  const table = document.getElementById("savedProfileTable");
-  table.innerHTML = `
-    <tr>
-      <td><img src="${userPhoto || ''}" style="width:60px;height:60px;border-radius:50%;${userPhoto ? '' : 'display:none;'}"></td>
-      <td>${clerkName || ''}</td>
-      <td>${getJudgeNameOnly(judgeName || '')}</td>
-      <td>${courtName || ''}</td>
-      <td><a href="tel:${mobile || ''}">${mobile || ''}</a></td>
-    </tr>
-  `;
+  document.getElementById("savedClerkName").innerText = clerkName || "";
+  document.getElementById("savedJudgeName").innerText = judgeName || "";
+  document.getElementById("savedCourtName").innerText = courtName || "";
+  document.getElementById("savedMobileLink").innerText = mobile || "";
+  document.getElementById("savedMobileLink").href = `tel:${mobile || ''}`;
+  document.getElementById("savedUserPhoto").src = userPhoto || "";
+  document.getElementById("savedUserPhoto").style.display = userPhoto ? "block" : "none";
+
   document.getElementById("savedProfile").style.display = "block";
   document.getElementById("settingsForm").style.display = "none";
   document.getElementById("setupMessage").style.display = "none";
+  document.getElementById("changePinBtn").style.display = clerkName ? "inline-block" : "none";
   document.querySelectorAll(".sidebar button").forEach(btn => btn.disabled = false);
 }
 
@@ -319,6 +350,7 @@ function closeModalOnOutsideClick(e) {
 
 document.getElementById("pinModal").addEventListener("click", closeModalOnOutsideClick);
 document.getElementById("forgotPinModal").addEventListener("click", closeModalOnOutsideClick);
+document.getElementById("disclaimerModal").addEventListener("click", closeModalOnOutsideClick);
 document.getElementById("profileModal").addEventListener("click", closeModalOnOutsideClick);
 
 // ----- Toggle Fields -----
@@ -444,7 +476,8 @@ document.getElementById("fileForm").addEventListener("submit", function (e) {
     const cmsNo = document.getElementById("cmsNo").value.trim();
     const name = document.getElementById("deliveredTo").value.trim();
     const profiles = getProfiles();
-    if (!profiles.some(p => p.name === name)) {
+    const profile = profiles.find(p => p.name === name);
+    if (!profile) {
       localStorage.setItem("pendingProfileName", name);
       showToast("Profile not found. Please add it in Profiles.");
       navigate("profiles");
@@ -469,16 +502,15 @@ document.getElementById("fileForm").addEventListener("submit", function (e) {
       policeStation: document.getElementById("policeStation").value.trim(),
       deliveredTo: name,
       deliveredType: document.getElementById("deliveredType").value,
+      deliveredToProfile: { ...profile }, // Snapshot of profile at delivery
       decisionDate: null,
       hearingDate: null,
       returnDate: null,
-      createdDate: new Date().toISOString().split("T")[0],
-      deliveredDate: new Date().toISOString().split("T")[0],
-      deliveryTimestamp: Date.now(),
       duration: null,
+      createdDate: new Date().toISOString().split("T")[0],
+      deliveredDate: new Date().toISOString(),
       sentToCopyAgency: document.getElementById("copyAgency").checked,
-      clerkName: localStorage.getItem("clerkName"),
-      judgeName: localStorage.getItem("judgeName")
+      courtName: localStorage.getItem("courtName")
     };
 
     const dateType = document.getElementById("dateType").value;
@@ -552,8 +584,8 @@ function markReturned(cmsNo) {
       showToast("File not found.");
       return;
     }
-    file.returnDate = new Date().toISOString().split("T")[0];
-    file.duration = calculateTimer(file.deliveryTimestamp, Date.now());
+    file.returnDate = new Date().toISOString();
+    file.duration = calculateDuration(file.deliveredDate, file.returnDate);
     saveFiles(files);
     document.getElementById("returnForm").reset();
     filterPendingFiles();
@@ -563,11 +595,6 @@ function markReturned(cmsNo) {
 }
 
 // ----- Search -----
-document.getElementById("searchForm").addEventListener("submit", function (e) {
-  e.preventDefault();
-  performSearch();
-});
-
 function performSearch() {
   const cmsNo = document.getElementById("searchCms").value.trim().toLowerCase();
   const title = document.getElementById("searchTitle").value.trim().toLowerCase();
@@ -589,7 +616,6 @@ function performSearch() {
   const tbody = document.querySelector("#searchResultsTable tbody");
   tbody.innerHTML = "";
   files.forEach(f => {
-    const profile = getProfiles().find(p => p.name === f.deliveredTo) || {};
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td>${f.cmsNo}</td>
@@ -598,9 +624,8 @@ function performSearch() {
       <td>${formatDate(f.deliveredDate)}</td>
       <td>${f.returnDate ? formatDate(f.returnDate) : 'Pending'}</td>
       <td><a href="#" onclick="showProfileDetails('${f.deliveredTo}')">${f.deliveredTo}</a> (${f.deliveredType})</td>
-      <td>${f.clerkName || ''}</td>
-      <td>${getJudgeNameOnly(f.judgeName || '')}</td>
-      <td>${f.duration || calculateTimer(f.deliveryTimestamp)}</td>
+      <td>${f.courtName || ''}</td>
+      <td>${f.courtName || ''}</td>
       <td><button onclick="showFileDetails('${f.cmsNo}')">Details</button></td>
     `;
     tbody.appendChild(tr);
@@ -625,13 +650,10 @@ function showFileDetails(cmsNo) {
     Delivered To: ${file.deliveredTo} (${file.deliveredType})<br>
     Delivery Date: ${formatDate(file.deliveredDate)}<br>
     Return Date: ${file.returnDate ? formatDate(file.returnDate) : 'Pending'}<br>
-    Duration: ${file.duration || calculateTimer(file.deliveryTimestamp)}<br>
     ${file.sentToCopyAgency ? `Swal Form No: ${file.swalFormNo}<br>Swal Date: ${formatDate(file.swalDate)}<br>` : ""}
-    Clerk: ${file.clerkName || ''}<br>
-    Judge: ${getJudgeNameOnly(file.judgeName || '')}
+    Court: ${file.courtName || ''}
   `;
-  document.getElementById("fileDetailsContent").innerHTML = details;
-  document.getElementById("fileDetailsModal").style.display = "block";
+  alert(details); // Replace with modal in production
 }
 
 function exportSearchReport() {
@@ -671,7 +693,7 @@ function showProfileDetails(name) {
     ${profile.cellNo ? `<tr><th>Cell</th><td><a href="tel:${profile.cellNo}">${profile.cellNo}</a></td></tr>` : ""}
     ${profile.chamberNo ? `<tr><th>Chamber</th><td>${profile.chamberNo}</td></tr>` : ""}
     ${profile.advocateName ? `<tr><th>Advocate</th><td>${profile.advocateName}</td></tr>` : ""}
-    ${profile.advocateCell ? `<tr><th>Advocate Cell</th><td><a href="tel:${profile.advocateCell}">${profile.advocateCell}</a></td></tr>` : ""}
+    ${profile.advocateCell ? `<tr><th>Advocate Cell</th><td>${profile.advocateCell}</td></tr>` : ""}
     ${profile.designation ? `<tr><th>Designation</th><td>${profile.designation}</td></tr>` : ""}
     ${profile.courtName ? `<tr><th>Court</th><td>${profile.courtName}</td></tr>` : ""}
     ${profile.address ? `<tr><th>Address</th><td>${profile.address}</td></tr>` : ""}
@@ -693,16 +715,16 @@ function updateDashboard() {
   const oneDayAgo = new Date(Date.now() - 86400000).toISOString().split("T")[0];
   const tenDaysAgo = new Date(Date.now() - 10 * 86400000).toISOString().split("T")[0];
 
-  const deliveriesToday = files.filter(f => f.deliveredDate === today);
-  const returnsToday = files.filter(f => f.returnDate === today);
+  const deliveriesToday = files.filter(f => f.deliveredDate.split("T")[0] === today);
+  const returnsToday = files.filter(f => f.returnDate && f.returnDate.split("T")[0] === today);
   const notReturned = files.filter(f => !f.returnDate);
   const dueTomorrow = files.filter(f => f.hearingDate === tomorrow && !f.returnDate);
   const overdue = files.filter(f => {
-    const delivery = f.deliveredDate || f.createdDate;
+    const delivery = f.deliveredDate.split("T")[0];
     return !f.returnDate && delivery < tenDaysAgo;
   });
   const alertProfilers = [...new Set(
-    files.filter(f => !f.returnDate && !f.sentToCopyAgency && (f.deliveredDate || f.createdDate) < oneDayAgo)
+    files.filter(f => !f.returnDate && !f.sentToCopyAgency && f.deliveredDate.split("T")[0] < oneDayAgo)
       .map(f => f.deliveredTo)
   )];
 
@@ -726,10 +748,10 @@ function showDashboardReport(type) {
   let title = "";
 
   if (type === "deliveries") {
-    filtered = files.filter(f => f.deliveredDate === today);
+    filtered = files.filter(f => f.deliveredDate.split("T")[0] === today);
     title = "Files Delivered Today";
   } else if (type === "returns") {
-    filtered = files.filter(f => f.returnDate === today);
+    filtered = files.filter(f => f.returnDate && f.returnDate.split("T")[0] === today);
     title = "Files Returned Today";
   } else if (type === "pending") {
     filtered = files.filter(f => !f.returnDate);
@@ -739,13 +761,13 @@ function showDashboardReport(type) {
     title = "Hearings Scheduled for Tomorrow";
   } else if (type === "overdue") {
     filtered = files.filter(f => {
-      const delivery = f.deliveredDate || f.createdDate;
+      const delivery = f.deliveredDate.split("T")[0];
       return !f.returnDate && delivery < tenDaysAgo;
     });
     title = "Files Pending >10 Days";
   } else if (type === "alertProfilers") {
     const overdue = files.filter(f => {
-      const delivery = f.deliveredDate || f.createdDate;
+      const delivery = f.deliveredDate.split("T")[0];
       return !f.returnDate && !f.sentToCopyAgency && delivery < oneDayAgo;
     });
     filtered = [...new Set(overdue.map(f => f.deliveredTo))].map(name => {
@@ -755,6 +777,7 @@ function showDashboardReport(type) {
     title = "Alert Profilers (Overdue Files)";
   }
 
+  const timers = [];
   const tbody = document.querySelector("#dashboardReportTable tbody");
   tbody.innerHTML = "";
   if (type === "alertProfilers") {
@@ -770,13 +793,14 @@ function showDashboardReport(type) {
         <td>-</td>
         <td>Overdue: ${p.overdueCount}</td>
         <td>-</td>
-        <td><a href="tel:${p.cellNo || ''}">${p.cellNo || ''}</a></td>
+        <td>${p.cellNo ? `<a href="tel:${p.cellNo}">${p.cellNo}</a>` : ''}</td>
       `;
       tbody.appendChild(tr);
     });
   } else {
     filtered.forEach((f, i) => {
-      const profile = getProfiles().find(p => p.name === f.deliveredTo) || {};
+      const profile = f.deliveredToProfile || {};
+      const timerId = `timer-${f.cmsNo}`;
       const tr = document.createElement("tr");
       tr.innerHTML = `
         <td>${i + 1}</td>
@@ -784,14 +808,21 @@ function showDashboardReport(type) {
         <td>${f.title}</td>
         <td>${f.caseType}</td>
         <td>${f.nature}</td>
-        <td><a href="#" onclick="showProfileDetails('${f.deliveredTo}')">${f.deliveredTo}</a> (${f.deliveredType})</td>
+        <td>
+          ${profile.photo ? `<img src="${profile.photo}" style="width:40px; height:40px; border-radius:50%; margin-right:5px;">` : ""}
+          <a href="#" onclick="showProfileDetails('${f.deliveredTo}')">${f.deliveredTo}</a> (${f.deliveredType})
+        </td>
         <td>${formatDate(f.deliveredDate)}</td>
         <td>${f.returnDate ? formatDate(f.returnDate) : "Pending"}</td>
-        <td>${f.duration || calculateTimer(f.deliveryTimestamp)}</td>
-        <td>${f.clerkName || ''} / ${getJudgeNameOnly(f.judgeName || '')}</td>
-        <td><a href="tel:${profile.cellNo || ''}">${profile.cellNo || ''}</a>${profile.chamberNo ? `, Chamber: ${profile.chamberNo}` : ''}</td>
+        <td id="${timerId}">${f.duration || (f.returnDate ? calculateDuration(f.deliveredDate, f.returnDate) : "0h 0m 0s")}</td>
+        <td>${f.courtName || ''}</td>
+        <td>${profile.cellNo ? `<a href="tel:${profile.cellNo}">${profile.cellNo}</a>` : ''}${profile.chamberNo ? `, Chamber: ${profile.chamberNo}` : ''}</td>
       `;
       tbody.appendChild(tr);
+      if (!f.returnDate && !f.duration) {
+        const timer = startTimer(f.deliveredDate, timerId, () => f.returnDate);
+        timers.push(timer);
+      }
     });
   }
 
@@ -799,6 +830,7 @@ function showDashboardReport(type) {
   document.getElementById("dashboardReportPanel").style.display = "block";
   document.getElementById("dashboardReportPanel").addEventListener("click", (e) => {
     if (e.target === document.getElementById("dashboardReportPanel")) {
+      timers.forEach(clearInterval);
       document.getElementById("dashboardReportPanel").style.display = "none";
     }
   });
@@ -868,64 +900,54 @@ document.getElementById("profilePhoto").addEventListener("change", function () {
 
 document.getElementById("profileForm").addEventListener("submit", function (e) {
   e.preventDefault();
+  const type = document.getElementById("profileType").value;
+  const name = document.getElementById("profileName").value.trim();
+  if (!type || !name) {
+    showToast("Type and Name are required.");
+    return;
+  }
+
   showPinPrompt(() => {
-    try {
-      const type = document.getElementById("profileType").value;
-      const name = document.getElementById("profileName").value.trim();
-      const img = document.getElementById("photoPreview").getAttribute("data-img") || "";
-      const isEdit = document.getElementById("profileForm").dataset.editIndex !== undefined;
-      const editIndex = parseInt(document.getElementById("profileForm").dataset.editIndex);
+    const img = document.getElementById("photoPreview").getAttribute("data-img") || "";
+    const isEdit = document.getElementById("profileForm").dataset.editIndex !== undefined;
+    const editIndex = parseInt(document.getElementById("profileForm").dataset.editIndex);
 
-      const extra = {};
-      document.querySelectorAll("#profileFields input").forEach(input => {
-        extra[input.id] = input.value.trim();
-      });
+    const extra = {};
+    document.querySelectorAll("#profileFields input").forEach(input => {
+      extra[input.id] = input.value.trim();
+    });
 
-      const profile = { type, name, photo: img, ...extra };
-      const all = getProfiles();
-
-      if (!isEdit && all.some(p => p.name === name)) {
-        showToast("Profile already exists.");
-        return;
-      }
-
-      if (isEdit) {
-        all[editIndex] = profile;
-      } else {
-        all.push(profile);
-      }
-      saveProfiles(all);
-      document.getElementById("profileForm").reset();
-      document.getElementById("profileForm").dataset.editIndex = "";
-      document.getElementById("photoPreview").style.display = "none";
-      document.getElementById("photoPreview").src = "";
-      renderProfiles();
-      showToast("Profile saved successfully.");
-    } catch (err) {
-      showToast("Failed to save profile. Please try again.");
+    if (!extra.cellNo) {
+      showToast("Cell number is required.");
+      return;
     }
+
+    const profile = { type, name, photo: img, ...extra };
+    const all = getProfiles();
+
+    if (!isEdit && all.some(p => p.name === name)) {
+      showToast("Profile already exists.");
+      return;
+    }
+
+    if (isEdit) {
+      all[editIndex] = profile;
+    } else {
+      all.push(profile);
+    }
+    saveProfiles(all);
+    document.getElementById("profileForm").reset();
+    document.getElementById("profileForm").dataset.editIndex = "";
+    document.getElementById("photoPreview").style.display = "none";
+    document.getElementById("photoPreview").src = "";
+    renderProfiles();
+    showToast("Profile saved successfully.");
   });
 });
 
 function renderProfiles() {
-  const list = document.getElementById("profileList");
-  list.innerHTML = `
-    <table class="profile-table">
-      <thead>
-        <tr>
-          <th>Photo</th>
-          <th>Name</th>
-          <th>Type</th>
-          <th>Cell No</th>
-          <th>Other Details</th>
-          <th>Actions</th>
-        </tr>
-      </thead>
-      <tbody></tbody>
-    </table>
-  `;
-  const tbody = list.querySelector("tbody");
-
+  const tbody = document.querySelector("#profileList tbody");
+  tbody.innerHTML = "";
   const filterType = document.getElementById("profileFilterType").value;
   const searchTerm = document.getElementById("profileSearch").value.trim().toLowerCase();
 
@@ -947,23 +969,13 @@ function renderProfiles() {
   profiles.forEach((p, i) => {
     const tr = document.createElement("tr");
     tr.innerHTML = `
-      <td><img src="${p.photo || ''}" style="width:40px;height:40px;border-radius:50%;${p.photo ? '' : 'display:none;'}"></td>
+      <td>${p.photo ? `<img src="${p.photo}" style="width:40px; height:40px; border-radius:50%;">` : '-'}</td>
       <td>${p.name}</td>
       <td>${p.type}</td>
-      <td><a href="tel:${p.cellNo || ''}">${p.cellNo || ''}</a></td>
+      <td>${p.cellNo ? `<a href="tel:${p.cellNo}">${p.cellNo}</a>` : '-'}${p.chamberNo ? `, Chamber: ${p.chamberNo}` : ''}</td>
       <td>
-        ${p.chamberNo ? `Chamber: ${p.chamberNo}<br>` : ""}
-        ${p.advocateName ? `Advocate: ${p.advocateName}<br>` : ""}
-        ${p.advocateCell ? `Advocate Cell: ${p.advocateCell}<br>` : ""}
-        ${p.designation ? `Designation: ${p.designation}<br>` : ""}
-        ${p.courtName ? `Court: ${p.courtName}<br>` : ""}
-        ${p.address ? `Address: ${p.address}<br>` : ""}
-        ${p.idNo ? `ID No: ${p.idNo}<br>` : ""}
-        ${p.relation ? `Relation: ${p.relation}` : ""}
-      </td>
-      <td>
-        <button onclick="editProfile(${i})" class="edit-btn">Edit</button>
-        <button onclick="deleteProfile(${i})" class="delete-btn">Delete</button>
+        <button onclick="editProfile(${i})" style="background:#0066cc;color:white;border:none;border-radius:4px;padding:4px 8px;">Edit</button>
+        <button onclick="deleteProfile(${i})" style="background:red;color:white;border:none;border-radius:4px;padding:4px 8px;">Delete</button>
       </td>
     `;
     tbody.appendChild(tr);
@@ -1049,6 +1061,11 @@ function importProfiles() {
 }
 
 // ----- Event Listeners -----
+document.getElementById("menuBtn").addEventListener("click", () => {
+  const sidebar = document.getElementById("sidebar");
+  sidebar.classList.toggle("active");
+});
+
 document.addEventListener("click", function (e) {
   const sidebar = document.getElementById("sidebar");
   if (window.innerWidth <= 768 && sidebar.classList.contains("active")) {
