@@ -67,6 +67,7 @@
                 <th>Return Date</th>
                 <th>Time Span</th>
                 <th>Court</th>
+                <th>Clerk Name</th>
                 <th>Profile Details</th>
               </tr>
             </thead>
@@ -289,7 +290,7 @@
           <label>Full Name: <span class="required">*</span><input type="text" id="clerkName" required /></label>
           <label>Designation: <span class="required">*</span><input type="text" id="judgeName" required /></label>
           <label>Court Name: <span class="required">*</span><input type="text" id="courtName" required /></label>
-          <label>Mobile Number: <span class="required">*</span><input type="text" id="mobile" required placeholder="0300-0000000" /></label>
+          <label>Mobile Number: <span class="required">*</span><input type="text" id="mobile" required placeholder="0300-1234567" /></label>
           <label>CNIC: <span class="required">*</span>
             <input type="text" id="cnic" required placeholder="XXXXX-XXXXXXX-X" />
             <span class="tooltip">?
@@ -299,6 +300,7 @@
           <label>PIN (4 digits): <span class="required">*</span><input type="password" id="pin" maxlength="4" pattern="\d{4}" required /></label>
           <label>Upload Photo: <input type="file" id="userPhoto" accept="image/*" /></label>
           <img id="userPhotoPreview" src="" style="max-width:100px;display:none;margin-top:5px;border:1px solid #ccc;border-radius:50%;" />
+          <label><input type="checkbox" id="agreeTerms" onchange="toggleSaveButton()"> I agree to the <a href="#" onclick="showDisclaimerModal()">terms and privacy policy</a>.</label>
           <button type="submit" id="saveProfileBtn" disabled>Save</button>
         </form>
       </section>
@@ -329,7 +331,6 @@
           <h3>Disclaimer & Privacy Policy</h3>
           <p><strong>Disclaimer:</strong> This is not an official judiciary tool. It is designed for the convenience of clerks and judiciary staff to digitize record-keeping. Users are responsible for their use of this tool.</p>
           <p><strong>Privacy Policy:</strong> We do not store any data. Your data is saved locally in your browser. In future updates, data may be synced to your Google Drive via OAuth API.</p>
-          <label><input type="checkbox" id="agreeTerms" onchange="toggleSaveButton()"> I agree to the terms and privacy policy.</label>
           <button onclick="document.getElementById('disclaimerModal').style.display='none';">Close</button>
         </div>
       </div>
