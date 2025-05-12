@@ -1,62 +1,55 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#3498db">
   <title>Court File Tracker</title>
-  <link rel="manifest" href="manifest.json" />
-  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="style.css">
+  <link rel="manifest" href="manifest.json">
 </head>
 <body>
-  <!-- Top Header -->
-  <header class="topbar">
-    <button id="menuBtn" onclick="toggleSidebar()">☰</button>
-    <div class="top-title">
-      <h1>Court File Tracker</h1>
-      <p>Smart Solutions for Efficient Record Management</p>
-    </div>
-    <div class="window-controls" style="display: none;">
-      <button id="minimizeBtn" class="window-btn minimize-btn" title="Minimize">−</button>
-      <button id="resizeBtn" class="window-btn resize-btn" title="Maximize/Restore">□</button>
-      <button id="closeBtn" class="window-btn close-btn" title="Close">✕</button>
-    </div>
-  </header>
-
-  <!-- Main App Container -->
-  <div class="app-container">
+  <div class="container">
     <!-- Sidebar -->
-    <aside id="sidebar" class="sidebar">
-      <img src="icon-192.png" alt="CFT Logo" class="sidebar-logo" />
-      <button onclick="navigate('dashboard')"><span>🏠</span> Dashboard</button>
-      <button onclick="navigate('newFile')"><span>📂</span> New Entry</button>
-      <button onclick="navigate('return')"><span>↩️</span> Return File</button>
-      <button onclick="navigate('search')"><span>🔍</span> Search</button>
-      <button onclick="navigate('profiles')"><span>👤</span> Profiles</button>
-      <button onclick="navigate('settings')"><span>⚙️</span> User Profile</button>
-    </aside>
+    <nav id="sidebar" class="sidebar">
+      <button onclick="navigate('dashboard')">Dashboard</button>
+      <button onclick="navigate('new-file')">New File Entry</button>
+      <button onclick="navigate('return')">Return File</button>
+      <button onclick="navigate('search')">Search</button>
+      <button onclick="navigate('profiles')">Profiles</button>
+      <button onclick="navigate('settings')">Settings</button>
+    </nav>
 
-    <!-- Main Screens -->
-    <main>
+    <!-- Main Content -->
+    <div class="main-content">
+      <button id="menuBtn">☰</button>
+      <div class="window-controls">
+        <button id="minimizeBtn">-</button>
+        <button id="resizeBtn">□</button>
+        <button id="closeBtn">×</button>
+      </div>
+
       <!-- Dashboard -->
-      <section id="dashboard" class="screen">
-        <h2>Dashboard Summary</h2>
-        <div id="dashboardCards" class="dashboard-grid">
-          <div class="card card-deliveries" id="cardDeliveries"></div>
-          <div class="card card-returns" id="cardReturns"></div>
-          <div class="card card-pending" id="cardPending"></div>
-          <div class="card card-tomorrow" id="cardTomorrow"></div>
-          <div class="card card-overdue" id="cardOverdue"></div>
-          <div class="card card-alert-profilers" id="cardAlertProfilers"></div>
+      <div id="dashboard" class="screen">
+        <h2>Dashboard</h2>
+        <div class="cards">
+          <div class="card" id="cardDeliveries"></div>
+          <div class="card" id="cardReturns"></div>
+          <div class="card" id="cardPending"></div>
+          <div class="card" id="cardTomorrow"></div>
+          <div class="card" id="cardOverdue"></div>
+          <div class="card" id="cardAlertProfilers"></div>
         </div>
+      </div>
 
-        <div id="dashboardReportPanel" style="display:none; margin-top: 20px;">
-          <h3 id="reportTitle"></h3>
-          <button onclick="printDashboardReport()">Print</button>
-          <button onclick="exportDashboardReport()">Export to Excel</button>
-          <table id="dashboardReportTable" border="1" style="width:100%; border-collapse:collapse; margin-top:10px;">
+      <!-- Dashboard Report Panel -->
+      <div id="dashboardReportPanel" class="modal" style="display: none;">
+        <div class="modal-content">
+          <h2 id="reportTitle"></h2>
+          <table id="dashboardReportTable">
             <thead>
               <tr>
-                <th>Sr#</th>
+                <th>S.No</th>
                 <th>CMS No</th>
                 <th>Title</th>
                 <th>Case Type</th>
@@ -64,133 +57,99 @@
                 <th>Delivered To</th>
                 <th>Delivery Date</th>
                 <th>Return Date</th>
-                <th>Time Span</th>
+                <th>Duration</th>
                 <th>Clerk/Judge</th>
-                <th>Profile Details</th>
+                <th>Contact</th>
               </tr>
             </thead>
             <tbody></tbody>
           </table>
+          <button onclick="exportDashboardReport()">Export CSV</button>
+          <button onclick="printDashboardReport()">Print</button>
+          <button class="close-btn" onclick="document.getElementById('dashboardReportPanel').style.display='none'">×</button>
         </div>
-      </section>
+      </div>
 
       <!-- New File Entry -->
-      <section id="newFile" class="screen">
-        <h2>New File Entry & Delivery</h2>
+      <div id="new-file" class="screen">
+        <h2>New File Entry</h2>
         <form id="fileForm">
+          <label>CMS No: <span class="required">*</span><input type="text" id="cmsNo" required oninput="autoFillCMS()"></label>
+          <label>Title: <span class="required">*</span></label>
+          <label>Petitioner: <input type="text" id="petitioner" required></label>
+          <label>Respondent: <input type="text" id="respondent" required></label>
           <label>Case Type: <span class="required">*</span>
             <select id="caseType" required onchange="toggleCriminalFields()">
-              <option value="">Select</option>
               <option value="civil">Civil</option>
               <option value="criminal">Criminal</option>
             </select>
           </label>
-
-          <label>CMS No: <span class="required">*</span>
-            <input type="number" id="cmsNo" required onblur="autoFillCMS()" />
-          </label>
-
-          <label>Petitioner: <span class="required">*</span>
-            <input type="text" id="petitioner" required />
-          </label>
-
-          <label>Respondent: <span class="required">*</span>
-            <input type="text" id="respondent" required />
-          </label>
-
-          <label>Nature of Case: <span class="required">*</span>
-            <input type="text" id="nature" required />
-          </label>
-
-          <div id="criminalFields" style="display:none">
-            <label>FIR No: <input type="text" id="firNo" /></label>
-            <label>FIR Year: <input type="number" id="firYear" min="1947" /></label>
-            <label>FIR U/S: <input type="text" id="firUs" /></label>
-            <label>Police Station: <input type="text" id="policeStation" /></label>
+          <div id="criminalFields" style="display: none;">
+            <label>FIR No: <input type="text" id="firNo"></label>
+            <label>FIR Year: <input type="text" id="firYear"></label>
+            <label>FIR U/S: <input type="text" id="firUs"></label>
+            <label>Police Station: <input type="text" id="policeStation"></label>
           </div>
-
+          <label>Nature of Case: <input type="text" id="nature"></label>
           <label>Date Type: <span class="required">*</span>
             <select id="dateType" required>
-              <option value="">Select</option>
-              <option value="decision">Decision Date</option>
-              <option value="hearing">Next Hearing Date</option>
+              <option value="hearing">Hearing</option>
+              <option value="decision">Decision</option>
             </select>
           </label>
-
-          <label>Date: <span class="required">*</span>
-            <input type="date" id="date" required />
-          </label>
-
-          <label>Delivered To (Name): <span class="required">*</span>
-            <input type="text" id="deliveredTo" oninput="suggestProfiles(this.value)" required autocomplete="off" />
-            <ul id="suggestions"></ul>
-            <span class="hint" style="font-size:12px;color:#555;">Edit profiles in the Profiles section.</span>
-          </label>
-
-          <label>Delivered To Type: <span class="required">*</span>
+          <label>Date: <span class="required">*</span><input type="date" id="date" required></label>
+          <label>Delivered To: <span class="required">*</span><input type="text" id="deliveredTo" required oninput="suggestProfiles(this.value)"></label>
+          <ul id="suggestions"></ul>
+          <label>Delivered Type: <span class="required">*</span>
             <select id="deliveredType" required>
-              <option value="">Select</option>
-              <option value="advocate">Advocate</option>
               <option value="munshi">Munshi</option>
+              <option value="advocate">Advocate</option>
               <option value="colleague">Colleague</option>
               <option value="other">Other</option>
             </select>
           </label>
-
-          <div id="copyAgencyRow">
-            <input type="checkbox" id="copyAgency" onchange="toggleCopyAgency()" />
-            <label for="copyAgency">Sent to Copy Agency</label>
+          <label><input type="checkbox" id="copyAgency" onclick="toggleCopyAgency()"> Sent to Copy Agency</label>
+          <div id="copyAgencyFields" style="display: none;">
+            <label>Swal Form No: <span class="required">*</span><input type="text" id="swalFormNo"></label>
+            <label>Swal Date: <span class="required">*</span><input type="date" id="swalDate"></label>
           </div>
-          <div id="copyAgencyFields" style="display:none;">
-            <label>Swal Farm No: <span class="required">*</span>
-              <input type="number" id="swalFormNo" />
-            </label>
-            <label>Swal Date: <span class="required">*</span>
-              <input type="date" id="swalDate" />
-            </label>
-          </div>
-
-          <button type="submit">Save and Deliver File</button>
+          <button type="submit">Save</button>
         </form>
-      </section>
+      </div>
 
-      <!-- Return -->
-      <section id="return" class="screen">
+      <!-- Return File -->
+      <div id="return" class="screen">
         <h2>Return File</h2>
-        <form id="returnForm">
-          <label>CMS No: <input type="number" id="returnCms" oninput="filterPendingFiles()" /></label>
-          <label>Title: <input type="text" id="returnTitle" oninput="filterPendingFiles()" /></label>
+        <form id="returnForm" onsubmit="event.preventDefault(); filterPendingFiles()">
+          <label>CMS No: <input type="text" id="returnCms" oninput="filterPendingFiles()"></label>
+          <label>Title: <input type="text" id="returnTitle" oninput="filterPendingFiles()"></label>
         </form>
-        <div id="pendingFiles" style="margin-top: 10px;">
-          <table id="pendingFilesTable" border="1" style="width:100%; border-collapse:collapse;">
-            <thead>
-              <tr>
-                <th>CMS No</th>
-                <th>Title</th>
-                <th>Case Type</th>
-                <th>Delivered To</th>
-                <th>Action</th>
-              </tr>
-            </thead>
-            <tbody></tbody>
-          </table>
-        </div>
-      </section>
+        <table id="pendingFilesTable">
+          <thead>
+            <tr>
+              <th>CMS No</th>
+              <th>Title</th>
+              <th>Case Type</th>
+              <th>Delivered To</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
 
       <!-- Search -->
-      <section id="search" class="screen">
-        <h2>Search</h2>
+      <div id="search" class="screen">
+        <h2>Search Files</h2>
         <form id="searchForm">
-          <label>CMS No: <input type="number" id="searchCms" /></label>
-          <label>Title: <input type="text" id="searchTitle" placeholder="Petitioner vs Respondent" /></label>
-          <label>Start Date: <input type="date" id="searchStartDate" /></label>
-          <label>End Date: <input type="date" id="searchEndDate" /></label>
-          <button type="submit" onclick="performSearch()">Search</button>
+          <label>CMS No: <input type="text" id="searchCms"></label>
+          <label>Title: <input type="text" id="searchTitle"></label>
+          <label>Start Date: <input type="date" id="searchStartDate"></label>
+          <label>End Date: <input type="date" id="searchEndDate"></label>
+          <button type="submit">Search</button>
         </form>
-        <div id="searchResults" style="margin-top: 10px;">
-          <button onclick="exportSearchReport()">Export to Excel</button>
-          <button onclick="printSearchReport()">Print</button>
-          <table id="searchResultsTable" border="1" style="width:100%; border-collapse:collapse;">
+        <div id="searchResults">
+          <table id="searchResultsTable">
             <thead>
               <tr>
                 <th>CMS No</th>
@@ -201,136 +160,128 @@
                 <th>Delivered To</th>
                 <th>Clerk</th>
                 <th>Judge</th>
-                <th>Action</th>
+                <th>Duration</th>
+                <th>Details</th>
               </tr>
             </thead>
             <tbody></tbody>
           </table>
+          <button onclick="exportSearchReport()">Export CSV</button>
+          <button onclick="printSearchReport()">Print</button>
         </div>
-      </section>
+      </div>
 
       <!-- Profiles -->
-      <section id="profiles" class="screen">
+      <div id="profiles" class="screen">
         <h2>Manage Profiles</h2>
-        <div style="margin-bottom: 10px;">
-          <label>Filter by Type:
-            <select id="profileFilterType" onchange="renderProfiles()">
-              <option value="">All</option>
-              <option value="munshi">Munshi/Clerk</option>
-              <option value="advocate">Advocate</option>
-              <option value="colleague">Colleague</option>
-              <option value="other">Other</option>
-            </select>
-          </label>
-          <label>Search: <input type="text" id="profileSearch" oninput="renderProfiles()" placeholder="Name, number, chamber..." /></label>
-        </div>
         <form id="profileForm">
-          <label>Profile Type: <span class="required">*</span>
+          <label>Type: <span class="required">*</span>
             <select id="profileType" required onchange="toggleProfileFields()">
-              <option value="">Select</option>
-              <option value="munshi">Munshi/Clerk</option>
+              <option value="munshi">Munshi</option>
               <option value="advocate">Advocate</option>
               <option value="colleague">Colleague</option>
               <option value="other">Other</option>
             </select>
           </label>
-
-          <label>Name: <span class="required">*</span><input type="text" id="profileName" required /></label>
+          <label>Name: <span class="required">*</span><input type="text" id="profileName" required></label>
+          <label>Photo: <input type="file" id="profilePhoto" accept="image/*"></label>
+          <img id="photoPreview" style="display: none; max-width: 100px;">
           <div id="profileFields"></div>
-
-          <label>Upload Photo:<input type="file" id="profilePhoto" accept="image/*" /></label>
-          <img id="photoPreview" src="" style="max-width:100px;display:none;margin-top:5px;border:1px solid #ccc;" />
-
-          <button type="submit">Add/Update Profile</button>
+          <button type="submit">Save Profile</button>
         </form>
-        <div style="margin-top: 10px;">
-          <button onclick="exportProfiles()">Export Profiles</button>
-          <label>Import: <input type="file" id="profileImport" accept=".json" onchange="importProfiles()" /></label>
-        </div>
-        <ul id="profileList" style="margin-top:20px;"></ul>
-      </section>
+        <label>Filter by Type:
+          <select id="profileFilterType" onchange="renderProfiles()">
+            <option value="">All</option>
+            <option value="munshi">Munshi</option>
+            <option value="advocate">Advocate</option>
+            <option value="colleague">Colleague</option>
+            <option value="other">Other</option>
+          </select>
+        </label>
+        <label>Search: <input type="text" id="profileSearch" oninput="renderProfiles()"></label>
+        <div id="profileList"></div>
+        <label>Import Profiles: <input type="file" id="profileImport" accept=".json" onchange="importProfiles()"></label>
+        <button onclick="exportProfiles()">Export Profiles</button>
+      </div>
 
-      <!-- Settings/User Profile -->
-      <section id="settings" class="screen active">
+      <!-- Settings -->
+      <div id="settings" class="screen">
         <h2>User Profile</h2>
-        <div id="setupMessage" style="display:block; color: #0066cc; margin-bottom: 10px;">
-          Please complete your profile setup to continue using the app.
-        </div>
-        <div id="savedProfile" style="display:none; background:white; padding:20px; border-radius:10px; max-width:600px; margin:auto;">
-          <h3>Saved Profile</h3>
-          <img id="savedUserPhoto" src="" style="max-width:100px;border:1px solid #ccc;margin-bottom:10px;display:none;" />
-          <p><strong>Name:</strong> <span id="savedClerkName"></span></p>
-          <p><strong>Designation:</strong> <span id="savedJudgeName"></span></p>
-          <p><strong>Court:</strong> <span id="savedCourtName"></span></p>
-          <p><strong>Mobile:</strong> <span id="savedMobile"></span></p>
-          <p><strong>CNIC:</strong> <span id="savedCnic"></span></p>
+        <p id="setupMessage" style="color: #e74c3c; display: none;">Please set up your profile to start using the app.</p>
+        <div id="savedProfile" style="display: none;">
+          <table id="savedProfileTable"></table>
           <button onclick="editUserProfile()">Edit Profile</button>
+          <button id="changePinBtn" onclick="showForgotPin()" style="display: none;">Change PIN</button>
         </div>
-        <form id="settingsForm" style="display:block;">
-          <label>Full Name: <span class="required">*</span><input type="text" id="clerkName" required /></label>
-          <label>Designation: <span class="required">*</span><input type="text" id="judgeName" required /></label>
-          <label>Court Name: <span class="required">*</span><input type="text" id="courtName" required /></label>
-          <label>Mobile Number: <span class="required">*</span><input type="text" id="mobile" required placeholder="+92XXX-XXXXXXX" /></label>
-          <label>CNIC: <input type="text" id="cnic" placeholder="XXXXX-XXXXXXX-X" /></label>
-          <label>PIN (4 digits): <span class="required">*</span><input type="password" id="pin" maxlength="4" pattern="\d{4}" required /></label>
-          <label>Upload Photo: <input type="file" id="userPhoto" accept="image/*" /></label>
-          <img id="userPhotoPreview" src="" style="max-width:100px;display:none;margin-top:5px;border:1px solid #ccc;" />
-          <button type="submit">Save</button>
+        <form id="settingsForm">
+          <label>Full Name: <span class="required">*</span><input type="text" id="clerkName" required></label>
+          <label>Designation, Court Name: <span class="required">*</span><input type="text" id="judgeName" required></label>
+          <label>Court Name: <span class="required">*</span><input type="text" id="courtName" required></label>
+          <label>Mobile No: <span class="required">*</span><input type="text" id="mobile" required></label>
+          <label>CNIC: <span class="required">*</span><input type="text" id="cnic" required></label>
+          <label>PIN (4 digits): <span class="required">*</span><input type="password" id="pin" required maxlength="4"></label>
+          <label>Photo: <input type="file" id="userPhoto" accept="image/*"></label>
+          <img id="userPhotoPreview" style="display: none; max-width: 100px;">
+          <div id="disclaimerContainer">
+            <label>
+              <input type="checkbox" id="disclaimerCheck">
+              I agree to the terms and privacy policy.
+            </label>
+            <textarea id="privacyPolicy" readonly>
+By using Court File Tracker, you agree to securely store your data locally on your device. No data is transmitted to external servers unless explicitly exported by you. Future updates may include optional Google Drive integration for backups, which will require your explicit consent. Your privacy is our priority.
+            </textarea>
+          </div>
+          <button type="submit" id="settingsSubmit">Save</button>
         </form>
-      </section>
+      </div>
 
-      <!-- PIN Prompt Modal -->
-      <div id="pinModal" class="modal" style="display:none;">
+      <!-- PIN Modal -->
+      <div id="pinModal" class="modal" style="display: none;">
         <div class="modal-content">
-          <h3>Enter PIN</h3>
-          <input type="password" id="pinInput" maxlength="4" pattern="\d{4}" style="padding:8px; width:100%;" />
+          <h2>Enter PIN</h2>
+          <input type="password" id="pinInput" maxlength="4">
           <button onclick="submitPin()">Submit</button>
-          <button onclick="showForgotPin()">Forgot PIN?</button>
+          <button class="close-btn" onclick="document.getElementById('pinModal').style.display='none'">×</button>
         </div>
       </div>
 
       <!-- Forgot PIN Modal -->
-      <div id="forgotPinModal" class="modal" style="display:none;">
+      <div id="forgotPinModal" class="modal" style="display: none;">
         <div class="modal-content">
-          <h3>Reset PIN</h3>
-          <label>Mobile Number: <input type="text" id="resetMobile" placeholder="+92XXX-XXXXXXX" /></label>
-          <label>CNIC: <input type="text" id="resetCnic" placeholder="XXXXX-XXXXXXX-X" /></label>
-          <label>New PIN: <input type="password" id="resetPin" maxlength="4" pattern="\d{4}" /></label>
-          <button onclick="resetPin()">Reset</button>
+          <h2>Reset PIN</h2>
+          <label>CNIC: <span class="required">*</span><input type="text" id="resetCnic" required></label>
+          <label>New PIN (4 digits): <span class="required">*</span><input type="password" id="resetPin" maxlength="4" required></label>
+          <button onclick="resetPin()">Reset PIN</button>
           <button onclick="hideForgotPin()">Cancel</button>
+          <button class="close-btn" onclick="hideForgotPin()">×</button>
         </div>
       </div>
 
-      <!-- Profile Details Modal -->
-      <div id="profileModal" class="modal" style="display:none;">
+      <!-- Profile Modal -->
+      <div id="profileModal" class="modal" style="display: none;">
         <div class="modal-content">
-          <h3 id="profileModalTitle"></h3>
-          <img id="profileModalPhoto" src="" style="max-width:100px;border:1px solid #ccc;margin-bottom:10px;display:none;" />
-          <table id="profileModalTable" class="profile-modal-table"></table>
+          <h2 id="profileModalTitle"></h2>
+          <img id="profileModalPhoto" style="display: none; max-width: 100px;">
+          <table id="profileModalTable"></table>
           <button onclick="closeProfileModal()">Close</button>
+          <button class="close-btn" onclick="closeProfileModal()">×</button>
         </div>
       </div>
 
-      <!-- Toast Notification -->
-      <div id="toast" class="toast" style="display:none;"></div>
-    </main>
+      <!-- File Details Modal -->
+      <div id="fileDetailsModal" class="modal" style="display: none;">
+        <div class="modal-content">
+          <h2>File Details</h2>
+          <div id="fileDetailsContent"></div>
+          <button onclick="document.getElementById('fileDetailsModal').style.display='none'">Close</button>
+          <button class="close-btn" onclick="document.getElementById('fileDetailsModal').style.display='none'">×</button>
+        </div>
+      </div>
+
+      <!-- Toast -->
+      <div id="toast"></div>
+    </div>
   </div>
-
   <script src="app.js"></script>
-  <script>
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', function () {
-        navigator.serviceWorker.register('service-worker.js')
-          .then(() => console.log("Service Worker registered"));
-      });
-    }
-
-    let deferredPrompt;
-    window.addEventListener('beforeinstallprompt', (e) => {
-      e.preventDefault();
-      deferredPrompt = e;
-      console.log("PWA install prompt ready.");
-    });
-  </script>
 </body>
 </html>
