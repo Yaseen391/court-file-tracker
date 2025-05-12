@@ -3,8 +3,9 @@ function formatDate(dateStr, includeTime = false) {
   if (!dateStr) return includeTime ? "" : "Pending";
   const d = new Date(dateStr);
   // Adjust to Pakistan Standard Time (UTC+5)
-  const offset = 5 * 60; // PKT is UTC+5
-  d.setMinutes(d.getMinutes() + offset);
+  const localOffset = d.getTimezoneOffset(); // Browser's offset in minutes
+  const pktOffset = 5 * 60; // PKT is UTC+5 (300 minutes)
+  d.setMinutes(d.getMinutes() + localOffset + pktOffset); // Adjust to PKT
   const day = String(d.getDate()).padStart(2, '0');
   const mon = String(d.getMonth() + 1).padStart(2, '0');
   const yr = d.getFullYear();
@@ -135,7 +136,7 @@ function saveProfiles(profiles) {
 window.onload = function () {
   history.pushState(null, null, location.href);
   const clerkName = localStorage.getItem("clerkName");
-  const currentScreen = document.querySelector(".screen.active")?.id || "settings";
+  const currentScreen = document.querySelector(".screen.active")?.id || (clerkName ? "dashboard" : "settings");
 
   if (clerkName) {
     showSavedProfile();
@@ -630,35 +631,36 @@ function performSearch() {
   }
 
   const cmsNo = document.getElementById("searchCms").value.trim().toLowerCase();
-  const title = document.getElementById("searchTitle").value.trim().toLowerCase();
-  const startDate = document.getElementById("searchStartDate").value;
-  const endDate = document.getElementById("searchEndDate").value;
+  const petitioner = document.getElementById("searchPetitioner").value.trim().toLowerCase();
+  const respondent = document.getElementById("searchRespondent").value.trim().toLowerCase();
+  const title = petitioner && respondent ? `${petitioner} vs ${respondent}` : (petitioner || respondent);
 
   const files = getFiles().filter(f => {
-    const delivery = new Date(f.deliveredDate);
-    const start = startDate ? new Date(startDate) : null;
-    const end = endDate ? new Date(endDate) : null;
     return (
       (!cmsNo || f.cmsNo.toLowerCase().includes(cmsNo)) &&
-      (!title || f.title.toLowerCase().includes(title)) &&
-      (!start || delivery >= start) &&
-      (!end || delivery <= end)
+      (!title || f.title.toLowerCase().includes(title))
     );
   });
 
   const tbody = document.querySelector("#searchResultsTable tbody");
   tbody.innerHTML = "";
-  files.forEach(f => {
+  const clerkName = localStorage.getItem("clerkName") || "";
+  files.forEach((f, i) => {
+    const profile = f.profileSnapshot || { name: f.deliveredTo, type: f.deliveredType, cellNo: "", chamberNo: "" };
     const tr = document.createElement("tr");
     tr.innerHTML = `
+      <td>${i + 1}</td>
       <td>${f.cmsNo}</td>
       <td>${f.title}</td>
       <td>${f.caseType}</td>
-      <td>${formatDate(f.deliveredDate)}</td>
-      <td>${formatDate(f.returnDate)}</td>
+      <td>${f.nature}</td>
       <td><a href="#" onclick="showProfileDetails('${f.deliveredTo}')">${f.deliveredTo}</a> (${f.deliveredType})</td>
+      <td>${formatDate(f.deliveredDate, true)}</td>
+      <td>${formatDate(f.returnDate, true)}</td>
+      <td>${calculateDuration(f.deliveredDate, f.returnDate)}</td>
       <td>${f.courtName || ''}</td>
-      <td><button onclick="showFileDetails('${f.cmsNo}')">Details</button></td>
+      <td>${f.clerkName || clerkName}</td>
+      <td>${profile.cellNo ? profile.cellNo : ''}${profile.chamberNo ? `, Chamber: ${profile.chamberNo}` : ''}</td>
     `;
     tbody.appendChild(tr);
   });
@@ -723,7 +725,7 @@ function showProfileDetails(name) {
   table.innerHTML = `
     <tr><th>Name</th><td>${profile.name}</td></tr>
     <tr><th>Type</th><td>${profile.type}</td></tr>
-    ${profile.cellNo ? `<tr><th>Cell</th><td><a href="tel:${profile.cellNo}">${profile.cellNo}</a></td></tr>` : ""}
+    ${profile.cellNo ? `<tr><th>Cell</th><td>${profile.cellNo}</td></tr>` : ""}
     ${profile.chamberNo ? `<tr><th>Chamber</th><td>${profile.chamberNo}</td></tr>` : ""}
     ${profile.advocateName ? `<tr><th>Advocate</th><td>${profile.advocateName}</td></tr>` : ""}
     ${profile.advocateCell ? `<tr><th>Advocate Cell</th><td>${profile.advocateCell}</td></tr>` : ""}
@@ -822,20 +824,19 @@ function showDashboardReport(type) {
         <td>-</td>
         <td>-</td>
         <td>-</td>
-        <td>${p.photo ? `<img src="${p.photo}" style="width:40px;height:40px;border-radius:50%;object-fit:cover;">` : '-'}</td>
         <td><a href="#" onclick="showProfileDetails('${p.name}')">${p.name}</a> (${p.type})</td>
         <td>${formatDate(p.deliveredDate, true)}</td>
         <td>-</td>
         <td>Overdue: ${p.overdueCount}</td>
         <td>-</td>
         <td>${clerkName}</td>
-        <td>${p.cellNo ? `<a href="tel:${p.cellNo}">${p.cellNo}</a>` : '-'}</td>
+        <td>${p.cellNo ? p.cellNo : '-'}</td>
       `;
       tbody.appendChild(tr);
     });
   } else {
     filtered.forEach((f, i) => {
-      const profile = f.profileSnapshot || { name: f.deliveredTo, type: f.deliveredType, photo: "", cellNo: "", chamberNo: "" };
+      const profile = f.profileSnapshot || { name: f.deliveredTo, type: f.deliveredType, cellNo: "", chamberNo: "" };
       const tr = document.createElement("tr");
       tr.innerHTML = `
         <td>${i + 1}</td>
@@ -843,25 +844,26 @@ function showDashboardReport(type) {
         <td>${f.title}</td>
         <td>${f.caseType}</td>
         <td>${f.nature}</td>
-        <td>${profile.photo ? `<img src="${profile.photo}" style="width:40px;height:40px;border-radius:50%;object-fit:cover;">` : '-'}</td>
         <td><a href="#" onclick="showProfileDetails('${f.deliveredTo}')">${f.deliveredTo}</a> (${f.deliveredType})</td>
         <td>${formatDate(f.deliveredDate, true)}</td>
         <td>${formatDate(f.returnDate, true)}</td>
         <td>${calculateDuration(f.deliveredDate, f.returnDate)}</td>
         <td>${f.courtName || ''}</td>
         <td>${f.clerkName || clerkName}</td>
-        <td>${profile.cellNo ? `<a href="tel:${profile.cellNo}">${profile.cellNo}</a>` : ''}${profile.chamberNo ? `, Chamber: ${profile.chamberNo}` : ''}</td>
+        <td>${profile.cellNo ? profile.cellNo : ''}${profile.chamberNo ? `, Chamber: ${profile.chamberNo}` : ''}</td>
       `;
       tbody.appendChild(tr);
     });
   }
 
   document.getElementById("reportTitle").innerText = title + ` (${filtered.length})`;
-  document.getElementById("dashboardReportPanel").style.display = "block";
-  document.getElementById("dashboardReportPanel").addEventListener("click", (e) => {
-    if (e.target === document.getElementById("dashboardReportPanel")) {
-      document.getElementById("dashboardReportPanel").style.display = "none";
+  const reportPanel = document.getElementById("dashboardReportPanel");
+  reportPanel.style.display = "block";
+  reportPanel.addEventListener("click", (e) => {
+    if (e.target === reportPanel) {
+      reportPanel.style.display = "none";
     }
+    e.stopPropagation(); // Prevent interference with sidebar
   }, { once: true });
 }
 
@@ -936,30 +938,57 @@ document.getElementById("profileForm").addEventListener("submit", function (e) {
     const isEdit = document.getElementById("profileForm").dataset.editIndex !== undefined;
     const editIndex = parseInt(document.getElementById("profileForm").dataset.editIndex);
 
+    if (!name) {
+      showToast("Profile name is required.");
+      return;
+    }
+
     const extra = {};
     document.querySelectorAll("#profileFields input").forEach(input => {
       extra[input.id] = input.value.trim();
     });
 
-    if (type === "munshi" && extra.cellNo && !validateMobile(extra.cellNo)) {
-      showToast("Invalid cell number format (e.g., 0300-1234567 or 03001234567).");
-      return;
-    }
-    if (type === "munshi" && extra.advocateCell && extra.advocateCell !== "" && !validateMobile(extra.advocateCell)) {
-      showToast("Invalid advocate cell number format (e.g., 0300-1234567 or 03001234567).");
-      return;
-    }
-    if (type === "advocate" && extra.cellNo && !validateMobile(extra.cellNo)) {
-      showToast("Invalid cell number format (e.g., 0300-1234567 or 03001234567).");
-      return;
-    }
-    if (type === "colleague" && extra.cellNo && !validateMobile(extra.cellNo)) {
-      showToast("Invalid cell number format (e.g., 0300-1234567 or 03001234567).");
-      return;
-    }
-    if (type === "other" && extra.cellNo && !validateMobile(extra.cellNo)) {
-      showToast("Invalid cell number format (e.g., 0300-1234567 or 03001234567).");
-      return;
+    // Validate required fields based on profile type
+    if (type === "munshi") {
+      if (!extra.cellNo || !extra.advocateName) {
+        showToast("Cell No and Advocate Name are required for munshi.");
+        return;
+      }
+      if (extra.cellNo && !validateMobile(extra.cellNo)) {
+        showToast("Invalid cell number format (e.g., 0300-1234567 or 03001234567).");
+        return;
+      }
+      if (extra.advocateCell && extra.advocateCell !== "" && !validateMobile(extra.advocateCell)) {
+        showToast("Invalid advocate cell number format (e.g., 0300-1234567 or 03001234567).");
+        return;
+      }
+    } else if (type === "advocate") {
+      if (!extra.cellNo || !extra.chamberNo) {
+        showToast("Cell No and Chamber No are required for advocate.");
+        return;
+      }
+      if (extra.cellNo && !validateMobile(extra.cellNo)) {
+        showToast("Invalid cell number format (e.g., 0300-1234567 or 03001234567).");
+        return;
+      }
+    } else if (type === "colleague") {
+      if (!extra.designation || !extra.cellNo) {
+        showToast("Designation and Cell No are required for colleague.");
+        return;
+      }
+      if (extra.cellNo && !validateMobile(extra.cellNo)) {
+        showToast("Invalid cell number format (e.g., 0300-1234567 or 03001234567).");
+        return;
+      }
+    } else if (type === "other") {
+      if (!extra.cellNo) {
+        showToast("Cell No is required for other profile.");
+        return;
+      }
+      if (extra.cellNo && !validateMobile(extra.cellNo)) {
+        showToast("Invalid cell number format (e.g., 0300-1234567 or 03001234567).");
+        return;
+      }
     }
 
     const profile = { type, name, photo: img, ...extra };
@@ -1022,11 +1051,12 @@ function renderProfiles() {
       <td>${p.photo ? `<img src="${p.photo}" style="width:40px;height:40px;border-radius:50%;object-fit:cover;">` : '-'}</td>
       <td>${p.name}</td>
       <td>${p.type}</td>
-      <td>${p.cellNo ? `<a href="tel:${p.cellNo}">${p.cellNo}</a>` : '-'}</td>
+      <td>${p.cellNo ? p.cellNo : '-'}</td>
       <td>${p.chamberNo || '-'}</td>
       <td>
         <button onclick="editProfile(${i})" style="background:#0066cc;color:white;border:none;border-radius:4px;padding:4px 8px;">Edit</button>
         <button onclick="deleteProfile(${i})" style="background:red;color:white;border:none;border-radius:4px;padding:4px 8px;">Delete</button>
+        <button onclick="showProfileCaseLog('${p.name}')" style="background:#28a745;color:white;border:none;border-radius:4px;padding:4px 8px;">Log</button>
       </td>
     `;
     tbody.appendChild(tr);
@@ -1064,6 +1094,44 @@ function deleteProfile(index) {
     renderProfiles();
     showToast("Profile deleted successfully.");
   });
+}
+
+function showProfileCaseLog(name) {
+  const files = getFiles().filter(f => f.deliveredTo === name);
+  const title = `Case Log for ${name} (${files.length})`;
+
+  const tbody = document.querySelector("#dashboardReportTable tbody");
+  tbody.innerHTML = "";
+  const clerkName = localStorage.getItem("clerkName") || "";
+  files.forEach((f, i) => {
+    const profile = f.profileSnapshot || { name: f.deliveredTo, type: f.deliveredType, cellNo: "", chamberNo: "" };
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${i + 1}</td>
+      <td>${f.cmsNo}</td>
+      <td>${f.title}</td>
+      <td>${f.caseType}</td>
+      <td>${f.nature}</td>
+      <td><a href="#" onclick="showProfileDetails('${f.deliveredTo}')">${f.deliveredTo}</a> (${f.deliveredType})</td>
+      <td>${formatDate(f.deliveredDate, true)}</td>
+      <td>${formatDate(f.returnDate, true)}</td>
+      <td>${calculateDuration(f.deliveredDate, f.returnDate)}</td>
+      <td>${f.courtName || ''}</td>
+      <td>${f.clerkName || clerkName}</td>
+      <td>${profile.cellNo ? profile.cellNo : ''}${profile.chamberNo ? `, Chamber: ${profile.chamberNo}` : ''}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  document.getElementById("reportTitle").innerText = title;
+  const reportPanel = document.getElementById("dashboardReportPanel");
+  reportPanel.style.display = "block";
+  reportPanel.addEventListener("click", (e) => {
+    if (e.target === reportPanel) {
+      reportPanel.style.display = "none";
+    }
+    e.stopPropagation();
+  }, { once: true });
 }
 
 function exportProfiles() {
