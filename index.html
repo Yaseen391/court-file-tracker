@@ -3,302 +3,295 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="theme-color" content="#1a3c34">
-  <meta name="description" content="Court File Tracker PWA">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>Court File Tracker</title>
-  <link rel="manifest" href="manifest.json">
-  <link rel="icon" href="icon.png">
   <link rel="stylesheet" href="style.css">
-  <script src="app.js" defer></script>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#003366">
+  <link rel="icon" href="favicon.ico">
 </head>
 <body>
-  <div class="container">
-    <div id="sidebar" class="sidebar">
-      <button id="menuBtn" class="menu-btn">☰</button>
-      <div class="sidebar-header">
-        <img src="icon.png" alt="App Icon" class="app-icon">
-        <h2>Court File Tracker</h2>
-      </div>
-      <button onclick="navigate('dashboard')">Dashboard</button>
-      <button onclick="navigate('new')">New File Entry</button>
-      <button onclick="navigate('profiles')">Profiles</button>
-      <button onclick="navigate('return')">Return File</button>
-      <button onclick="navigate('search')">Search</button>
-      <button onclick="navigate('settings')">User Profile</button>
+  <!-- Toast Notification -->
+  <div id="toast"></div>
+
+  <!-- Header -->
+  <header>
+    <button id="menuBtn">☰</button>
+    <h1>Court File Tracker</h1>
+    <div class="window-controls">
+      <button id="minimizeBtn">-</button>
+      <button id="resizeBtn">⬜</button>
+      <button id="closeBtn">x</button>
     </div>
+  </header>
 
-    <div class="main-content">
-      <div id="dashboard" class="screen active">
-        <div class="header">
-          <h1>Dashboard</h1>
-          <div class="window-controls">
-            <button id="minimizeBtn">-</button>
-            <button id="resizeBtn">□</button>
-            <button id="closeBtn">×</button>
-          </div>
-        </div>
-        <div class="dashboard-grid">
-          <div id="cardDeliveries" class="card">Deliveries Today: 0</div>
-          <div id="cardReturns" class="card">Returns Today: 0</div>
-          <div id="cardPending" class="card">Files Not Returned: 0</div>
-          <div id="cardTomorrow" class="card">Hearings Tomorrow: 0</div>
-          <div id="cardOverdue" class="card">Files Pending >10 Days: 0</div>
-          <div id="cardAlertProfilers" class="card">Alert Profilers: 0</div>
-        </div>
-        <div id="dashboardReportPanel" class="modal">
-          <div class="modal-content report-panel">
-            <h2 id="reportTitle">Report</h2>
-            <table id="dashboardReportTable">
-              <thead>
-                <tr>
-                  <th>S.No</th>
-                  <th>CMS No</th>
-                  <th>Title</th>
-                  <th>Type</th>
-                  <th>Nature</th>
-                  <th>Delivered To</th>
-                  <th>Delivery</th>
-                  <th>Return</th>
-                  <th>Time Span</th>
-                  <th>Court</th>
-                  <th>Contact</th>
-                </tr>
-              </thead>
-              <tbody></tbody>
-            </table>
-            <div class="modal-actions">
-              <button onclick="exportDashboardReport()">Export</button>
-              <button onclick="printDashboardReport()">Print</button>
-            </div>
-          </div>
-        </div>
+  <!-- Sidebar -->
+  <nav id="sidebar">
+    <button onclick="navigate('dashboard')">Dashboard</button>
+    <button onclick="navigate('new')">New File Entry</button>
+    <button onclick="navigate('return')">Return File</button>
+    <button onclick="navigate('profiles')">Profiles</button>
+    <button onclick="navigate('search')">Search</button>
+    <button onclick="navigate('settings')">Settings</button>
+  </nav>
+
+  <!-- Screens -->
+  <main>
+    <!-- Dashboard -->
+    <div id="dashboard" class="screen">
+      <h2>Dashboard</h2>
+      <div class="card-container">
+        <div id="cardDeliveries" class="card"></div>
+        <div id="cardReturns" class="card"></div>
+        <div id="cardPending" class="card"></div>
+        <div id="cardTomorrow" class="card"></div>
+        <div id="cardOverdue" class="card"></div>
+        <div id="cardAlertProfilers" class="card"></div>
       </div>
-
-      <div id="new" class="screen">
-        <div class="header">
-          <h1>New File Entry</h1>
-        </div>
-        <form id="fileForm">
-          <label>CMS No: <span class="required">*</span><input type="text" id="cmsNo" required oninput="autoFillCMS()"></label>
-          <label>Petitioner: <span class="required">*</span><input type="text" id="petitioner" required></label>
-          <label>Respondent: <span class="required">*</span><input type="text" id="respondent" required></label>
-          <label>Case Type: <span class="required">*</span>
-            <select id="caseType" onchange="toggleCriminalFields()" required>
-              <option value="civil">Civil</option>
-              <option value="criminal">Criminal</option>
-            </select>
-          </label>
-          <label>Nature of Case: <span class="required">*</span><input type="text" id="nature" required></label>
-          <div id="criminalFields" style="display:none;">
-            <label>FIR No:<input type="text" id="firNo"></label>
-            <label>FIR Year:<input type="text" id="firYear"></label>
-            <label>FIR U/S:<input type="text" id="firUs"></label>
-            <label>Police Station:<input type="text" id="policeStation"></label>
-          </div>
-          <label>Delivered To: <span class="required">*</span><input type="text" id="deliveredTo" oninput="suggestProfiles(this.value)" required></label>
-          <ul id="suggestions" class="suggestions"></ul>
-          <label>Type: <span class="required">*</span>
-            <select id="deliveredType" required>
-              <option value="munshi">Munshi</option>
-              <option value="advocate">Advocate</option>
-              <option value="colleague">Colleague</option>
-              <option value="other">Other</option>
-            </select>
-          </label>
-          <label>Date Type: <span class="required">*</span>
-            <select id="dateType" required>
-              <option value="hearing">Hearing</option>
-              <option value="decision">Decision</option>
-            </select>
-          </label>
-          <label>Date: <span class="required">*</span><input type="date" id="date" required></label>
-          <label><input type="checkbox" id="copyAgency" onchange="toggleCopyAgency()"> Sent to Copy Agency</label>
-          <div id="copyAgencyFields" style="display:none;">
-            <label>Swal Form No: <span class="required">*</span><input type="text" id="swalFormNo"></label>
-            <label>Swal Date: <span class="required">*</span><input type="date" id="swalDate"></label>
-          </div>
-          <button type="submit">Save</button>
-        </form>
-      </div>
-
-      <div id="profiles" class="screen">
-        <div class="header">
-          <h1>Profiles</h1>
-        </div>
-        <form id="profileForm">
-          <label>Type: <span class="required">*</span>
-            <select id="profileType" onchange="toggleProfileFields()" required>
-              <option value="munshi">Munshi</option>
-              <option value="advocate">Advocate</option>
-              <option value="colleague">Colleague</option>
-              <option value="other">Other</option>
-            </select>
-          </label>
-          <label>Name: <span class="required">*</span><input type="text" id="profileName" required></label>
-          <label>Photo:<input type="file" id="profilePhoto" accept="image/*"></label>
-          <img id="photoPreview" style="display:none; width:100px; height:100px; border-radius:50%;">
-          <div id="profileFields"></div>
-          <button type="submit">Save Profile</button>
-        </form>
-        <div class="profile-controls">
-          <label>Filter Type:
-            <select id="profileFilterType" onchange="renderProfiles()">
-              <option value="">All</option>
-              <option value="munshi">Munshi</option>
-              <option value="advocate">Advocate</option>
-              <option value="colleague">Colleague</option>
-              <option value="other">Other</option>
-            </select>
-          </label>
-          <label>Search: <input type="text" id="profileSearch" oninput="renderProfiles()"></label>
-          <label>Import: <input type="file" id="profileImport" accept=".json" onchange="importProfiles()"></label>
-          <button onclick="exportProfiles()">Export</button>
-        </div>
-        <table id="profileList">
-          <thead>
-            <tr>
-              <th>Photo</th>
-              <th>Name</th>
-              <th>Type</th>
-              <th>Contact</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-      </div>
-
-      <div id="return" class="screen">
-        <div class="header">
-          <h1>Return File</h1>
-        </div>
-        <form id="returnForm" onsubmit="event.preventDefault(); filterPendingFiles()">
-          <label>CMS No: <input type="text" id="returnCms"></label>
-          <label>Title: <input type="text" id="returnTitle"></label>
-          <button type="submit">Search</button>
-        </form>
-        <table id="pendingFilesTable">
-          <thead>
-            <tr>
-              <th>CMS No</th>
-              <th>Title</th>
-              <th>Type</th>
-              <th>Delivered To</th>
-              <th>Action</th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-      </div>
-
-      <div id="search" class="screen">
-        <div class="header">
-          <h1>Search</h1>
-        </div>
-        <form id="searchForm" onsubmit="event.preventDefault(); performSearch()">
-          <label>CMS No: <input type="text" id="searchCms"></label>
-          <label>Title: <input type="text" id="searchTitle"></label>
-          <label>Start Date: <input type="date" id="searchStartDate"></label>
-          <label>End Date: <input type="date" id="searchEndDate"></label>
-          <button type="submit">Search</button>
-        </form>
-        <div id="searchResults">
-          <table id="searchResultsTable">
+      <div id="dashboardReportPanel">
+        <div class="report-content">
+          <h3 id="reportTitle"></h3>
+          <table id="dashboardReportTable">
             <thead>
               <tr>
+                <th>Sr</th>
                 <th>CMS No</th>
                 <th>Title</th>
                 <th>Type</th>
-                <th>Delivery</th>
-                <th>Return</th>
+                <th>Nature</th>
                 <th>Delivered To</th>
-                <th>Clerk</th>
-                <th>Judge</th>
-                <th>Details</th>
+                <th>Delivered</th>
+                <th>Returned</th>
+                <th>Duration</th>
+                <th>Court</th>
+                <th>Contact</th>
               </tr>
             </thead>
             <tbody></tbody>
           </table>
+          <div class="report-actions">
+            <button onclick="exportDashboardReport()">Export CSV</button>
+            <button onclick="printDashboardReport()">Print</button>
+          </div>
         </div>
-        <div class="report-actions">
-          <button onclick="exportSearchReport()">Export Report</button>
-          <button onclick="printSearchReport()">Print Report</button>
-        </div>
-      </div>
-
-      <div id="settings" class="screen">
-        <div class="header">
-          <h1>User Profile</h1>
-        </div>
-        <p id="setupMessage" style="display:none;">Please set up your profile to start using the app.</p>
-        <div id="savedProfile" style="display:none;">
-          <table id="savedProfileTable">
-            <tr>
-              <th>Photo</th>
-              <td><img id="savedUserPhoto" style="width:100px; height:100px; border-radius:50%;"></td>
-            </tr>
-            <tr><th>Full Name</th><td id="savedClerkName"></td></tr>
-            <tr><th>Designation</th><td id="savedJudgeName"></td></tr>
-            <tr><th>Court Name</th><td id="savedCourtName"></td></tr>
-            <tr><th>Mobile</th><td><a id="savedMobileLink" href=""></a></td></tr>
-          </table>
-          <button onclick="editUserProfile()">Edit Profile</button>
-          <button id="changePinBtn" style="display:none;" onclick="showForgotPin()">Change PIN</button>
-        </div>
-        <form id="settingsForm">
-          <label>Full Name: <span class="required">*</span><input type="text" id="clerkName" required></label>
-          <label>Designation: <span class="required">*</span><input type="text" id="judgeName" required></label>
-          <label>Court Name: <span class="required">*</span><input type="text" id="courtName" required></label>
-          <label>Mobile Number: <span class="required">*</span><input type="text" id="mobile" required></label>
-          <label>CNIC: <span class="required">*</span><input type="text" id="cnic" required title="CNIC is required to reset your PIN if forgotten. This data is not stored with us."></label>
-          <label>PIN (4 digits): <span class="required">*</span><input type="password" id="pin" required></label>
-          <label>Photo:<input type="file" id="userPhoto" accept="image/*"></label>
-          <img id="userPhotoPreview" style="display:none; width:100px; height:100px; border-radius:50%;">
-          <button type="submit" id="saveProfileBtn" disabled>Save</button>
-        </form>
       </div>
     </div>
-  </div>
 
+    <!-- New File Entry -->
+    <div id="new" class="screen">
+      <h2>New File Entry</h2>
+      <form id="fileForm">
+        <label>CMS No: <span class="required">*</span><input type="text" id="cmsNo" required oninput="autoFillCMS()"></label>
+        <label>Case Type: <span class="required">*</span>
+          <select id="caseType" required onchange="toggleCriminalFields()">
+            <option value="">Select</option>
+            <option value="civil">Civil</option>
+            <option value="criminal">Criminal</option>
+          </select>
+        </label>
+        <label>Title - Petitioner: <span class="required">*</span><input type="text" id="petitioner" required></label>
+        <label>Title - Respondent: <span class="required">*</span><input type="text" id="respondent" required></label>
+        <label>Nature of Case: <input type="text" id="nature"></label>
+        <div id="criminalFields" style="display: none;">
+          <label>FIR No: <input type="text" id="firNo"></label>
+          <label>FIR Year: <input type="number" id="firYear"></label>
+          <label>FIR U/S: <input type="text" id="firUs"></label>
+          <label>Police Station: <input type="text" id="policeStation"></label>
+        </div>
+        <label>Delivered To: <span class="required">*</span><input type="text" id="deliveredTo" required oninput="suggestProfiles(this.value)"></label>
+        <ul id="suggestions"></ul>
+        <label>Delivered Type: <span class="required">*</span>
+          <select id="deliveredType" required>
+            <option value="munshi">Munshi</option>
+            <option value="advocate">Advocate</option>
+            <option value="colleague">Colleague</option>
+            <option value="other">Other</option>
+          </select>
+        </label>
+        <label>Date Type:
+          <select id="dateType">
+            <option value="hearing">Hearing</option>
+            <option value="decision">Decision</option>
+          </select>
+        </label>
+        <label>Date: <input type="date" id="date"></label>
+        <label><input type="checkbox" id="copyAgency" onchange="toggleCopyAgency()"> Send to Copy Agency</label>
+        <div id="copyAgencyFields" style="display: none;">
+          <label>Swal Form No: <span class="required">*</span><input type="text" id="swalFormNo"></label>
+          <label>Swal Date: <span class="required">*</span><input type="date" id="swalDate"></label>
+        </div>
+        <button type="submit">Save</button>
+      </form>
+    </div>
+
+    <!-- Return File -->
+    <div id="return" class="screen">
+      <h2>Return File</h2>
+      <form id="returnForm" oninput="filterPendingFiles()">
+        <label>CMS No: <input type="text" id="returnCms"></label>
+        <label>Title: <input type="text" id="returnTitle"></label>
+      </form>
+      <table id="pendingFilesTable">
+        <thead>
+          <tr>
+            <th>CMS No</th>
+            <th>Title</th>
+            <th>Type</th>
+            <th>Delivered To</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+
+    <!-- Profiles -->
+    <div id="profiles" class="screen">
+      <h2>Profiles</h2>
+      <form id="profileForm">
+        <label>Name: <span class="required">*</span><input type="text" id="profileName" required></label>
+        <label>Type: <span class="required">*</span>
+          <select id="profileType" required onchange="toggleProfileFields()">
+            <option value="munshi">Munshi</option>
+            <option value="advocate">Advocate</option>
+            <option value="colleague">Colleague</option>
+            <option value="other">Other</option>
+          </select>
+        </label>
+        <label>Photo: <input type="file" id="profilePhoto" accept="image/*"></label>
+        <img id="photoPreview" style="display: none; max-width: 100px;">
+        <div id="profileFields"></div>
+        <button type="submit">Save</button>
+      </form>
+      <div class="profile-controls">
+        <label>Filter Type:
+          <select id="profileFilterType" onchange="renderProfiles()">
+            <option value="">All</option>
+            <option value="munshi">Munshi</option>
+            <option value="advocate">Advocate</option>
+            <option value="colleague">Colleague</option>
+            <option value="other">Other</option>
+          </select>
+        </label>
+        <label>Search: <input type="text" id="profileSearch" oninput="renderProfiles()"></label>
+        <label>Import: <input type="file" id="profileImport" accept=".json" onchange="importProfiles()"></label>
+        <button onclick="exportProfiles()">Export</button>
+      </div>
+      <table id="profileList">
+        <thead>
+          <tr>
+            <th>Photo</th>
+            <th>Name</th>
+            <th>Type</th>
+            <th>Cell No</th>
+            <th>Other</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+
+    <!-- Search -->
+    <div id="search" class="screen">
+      <h2>Search</h2>
+      <form id="searchForm" oninput="performSearch()">
+        <label>CMS No: <input type="text" id="searchCms"></label>
+        <label>Title: <input type="text" id="searchTitle"></label>
+        <label>Start Date: <input type="date" id="searchStartDate"></label>
+        <label>End Date: <input type="date" id="searchEndDate"></label>
+      </form>
+      <div class="report-actions">
+        <button onclick="exportSearchReport()">Export CSV</button>
+        <button onclick="printSearchReport()">Print</button>
+      </div>
+      <table id="searchResultsTable">
+        <thead>
+          <tr>
+            <th>CMS No</th>
+            <th>Title</th>
+            <th>Type</th>
+            <th>Delivered</th>
+            <th>Returned</th>
+            <th>Delivered To</th>
+            <th>Clerk</th>
+            <th>Judge</th>
+            <th>Details</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <div id="searchResults"></div>
+    </div>
+
+    <!-- Settings -->
+    <div id="settings" class="screen active">
+      <h2>User Profile</h2>
+      <p id="setupMessage">Please setup your profile to continue.</p>
+      <form id="settingsForm">
+        <label>Full Name: <span class="required">*</span><input type="text" id="clerkName" required></label>
+        <label>Designation: <span class="required">*</span><input type="text" id="judgeName" required></label>
+        <label>Court Name: <span class="required">*</span><input type="text" id="courtName" required></label>
+        <label>Mobile Number: <span class="required">*</span><input type="text" id="mobile" required></label>
+        <label>CNIC: <span class="required">*</span><input type="text" id="cnic" required>
+          <span class="tooltip">?
+            <span class="tooltiptext">CNIC is used to reset your PIN and is not stored externally.</span>
+          </span>
+        </label>
+        <label>PIN (4 digits): <span class="required">*</span><input type="password" id="pin" required></label>
+        <label>Photo: <input type="file" id="userPhoto" accept="image/*"></label>
+        <img id="userPhotoPreview" style="display: none; max-width: 100px;">
+        <div class="disclaimer">
+          <h3>Disclaimer and Privacy Policy</h3>
+          <p><strong>Disclaimer:</strong> This is not an official judiciary tool. It is designed for the convenience of clerks and judiciary staff, an honest effort to digitize processes. Users are responsible for their use of this tool.</p>
+          <p><strong>Privacy Policy:</strong> We do not store any data. Your data will be saved to your Google Drive in the next phase using OAuth API.</p>
+          <label><input type="checkbox" id="agreeTerms"> I agree to the terms and privacy policy.</label>
+        </div>
+        <button type="submit" id="saveProfileBtn" disabled>Save</button>
+      </form>
+      <div id="savedProfile" style="display: none;">
+        <table class="profile-table">
+          <tr><th>Photo</th><td><img id="savedUserPhoto" class="rounded-photo" style="display: none;"></td></tr>
+          <tr><th>Full Name</th><td id="savedClerkName"></td></tr>
+          <tr><th>Designation</th><td id="savedJudgeName"></td></tr>
+          <tr><th>Court Name</th><td id="savedCourtName"></td></tr>
+          <tr><th>Mobile</th><td><a id="savedMobile" href=""></a></td></tr>
+        </table>
+        <button onclick="editUserProfile()">Edit Profile</button>
+        <button id="changePinBtn" style="display: none;" onclick="showForgotPin()">Change PIN</button>
+      </div>
+    </div>
+  </main>
+
+  <!-- PIN Modal -->
   <div id="pinModal" class="modal">
     <div class="modal-content">
-      <h2>Enter PIN</h2>
-      <input type="password" id="pinInput" placeholder="Enter 4-digit PIN">
+      <h3>Enter PIN</h3>
+      <input type="password" id="pinInput">
       <button onclick="submitPin()">Submit</button>
     </div>
   </div>
 
+  <!-- Forgot PIN Modal -->
   <div id="forgotPinModal" class="modal">
     <div class="modal-content">
-      <h2>Reset PIN</h2>
-      <label>CNIC: <span class="required">*</span><input type="text" id="resetCnic" required></label>
-      <label>New PIN (4 digits): <span class="required">*</span><input type="password" id="resetPin" required></label>
-      <button onclick="resetPin()">Reset PIN</button>
+      <h3>Reset PIN</h3>
+      <label>CNIC: <input type="text" id="resetCnic"></label>
+      <label>New PIN (4 digits): <input type="password" id="resetPin"></label>
+      <button onclick="resetPin()">Submit</button>
       <button onclick="hideForgotPin()">Cancel</button>
     </div>
   </div>
 
-  <div id="disclaimerModal" class="modal">
-    <div class="modal-content">
-      <h2>Disclaimer & Privacy Policy</h2>
-      <p><strong>Disclaimer:</strong> This is not an official tool of the judiciary. It is designed for the convenience of clerks and judiciary staff as an honest effort to digitize judiciary processes. Users are responsible for their own use of this tool.</p>
-      <p><strong>Privacy Policy:</strong> We do not store any data. Your data will be saved locally on your device. In the next phase, we will provide an option to back up your data to your Google Drive using OAuth API.</p>
-      <label><input type="checkbox" id="disclaimerAgree"> I agree to the terms and privacy policy.</label>
-      <button onclick="handleDisclaimerAgree()">Proceed</button>
-    </div>
-  </div>
-
+  <!-- Profile Modal -->
   <div id="profileModal" class="modal">
     <div class="modal-content">
-      <h2 id="profileModalTitle"></h2>
-      <img id="profileModalPhoto" style="display:none; width:100px; height:100px; border-radius:50%;">
+      <h3 id="profileModalTitle"></h3>
+      <img id="profileModalPhoto" class="rounded-photo" style="display: none; max-width: 100px;">
       <table id="profileModalTable"></table>
       <button onclick="closeProfileModal()">Close</button>
     </div>
   </div>
 
-  <div id="toast" class="toast"></div>
+  <script src="app.js"></script>
 </body>
 </html>
