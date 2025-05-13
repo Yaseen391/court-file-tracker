@@ -1196,3 +1196,644 @@ window.addEventListener("popstate", () => {
     history.pushState(null, null, location.href);
   }
 });
+// ----- Utility Functions -----
+function formatDate(dateStr, includeTime = false) {
+  if (!dateStr) return includeTime ? "" : "Pending";
+  const d = new Date(dateStr);
+  // Adjust to Pakistan Standard Time (UTC+5)
+  const offset = 5 * 60; // PKT is UTC+5
+  d.setMinutes(d.getMinutes() + offset);
+  const day = String(d.getDate()).padStart(2, '0');
+  const mon = String(d.getMonth() + 1).padStart(2, '0');
+  const yr = d.getFullYear();
+  if (!includeTime) return `${day}/${mon}/${yr}`;
+  const hours = d.getHours();
+  const ampm = hours >= 12 ? 'PM' : 'AM';
+  const hr12 = hours % 12 || 12;
+  const min = String(d.getMinutes()).padStart(2, '0');
+  const sec = String(d.getSeconds()).padStart(2, '0');
+  return `${day}/${mon}/${yr}, ${hr12}:${min}:${sec} ${ampm} PKT`;
+}
+
+function calculateDuration(startDate, endDate) {
+  if (!startDate) return "0:00:00";
+  const start = new Date(startDate);
+  const end = endDate ? new Date(endDate) : new Date();
+  const diffMs = end - start;
+  if (diffMs < 0) return "0:00:00";
+
+  const totalSeconds = Math.floor(diffMs / 1000);
+  const days = Math.floor(totalSeconds / (24 * 3600));
+  const hours = Math.floor((totalSeconds % (24 * 3600)) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  if (days > 0) {
+    return `${days}d ${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+  }
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+}
+
+function hashPin(pin) {
+  let hash = 0;
+  for (let i = 0; i < pin.length; i++) {
+    hash = ((hash << 5) - hash) + pin.charCodeAt(i);
+    hash |= 0;
+  }
+  return hash.toString();
+}
+
+// Updated formatMobile function
+function formatMobile(input) {
+  // Store current cursor position
+  const cursorPos = input.selectionStart;
+  const oldValue = input.value;
+  const oldLength = oldValue.length;
+
+  // Clean input: keep only digits
+  let digits = input.value.replace(/[^\d]/g, '');
+  
+  // Limit to 11 digits
+  if (digits.length > 11) {
+    digits = digits.slice(0, 11);
+  }
+
+  // Ensure starts with 03
+  if (digits.length > 0 && !digits.startsWith('03')) {
+    digits = '03' + digits.slice(digits.length > 2 ? 2 : digits.length);
+  }
+
+  // Format: insert dash after 4 digits
+  let formatted = '';
+  if (digits.length > 0) {
+    formatted = digits.slice(0, 4);
+    if (digits.length > 4) {
+      formatted += '-' + digits.slice(4, 11);
+    }
+  }
+
+  // Update input value
+  input.value = formatted;
+
+  // Calculate new cursor position
+  const newLength = formatted.length;
+  let newCursorPos = cursorPos;
+
+  // Adjust cursor for added/removed characters (e.g., dash)
+  if (cursorPos > 4 && oldValue[cursorPos - 1] !== '-') {
+    if (newLength > oldLength) {
+      newCursorPos++; // Move right if dash was added
+    } else if (newLength < oldLength && oldValue[cursorPos - 1] === '-') {
+      newCursorPos--; // Move left if dash was removed
+    }
+  }
+
+  // Ensure cursor stays within bounds
+  newCursorPos = Math.min(newCursorPos, formatted.length);
+  input.setSelectionRange(newCursorPos, newCursorPos);
+}
+
+// Updated validateMobile function
+function validateMobile(value) {
+  return /^03\d{2}-\d{7}$/.test(value);
+}
+
+function formatCnic(input) {
+  let value = input.value.replace(/[^\d]/g, '');
+  if (value.length > 13) value = value.slice(0, 13);
+  if (value.length > 5) {
+    value = `${value.slice(0, 5)}-${value.slice(5, 12)}-${value.slice(12)}`;
+  } else if (value.length > 0) {
+    value = value;
+  }
+  input.value = value;
+}
+
+function showToast(message) {
+  const toast = document.getElementById("toast");
+  toast.innerText = message;
+  toast.style.display = "block";
+  setTimeout(() => { toast.style.display = "none"; }, 3000);
+}
+
+function showDisclaimerModal() {
+  document.getElementById("disclaimerModal").style.display = "block";
+}
+
+// ----- Navigation -----
+function navigate(screenId) {
+  document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
+  const screen = document.getElementById(screenId);
+  if (!screen) return;
+  screen.classList.add("active");
+
+  const sidebar = document.getElementById("sidebar");
+  if (window.innerWidth <= 768) {
+    sidebar.classList.remove("active");
+  }
+
+  if (screenId === "dashboard") updateDashboard();
+  if (screenId === "profiles") renderProfiles();
+  if (screenId === "return") filterPendingFiles();
+  if (screenId === "search") setTimeout(performSearch, 0); // Delay to ensure DOM is ready
+}
+
+// ----- Sidebar Toggle -----
+function toggleSidebar() {
+  const sidebar = document.getElementById("sidebar");
+  sidebar.classList.toggle("active");
+}
+
+// ----- Local Storage -----
+function getFiles() {
+  return JSON.parse(localStorage.getItem("courtFiles") || "[]");
+}
+
+function saveFiles(files) {
+  localStorage.setItem("courtFiles", JSON.stringify(files));
+}
+
+function getProfiles() {
+  return JSON.parse(localStorage.getItem("profiles") || "[]");
+}
+
+function saveProfiles(profiles) {
+  try {
+    localStorage.setItem("profiles", JSON.stringify(profiles));
+  } catch (e) {
+    showToast("Failed to save profile. Storage limit reached.");
+  }
+}
+
+// ----- Initial Setup -----
+window.onload = function () {
+  history.pushState(null, null, location.href);
+  const clerkName = localStorage.getItem("clerkName");
+  const currentScreen = document.querySelector(".screen.active")?.id || "settings";
+
+  if (clerkName) {
+    showSavedProfile();
+    navigate(currentScreen); // Stay on current page
+  } else {
+    navigate("settings");
+    document.getElementById("setupMessage").style.display = "block";
+    document.querySelectorAll(".sidebar button").forEach(btn => btn.disabled = true);
+  }
+
+  // Initialize input masks for mobile and CNIC
+  const mobileInput = document.getElementById("mobile");
+  mobileInput.removeEventListener("input", formatMobile); // Prevent duplicate listeners
+  mobileInput.addEventListener("input", () => formatMobile(mobileInput));
+
+  const cnicInput = document.getElementById("cnic");
+  cnicInput.removeEventListener("input", formatCnic);
+  cnicInput.addEventListener("input", () => formatCnic(cnicInput));
+
+  const resetCnicInput = document.getElementById("resetCnic");
+  resetCnicInput.removeEventListener("input", formatCnic);
+  resetCnicInput.addEventListener("input", () => formatCnic(resetCnicInput));
+
+  // Initialize save button state
+  document.getElementById("saveProfileBtn").disabled = !document.getElementById("agreeTerms").checked;
+};
+
+// ----- Window Controls -----
+document.getElementById("minimizeBtn").addEventListener("click", () => {
+  alert("Minimize not supported in PWA. Simulating by reloading.");
+  window.location.reload();
+});
+
+document.getElementById("resizeBtn").addEventListener("click", () => {
+  if (document.fullscreenElement) {
+    document.exitFullscreen();
+  } else {
+    document.documentElement.requestFullscreen();
+  }
+});
+
+document.getElementById("closeBtn").addEventListener("click", () => {
+  window.location.reload();
+});
+
+// ----- Settings -----
+function showSavedProfile() {
+  const clerkName = localStorage.getItem("clerkName");
+  const judgeName = localStorage.getItem("judgeName");
+  const courtName = localStorage.getItem("courtName");
+  const mobile = localStorage.getItem("mobile");
+  const userPhoto = localStorage.getItem("userPhoto");
+
+  document.getElementById("savedClerkName").innerText = clerkName || "";
+  document.getElementById("savedJudgeName").innerText = judgeName || "";
+  document.getElementById("savedCourtName").innerText = courtName || "";
+  document.getElementById("savedMobile").innerText = mobile || "";
+  document.getElementById("savedMobile").href = mobile ? `tel:${mobile}` : "";
+  document.getElementById("savedUserPhoto").src = userPhoto || "";
+  document.getElementById("savedUserPhoto").style.display = userPhoto ? "block" : "none";
+
+  document.getElementById("savedProfile").style.display = "block";
+  document.getElementById("settingsForm").style.display = "none";
+  document.getElementById("setupMessage").style.display = "none";
+  document.getElementById("changePinBtn").style.display = "inline-block";
+  document.querySelectorAll(".sidebar button").forEach(btn => btn.disabled = false);
+}
+
+function editUserProfile() {
+  document.getElementById("savedProfile").style.display = "none";
+  document.getElementById("settingsForm").style.display = "block";
+  document.getElementById("clerkName").value = localStorage.getItem("clerkName") || "";
+  document.getElementById("judgeName").value = localStorage.getItem("judgeName") || "";
+  document.getElementById("courtName").value = localStorage.getItem("courtName") || "";
+  document.getElementById("mobile").value = localStorage.getItem("mobile") || "";
+  document.getElementById("cnic").value = localStorage.getItem("cnic") || "";
+  document.getElementById("userPhotoPreview").src = localStorage.getItem("userPhoto") || "";
+  document.getElementById("userPhotoPreview").style.display = localStorage.getItem("userPhoto") ? "block" : "none";
+  document.getElementById("agreeTerms").checked = false;
+  document.getElementById("saveProfileBtn").disabled = true;
+}
+
+function toggleSaveButton() {
+  const agree = document.getElementById("agreeTerms").checked;
+  document.getElementById("saveProfileBtn").disabled = !agree;
+}
+
+document.getElementById("settingsForm").addEventListener("submit", function (e) {
+  e.preventDefault();
+  if (!document.getElementById("agreeTerms").checked) {
+    showDisclaimerModal();
+    return;
+  }
+
+  const clerkName = document.getElementById("clerkName").value.trim();
+  const judgeName = document.getElementById("judgeName").value.trim();
+  const courtName = document.getElementById("courtName").value.trim();
+  const mobile = document.getElementById("mobile").value.trim();
+  const cnic = document.getElementById("cnic").value.trim();
+  const pin = document.getElementById("pin").value;
+  const userPhoto = document.getElementById("userPhotoPreview").getAttribute("data-img") || "";
+
+  if (!clerkName || !judgeName || !courtName || !mobile || !cnic || !pin) {
+    showToast("All required fields must be filled.");
+    return;
+  }
+
+  if (pin.length !== 4) {
+    showToast("PIN must be 4 digits.");
+    return;
+  }
+
+  if (!/^\d{5}-\d{7}-\d$/.test(cnic)) {
+    showToast("Invalid CNIC format.");
+    return;
+  }
+
+  if (!validateMobile(mobile)) {
+    showToast("Invalid mobile number format (e.g., 0300-1234567).");
+    return;
+  }
+
+  const isInitialSave = !localStorage.getItem("pinHash");
+
+  const saveProfile = () => {
+    localStorage.setItem("clerkName", clerkName);
+    localStorage.setItem("judgeName", judgeName);
+    localStorage.setItem("courtName", courtName);
+    localStorage.setItem("mobile", mobile);
+    localStorage.setItem("cnic", cnic);
+    localStorage.setItem("pinHash", hashPin(pin));
+    localStorage.setItem("userPhoto", userPhoto);
+
+    showSavedProfile();
+    document.getElementById("disclaimerModal").style.display = "none";
+    document.getElementById("agreeTerms").checked = false;
+    document.getElementById("saveProfileBtn").disabled = true;
+    showToast("User Profile Saved.");
+    navigate("dashboard");
+  };
+
+  if (isInitialSave) {
+    saveProfile();
+  } else {
+    showPinPrompt(saveProfile);
+  }
+});
+
+document.getElementById("userPhoto").addEventListener("change", function () {
+  const file = this.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = function (e) {
+    const img = new Image();
+    img.onload = function () {
+      const canvas = document.createElement("canvas");
+      const maxSize = 100;
+      let w = img.width;
+      let h = img.height;
+
+      if (w > h) {
+        if (w > maxSize) {
+          h *= maxSize / w;
+          w = maxSize;
+        }
+      } else {
+        if (h > maxSize) {
+          w *= maxSize / h;
+          h = maxSize;
+        }
+      }
+
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0, w, h);
+      const base64 = canvas.toDataURL("image/jpeg", 0.85);
+      document.getElementById("userPhotoPreview").src = base64;
+      document.getElementById("userPhotoPreview").style.display = "block";
+      document.getElementById("userPhotoPreview").setAttribute("data-img", base64);
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+});
+
+// ----- PIN Security -----
+let pinCallback = null;
+
+function showPinPrompt(callback) {
+  pinCallback = callback;
+  document.getElementById("pinModal").style.display = "block";
+  document.getElementById("pinInput").value = "";
+  document.getElementById("pinInput").focus();
+}
+
+function submitPin() {
+  const pin = document.getElementById("pinInput").value;
+  const storedHash = localStorage.getItem("pinHash");
+  if (hashPin(pin) === storedHash) {
+    document.getElementById("pinModal").style.display = "none";
+    if (pinCallback) pinCallback();
+  } else {
+    showToast("Incorrect PIN.");
+  }
+}
+
+function showChangePin() {
+  document.getElementById("changePinModal").style.display = "block";
+  document.getElementById("resetCnic").value = "";
+  document.getElementById("resetPin").value = "";
+}
+
+function hideChangePin() {
+  document.getElementById("changePinModal").style.display = "none";
+}
+
+function changePin() {
+  const cnic = document.getElementById("resetCnic").value.trim();
+  const newPin = document.getElementById("resetPin").value;
+  const storedCnic = localStorage.getItem("cnic");
+
+  if (cnic !== storedCnic) {
+    showToast("Incorrect CNIC.");
+    return;
+  }
+
+  if (newPin.length !== 4) {
+    showToast("New PIN must be 4 digits.");
+    return;
+  }
+
+  localStorage.setItem("pinHash", hashPin(newPin));
+  document.getElementById("changePinModal").style.display = "none";
+  showToast("PIN changed successfully.");
+}
+
+// ----- Modal Outside Click -----
+function closeModalOnOutsideClick(e) {
+  if (e.target.classList.contains("modal")) {
+    e.target.style.display = "none";
+  }
+}
+
+document.getElementById("pinModal").addEventListener("click", closeModalOnOutsideClick);
+document.getElementById("changePinModal").addEventListener("click", closeModalOnOutsideClick);
+document.getElementById("disclaimerModal").addEventListener("click", closeModalOnOutsideClick);
+document.getElementById("profileModal").addEventListener("click", closeModalOnOutsideClick);
+
+// ----- Toggle Fields -----
+function toggleCriminalFields() {
+  const type = document.getElementById("caseType").value;
+  document.getElementById("criminalFields").style.display = type === "criminal" ? "block" : "none";
+}
+
+function toggleCopyAgency() {
+  const show = document.getElementById("copyAgency").checked;
+  document.getElementById("copyAgencyFields").style.display = show ? "block" : "none";
+}
+
+function toggleProfileFields() {
+  const type = document.getElementById("profileType").value;
+  const container = document.getElementById("profileFields");
+  container.innerHTML = "";
+
+  if (type === "munshi") {
+    container.innerHTML = `
+      <label>Cell No: <span class="required">*</span><input type="text" id="cellNo" required /></label>
+      <label>Advocate Name: <span class="required">*</span><input type="text" id="advocateName" required /></label>
+      <label>Advocate Cell No:<input type="text" id="advocateCell" /></label>
+      <label>Chamber No:<input type="text" id="chamberNo" /></label>
+    `;
+  } else if (type === "advocate") {
+    container.innerHTML = `
+      <label>Cell No: <span class="required">*</span><input type="text" id="cellNo" required /></label>
+      <label>Chamber No: <span class="required">*</span><input type="text" id="chamberNo" required /></label>
+    `;
+  } else if (type === "colleague") {
+    container.innerHTML = `
+      <label>Designation: <span class="required">*</span><input type="text" id="designation" required /></label>
+      <label>Cell No: <span class="required">*</span><input type="text" id="cellNo" required /></label>
+      <label>Court Name:<input type="text" id="courtName" /></label>
+    `;
+  } else if (type === "other") {
+    container.innerHTML = `
+      <label>Cell No: <span class="required">*</span><input type="text" id="cellNo" required /></label>
+      <label>Address:<input type="text" id="address" /></label>
+      <label>ID No:<input type="text" id="idNo" /></label>
+      <label>Relation to Case:<input type="text" id="relation" /></label>
+    `;
+  }
+
+  // Attach mobile formatting to cellNo and advocateCell
+  document.querySelectorAll("#profileFields input[id='cellNo'], #profileFields input[id='advocateCell']").forEach(input => {
+    input.removeEventListener("input", formatMobile); // Prevent duplicate listeners
+    input.addEventListener("input", () => formatMobile(input));
+  });
+}
+
+// ----- CMS Auto Fill -----
+function autoFillCMS() {
+  const cmsNo = document.getElementById("cmsNo").value.trim();
+  if (!cmsNo) return;
+
+  const files = getFiles();
+  const existing = files.find(f => f.cmsNo === cmsNo);
+  if (!existing) return;
+
+  document.getElementById("caseType").value = existing.caseType;
+  document.getElementById("caseType").disabled = true;
+  const [petitioner, respondent] = existing.title.split(" vs ");
+  document.getElementById("petitioner").value = petitioner || "";
+  document.getElementById("petitioner").disabled = true;
+  document.getElementById("respondent").value = respondent || "";
+  document.getElementById("respondent").disabled = true;
+  document.getElementById("nature").value = existing.nature || "";
+  document.getElementById("nature").disabled = true;
+
+  document.getElementById("firNo").value = existing.firNo || "";
+  document.getElementById("firNo").disabled = true;
+  document.getElementById("firYear").value = existing.firYear || "";
+  document.getElementById("firYear").disabled = true;
+  document.getElementById("firUs").value = existing.firUs || "";
+  document.getElementById("firUs").disabled = true;
+  document.getElementById("policeStation").value = existing.policeStation || "";
+  document.getElementById("policeStation").disabled = true;
+
+  if (existing.decisionDate) {
+    document.getElementById("dateType").value = "decision";
+    document.getElementById("date").value = existing.decisionDate;
+  } else if (existing.hearingDate) {
+    document.getElementById("dateType").value = "hearing";
+    document.getElementById("date").value = existing.hearingDate;
+  }
+}
+
+// ----- Suggest Profiles -----
+function suggestProfiles(value) {
+  const list = document.getElementById("suggestions");
+  list.innerHTML = "";
+  if (value.trim().length === 0) return;
+
+  const matches = getProfiles().filter(p =>
+    p.name.toLowerCase().includes(value.toLowerCase())
+  );
+
+  matches.forEach(p => {
+    const li = document.createElement("li");
+    li.innerHTML = `
+      ${p.photo ? `<img src="${p.photo}" alt="${p.name}">` : ""}
+      <div>
+        <strong>${p.name}</strong> (${p.type})<br>
+        ${p.cellNo ? `Cell: ${p.cellNo}` : ""}
+        ${p.chamberNo ? ` | Chamber: ${p.chamberNo}` : ""}
+      </div>
+    `;
+    li.onclick = () => {
+      document.getElementById("deliveredTo").value = p.name;
+      document.getElementById("deliveredTo").disabled = true;
+      document.getElementById("deliveredType").value = p.type;
+      document.getElementById("deliveredType").disabled = true;
+      list.innerHTML = "";
+    };
+    list.appendChild(li);
+  });
+}
+
+// ----- New File Entry Submit -----
+document.getElementById("fileForm").addEventListener("submit", function (e) {
+  e.preventDefault();
+  showPinPrompt(() => {
+    const cmsNo = document.getElementById("cmsNo").value.trim();
+    const name = document.getElementById("deliveredTo").value.trim();
+    const profiles = getProfiles();
+    const profile = profiles.find(p => p.name === name);
+    if (!profile) {
+      localStorage.setItem("pendingProfileName", name);
+      showToast("Profile not found. Please add it in Profiles.");
+      navigate("profiles");
+      return;
+    }
+
+    const files = getFiles();
+    const existing = files.find(f => f.cmsNo === cmsNo);
+
+    if (existing && !confirm(`CMS No ${cmsNo} exists. Update existing record?`)) {
+      return;
+    }
+
+    const newFile = {
+      cmsNo,
+      title: `${document.getElementById("petitioner").value.trim()} vs ${document.getElementById("respondent").value.trim()}`,
+      caseType: document.getElementById("caseType").value,
+      nature: document.getElementById("nature").value.trim(),
+      firNo: document.getElementById("firNo").value.trim(),
+      firYear: document.getElementById("firYear").value,
+      firUs: document.getElementById("firUs").value.trim(),
+      policeStation: document.getElementById("policeStation").value.trim(),
+      deliveredTo: name,
+      deliveredType: document.getElementById("deliveredType").value,
+      decisionDate: null,
+      hearingDate: null,
+      returnDate: null,
+      createdDate: new Date().toISOString().split("T")[0],
+      deliveredDate: new Date().toISOString(),
+      sentToCopyAgency: document.getElementById("copyAgency").checked,
+      courtName: localStorage.getItem("courtName"),
+      clerkName: localStorage.getItem("clerkName"), // Store clerk name
+      profileSnapshot: { ...profile } // Store profile snapshot
+    };
+
+    const dateType = document.getElementById("dateType").value;
+    const date = document.getElementById("date").value;
+    if (dateType === "decision") newFile.decisionDate = date;
+    else newFile.hearingDate = date;
+
+    if (newFile.sentToCopyAgency) {
+      newFile.swalFormNo = document.getElementById("swalFormNo").value.trim();
+      newFile.swalDate = document.getElementById("swalDate").value;
+      if (!newFile.swalFormNo || !newFile.swalDate) {
+        showToast("Swal Form No and Date are required.");
+        return;
+      }
+    }
+
+    if (existing) {
+      const index = files.findIndex(f => f.cmsNo === cmsNo);
+      files[index] = newFile;
+    } else {
+      files.push(newFile);
+    }
+    saveFiles(files);
+    document.getElementById("fileForm").reset();
+    document.getElementById("copyAgencyFields").style.display = "none";
+    document.getElementById("caseType").disabled = false;
+    document.getElementById("petitioner").disabled = false;
+    document.getElementById("respondent").disabled = false;
+    document.getElementById("nature").disabled = false;
+    document.getElementById("firNo").disabled = false;
+    document.getElementById("firYear").disabled = false;
+    document.getElementById("firUs").disabled = false;
+    document.getElementById("policeStation").disabled = false;
+    document.getElementById("deliveredTo").disabled = false;
+    document.getElementById("deliveredType").disabled = false;
+    showToast("File saved successfully.");
+    navigate("dashboard");
+  });
+});
+
+// ----- Return File -----
+function filterPendingFiles() {
+  const cmsNo = document.getElementById("returnCms").value.trim().toLowerCase();
+  const title = document.getElementById("returnTitle").value.trim().toLowerCase();
+  const files = getFiles().filter(f => !f.returnDate);
+  const filtered = files.filter(f =>
+    (!cmsNo || f.cmsNo.toLowerCase().includes(cmsNo)) &&
+    (!title || f.title.toLowerCase().includes(title))
+  );
+
+  const tbody = document.querySelector("#pendingFilesTable tbody");
+  tbody.innerHTML = "";
+  filtered.forEach(f => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${f.cmsNo}</td>
+      <
