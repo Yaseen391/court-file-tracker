@@ -4,10 +4,64 @@ body, html {
   padding: 0;
   font-family: 'Roboto', 'Segoe UI', sans-serif;
   background-color: #f4f7fa;
+  transition: background-color 0.3s, color 0.3s;
 }
 
 h1, h2, h3 {
   margin: 10px 0;
+}
+
+/* Dark Mode */
+body.dark-mode {
+  background-color: #1a1a1a;
+  color: #e0e0e0;
+}
+
+body.dark-mode .topbar {
+  background: #1e3a8a;
+}
+
+body.dark-mode .sidebar {
+  background-color: #1e3a8a;
+}
+
+body.dark-mode .screen {
+  background: #2d2d2d;
+}
+
+body.dark-mode input,
+body.dark-mode select,
+body.dark-mode textarea {
+  background: #3a3a3a;
+  color: #e0e0e0;
+  border-color: #555;
+}
+
+body.dark-mode table {
+  background: #2d2d2d;
+  border-color: #555;
+}
+
+body.dark-mode table th {
+  background: #3a3a3a;
+}
+
+body.dark-mode table tbody tr:nth-child(even) {
+  background: #333;
+}
+
+body.dark-mode .card {
+  background: #3a3a3a;
+  border-left-color: #555;
+}
+
+body.dark-mode .modal-content {
+  background: #2d2d2d;
+  color: #e0e0e0;
+}
+
+body.dark-mode form {
+  background: #2d2d2d;
 }
 
 /* Top Bar */
@@ -42,7 +96,7 @@ h1, h2, h3 {
   margin: 0;
   font-size: 28px;
   font-weight: 700;
-  text-shadow: 1px 1px 2px rgba(0,0,0,0.2);
+  text-shadow: 1px ս: 1px 1px 2px rgba(0,0,0,0.2);
 }
 
 .top-title p {
@@ -160,7 +214,11 @@ main {
 /* Screens */
 .screen {
   display: none;
+  background: #f9f9f9;
+  border-radius: 8px;
+  padding: 20px;
 }
+
 .screen.active {
   display: block;
 }
@@ -180,6 +238,7 @@ label {
   margin-top: 12px;
   font-weight: bold;
 }
+
 label .required {
   color: red;
   margin-left: 4px;
@@ -192,6 +251,12 @@ input, select, textarea {
   box-sizing: border-box;
   border: 1px solid #ccc;
   border-radius: 4px;
+}
+
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: #0066cc;
+  box-shadow: 0 0 4px rgba(0,102,204,0.3);
 }
 
 input:disabled {
@@ -225,7 +290,7 @@ button:hover {
 }
 
 /* Suggestions List */
-#suggestions {
+#suggestions, #searchSuggestions {
   list-style: none;
   padding: 0;
   margin: 4px 0 0;
@@ -241,7 +306,7 @@ button:hover {
   box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
-#suggestions li {
+#suggestions li, #searchSuggestions li {
   padding: 10px;
   cursor: pointer;
   display: flex;
@@ -251,26 +316,25 @@ button:hover {
   transition: background-color 0.2s;
 }
 
-#suggestions li:last-child {
+#suggestions li:last-child, #searchSuggestions li:last-child {
   border-bottom: none;
 }
 
-#suggestions li:hover {
+#suggestions li:hover, #searchSuggestions li:hover {
   background-color: #e6f0ff;
 }
 
-#suggestions img {
+#suggestions img, #searchSuggestions img {
   width: 40px;
   height: 40px;
   border-radius: 50%;
   border: 1px solid #ccc;
 }
 
-/* Dashboard Cards */
-.dashboard-grid {
+/* Dashboard and Fetcher Grids */
+.dashboard-grid, .fetcher-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  grid-template-rows: repeat(3, auto);
   gap: 15px;
   margin-top: 20px;
 }
@@ -283,6 +347,7 @@ button:hover {
   cursor: pointer;
   transition: transform 0.2s ease, box-shadow 0.2s ease;
   color: white;
+  position: relative;
 }
 
 .card:hover {
@@ -327,9 +392,29 @@ button:hover {
   border-left: 5px solid #4a148c;
 }
 
-.card-alert-profilers {
+.card-search-prev {
   background-color: #c2185b;
   border-left: 5px solid #880e4f;
+}
+
+.card-add-profile {
+  background-color: #0288d1;
+  border-left: 5px solid #01579b;
+}
+
+.card-search-profiles {
+  background-color: #4caf50;
+  border-left: 5px solid #2e7d32;
+}
+
+.card-import {
+  background-color: #fb8c00;
+  border-left: 5px solid #e65100;
+}
+
+.card-export {
+  background-color: #7b1fa2;
+  border-left: 5px solid #4a148c;
 }
 
 /* Tables */
@@ -381,7 +466,7 @@ table tbody tr:hover {
 }
 
 /* Custom Checkbox */
-#copyAgencyRow {
+.copy-agency-row {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -440,7 +525,38 @@ table tbody tr:hover {
   position: relative;
   display: inline-block;
   cursor: pointer;
+}
+
+.tooltip:not(.card .tooltip)::before {
+  content: '?';
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  background: #555;
+  color: #fff;
+  text-align: center;
+  border-radius: 50%;
+  line-height: 16px;
   margin-left: 5px;
+}
+
+.card .tooltip {
+  display: none;
+  position: absolute;
+  top: -30px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #333;
+  color: #fff;
+  padding: 5px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  white-space: nowrap;
+  z-index: 10;
+}
+
+.card:hover .tooltip {
+  display: block;
 }
 
 .tooltip .tooltiptext {
@@ -455,7 +571,7 @@ table tbody tr:hover {
   z-index: 1;
   bottom: 125%;
   left: 50%;
-  transform貝: translateX(-50%);
+  transform: translateX(-50%);
   opacity: 0;
   transition: opacity 0.3s;
 }
@@ -489,21 +605,65 @@ table tbody tr:hover {
   to { transform: translateX(100%); }
 }
 
+/* Search Container */
+.search-container {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.search-container label {
+  flex: 1;
+  min-width: 200px;
+}
+
+/* Loading Indicator */
+.loading {
+  text-align: center;
+  font-size: 16px;
+  color: #0066cc;
+  margin: 10px 0;
+}
+
+/* Pagination */
+#pagination button {
+  padding: 8px 12px;
+  margin: 0 5px;
+  background: #003366;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+#pagination button:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+}
+
+#pagination button:hover:not(:disabled) {
+  background: #00509e;
+}
+
+#pageInfo {
+  margin: 0 10px;
+  font-size: 14px;
+}
+
 /* Responsive Design */
 @media (max-width: 768px) {
   .sidebar {
     position: fixed;
     top: 60px;
-    left: auto;
-    right: -240px;
+    left: 0;
+    transform: translateX(-100%);
     height: calc(100vh - 60px);
-    transform: translateX(0);
+    transition: transform 0.3s ease-in-out;
     z-index: 200;
-    background: #003366;
   }
 
   .sidebar.active {
-    transform: translateX(-240px);
+    transform: translateX(0);
   }
 
   #menuBtn {
@@ -514,9 +674,8 @@ table tbody tr:hover {
     flex-direction: column;
   }
 
-  .dashboard-grid {
+  .dashboard-grid, .fetcher-grid {
     grid-template-columns: 1fr;
-    grid-template-rows: auto;
   }
 
   .window-controls {
@@ -534,6 +693,14 @@ table tbody tr:hover {
   .sidebar button {
     padding: 14px;
     font-size: 18px;
+  }
+
+  .search-container {
+    flex-direction: column;
+  }
+
+  .search-container label {
+    min-width: auto;
   }
 }
 
@@ -556,14 +723,4 @@ table tbody tr:hover {
   font-size: 20px;
   margin-bottom: 16px;
   color: #003366;
-}
-@media (max-width: 768px) {
-  .sidebar {
-    left: 0;
-    transform: translateX(-100%);
-    transition: transform 0.3s ease-in-out;
-  }
-  .sidebar.active {
-    transform: translateX(0);
-  }
 }
