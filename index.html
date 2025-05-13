@@ -30,8 +30,7 @@
       <button onclick="navigate('dashboard')"><span>🏠</span> Dashboard</button>
       <button onclick="navigate('newFile')"><span>📂</span> New Entry</button>
       <button onclick="navigate('return')"><span>↩️</span> Return File</button>
-      <button onclick="navigate('search')"><span>🔍</span> Search</button>
-      <button onclick="navigate('profiles')"><span>👤</span> Profiles</button>
+      <button onclick="navigate('fileFetcher')"><span>👤</span> File Fetcher</button>
       <button onclick="navigate('settings')"><span>⚙️</span> User Profile</button>
     </aside>
 
@@ -41,18 +40,48 @@
       <section id="dashboard" class="screen">
         <h2>Dashboard Summary</h2>
         <div id="dashboardCards" class="dashboard-grid">
-          <div class="card card-deliveries" id="cardDeliveries"></div>
-          <div class="card card-returns" id="cardReturns"></div>
-          <div class="card card-pending" id="cardPending"></div>
-          <div class="card card-tomorrow" id="cardTomorrow"></div>
-          <div class="card card-overdue" id="cardOverdue"></div>
-          <div class="card card-alert-profilers" id="cardAlertProfilers"></div>
+          <div class="card card-deliveries" id="cardDeliveries">
+            <span class="tooltip">Files delivered today</span>
+          </div>
+          <div class="card card-returns" id="cardReturns">
+            <span class="tooltip">Files returned today</span>
+          </div>
+          <div class="card card-pending" id="cardPending">
+            <span class="tooltip">Files not yet returned</span>
+          </div>
+          <div class="card card-tomorrow" id="cardTomorrow">
+            <span class="tooltip">Hearings scheduled for tomorrow</span>
+          </div>
+          <div class="card card-overdue" id="cardOverdue">
+            <span class="tooltip">Files pending over 10 days</span>
+          </div>
+          <div class="card card-search-prev" id="cardSearchPrev">
+            <span class="tooltip">Search all previous records</span>
+          </div>
         </div>
 
         <div id="dashboardReportPanel" style="display:none; margin-top: 20px;">
+          <div id="loadingIndicator" class="loading" style="display:none;">Loading...</div>
           <h3 id="reportTitle"></h3>
+          <div id="searchPrevRecords" style="display:none; margin-bottom: 10px;">
+            <div class="search-container">
+              <label>Title:
+                <input type="text" id="searchTitle" placeholder="A vs B" oninput="performDashboardSearch()" />
+              </label>
+              <label>CMS No:
+                <input type="number" id="searchCms" oninput="performDashboardSearch()" />
+              </label>
+              <label>File Taker:
+                <div class="input-container">
+                  <input type="text" id="searchFileTaker" oninput="suggestProfiles(this.value, 'searchFileTaker')" autocomplete="off" />
+                  <ul id="searchSuggestions"></ul>
+                </div>
+              </label>
+            </div>
+          </div>
           <button onclick="printDashboardReport()">Print</button>
-          <button onclick="exportDashboardReport()">Export to Excel</button>
+          <button onclick="exportDashboardReport('csv')">Export to CSV</button>
+          <button onclick="exportDashboardReport('pdf')">Export to PDF</button>
           <table id="dashboardReportTable" border="1" style="width:100%; border-collapse:collapse; margin-top:10px;">
             <thead>
               <tr>
@@ -61,7 +90,7 @@
                 <th>Title</th>
                 <th>Case Type</th>
                 <th>Nature</th>
-                <th>Photo</th>
+                <th>Swal Form Details</th>
                 <th>Delivered To</th>
                 <th>Delivery Date</th>
                 <th>Return Date</th>
@@ -73,12 +102,18 @@
             </thead>
             <tbody></tbody>
           </table>
+          <div id="pagination" style="margin-top: 10px; text-align: center;">
+            <button id="prevPage" disabled>Previous</button>
+            <span id="pageInfo"></span>
+            <button id="nextPage">Next</button>
+          </div>
         </div>
       </section>
 
       <!-- New File Entry -->
       <section id="newFile" class="screen">
         <h2>New File Entry & Delivery</h2>
+        <div id="loadingIndicator" class="loading" style="display:none;">Saving...</div>
         <form id="fileForm">
           <label>Case Type: <span class="required">*</span>
             <select id="caseType" required onchange="toggleCriminalFields()">
@@ -125,9 +160,9 @@
 
           <div class="input-container">
             <label>Delivered To (Name): <span class="required">*</span>
-              <input type="text" id="deliveredTo" oninput="suggestProfiles(this.value)" required autocomplete="off" />
+              <input type="text" id="deliveredTo" oninput="suggestProfiles(this.value, 'deliveredTo')" required autocomplete="off" />
               <ul id="suggestions"></ul>
-              <span class="hint" style="font-size:12px;color:#555;">Edit profiles in the Profiles section.</span>
+              <span class="hint" style="font-size:12px;color:#555;">Edit profiles in the File Fetcher section.</span>
             </label>
           </div>
 
@@ -141,7 +176,7 @@
             </select>
           </label>
 
-          <div id="copyAgencyRow">
+          <div class="copy-agency-row">
             <input type="checkbox" id="copyAgency" onchange="toggleCopyAgency()" />
             <label for="copyAgency">Sent to Copy Agency</label>
           </div>
@@ -161,6 +196,7 @@
       <!-- Return -->
       <section id="return" class="screen">
         <h2>Return File</h2>
+        <div id="loadingIndicator" class="loading" style="display:none;">Loading...</div>
         <form id="returnForm">
           <label>CMS No: <input type="number" id="returnCms" oninput="filterPendingFiles()" /></label>
           <label>Title: <input type="text" id="returnTitle" oninput="filterPendingFiles()" /></label>
@@ -181,42 +217,34 @@
         </div>
       </section>
 
-      <!-- Search -->
-      <section id="search" class="screen">
-        <h2>Search</h2>
-        <form id="searchForm">
-          <label>CMS No: <input type="number" id="searchCms" /></label>
-          <label>Title: <input type="text" id="searchTitle" placeholder="Petitioner vs Respondent" /></label>
-          <label>Start Date: <input type="date" id="searchStartDate" /></label>
-          <label>End Date: <input type="date" id="searchEndDate" /></label>
-          <button type="button" onclick="performSearch()">Search</button>
-          <button type="button" onclick="document.getElementById('searchForm').reset(); performSearch();">Clear Filters</button>
-        </form>
-        <div id="searchResults" style="margin-top: 10px;">
-          <button onclick="exportSearchReport()">Export to Excel</button>
-          <button onclick="printSearchReport()">Print</button>
-          <table id="searchResultsTable" border="1" style="width:100%; border-collapse:collapse;">
-            <thead>
-              <tr>
-                <th>CMS No</th>
-                <th>Title</th>
-                <th>Case Type</th>
-                <th>Delivery Date</th>
-                <th>Return Date</th>
-                <th>Delivered To</th>
-                <th>Court</th>
-                <th>Action</th>
-              </tr>
-            </thead>
-            <tbody></tbody>
-          </table>
+      <!-- File Fetcher -->
+      <section id="fileFetcher" class="screen">
+        <h2>File Fetcher</h2>
+        <div id="loadingIndicator" class="loading" style="display:none;">Loading...</div>
+        <div class="fetcher-grid">
+          <button class="card card-add-profile" onclick="showProfileForm()">Add New Profile</button>
+          <button class="card card-search-profiles" onclick="showProfileSearch()">Search Existing Profiles</button>
+          <button class="card card-import" onclick="triggerImport()">Import Profiles</button>
+          <button class="card card-export" onclick="exportProfiles()">Export Profiles</button>
         </div>
-      </section>
-
-      <!-- Profiles -->
-      <section id="profiles" class="screen">
-        <h2>Manage Profiles</h2>
-        <div style="margin-bottom: 10px;">
+        <input type="file" id="profileImport" accept=".json" style="display:none;" onchange="importProfiles()" />
+        <form id="profileForm" style="display:none; margin-top:20px;">
+          <label>Profile Type: <span class="required">*</span>
+            <select id="profileType" required onchange="toggleProfileFields()">
+              <option value="">Select</option>
+              <option value="munshi">Munshi/Clerk</option>
+              <option value="advocate">Advocate</option>
+              <option value="colleague">Colleague</option>
+              <option value="other">Other</option>
+            </select>
+          </label>
+          <label>Name: <span class="required">*</span><input type="text" id="profileName" required /></label>
+          <div id="profileFields"></div>
+          <label>Upload Photo:<input type="file" id="profilePhoto" accept="image/*" /></label>
+          <img id="photoPreview" src="" style="max-width:100px;display:none;margin-top:5px;border:1px solid #ccc;border-radius:50%;" />
+          <button type="submit">Add/Update Profile</button>
+        </form>
+        <div id="profileSearchSection" style="display:none; margin-top:20px;">
           <label>Filter by Type:
             <select id="profileFilterType" onchange="renderProfiles()">
               <option value="">All</option>
@@ -228,30 +256,7 @@
           </label>
           <label>Search: <input type="text" id="profileSearch" oninput="renderProfiles()" placeholder="Name, number, chamber..." /></label>
         </div>
-        <form id="profileForm">
-          <label>Profile Type: <span class="required">*</span>
-            <select id="profileType" required onchange="toggleProfileFields()">
-              <option value="">Select</option>
-              <option value="munshi">Munshi/Clerk</option>
-              <option value="advocate">Advocate</option>
-              <option value="colleague">Colleague</option>
-              <option value="other">Other</option>
-            </select>
-          </label>
-
-          <label>Name: <span class="required">*</span><input type="text" id="profileName" required /></label>
-          <div id="profileFields"></div>
-
-          <label>Upload Photo:<input type="file" id="profilePhoto" accept="image/*" /></label>
-          <img id="photoPreview" src="" style="max-width:100px;display:none;margin-top:5px;border:1px solid #ccc;border-radius:50%;" />
-
-          <button type="submit">Add/Update Profile</button>
-        </form>
-        <div style="margin-top: 10px;">
-          <button onclick="exportProfiles()">Export Profiles</button>
-          <label>Import: <input type="file" id="profileImport" accept=".json" onchange="importProfiles()" /></label>
-        </div>
-        <div id="profileList" style="margin-top:20px;">
+        <div id="profileList" style="margin-top:20px; display:none;">
           <table id="profileTable" border="1" style="width:100%; border-collapse:collapse;">
             <thead>
               <tr>
@@ -260,6 +265,7 @@
                 <th>Type</th>
                 <th>Cell No</th>
                 <th>Chamber No</th>
+                <th>Files Delivered</th>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -271,6 +277,7 @@
       <!-- Settings/User Profile -->
       <section id="settings" class="screen active">
         <h2>User Profile</h2>
+        <div id="loadingIndicator" class="loading" style="display:none;">Saving...</div>
         <div id="setupMessage" style="display:block; color: #0066cc; margin-bottom: 10px;">
           Please complete your profile setup to continue using the app.
         </div>
@@ -285,7 +292,11 @@
           </table>
           <button onclick="editUserProfile()">Edit Profile</button>
           <button id="changePinBtn" onclick="showChangePin()" style="display:none;">Change PIN</button>
+          <button onclick="toggleDarkMode()">Toggle Dark Mode</button>
+          <button onclick="backupData()">Backup All Data</button>
+          <button onclick="triggerRestore()">Restore Data</button>
         </div>
+        <input type="file" id="dataRestore" accept=".json" style="display:none;" onchange="restoreData()" />
         <form id="settingsForm" style="display:block;">
           <label>Full Name: <span class="required">*</span><input type="text" id="clerkName" required /></label>
           <label>Designation: <span class="required">*</span><input type="text" id="judgeName" required /></label>
@@ -298,6 +309,7 @@
             </span>
           </label>
           <label>PIN (4 digits): <span class="required">*</span><input type="password" id="pin" maxlength="4" pattern="\d{4}" required /></label>
+          <label>Email (for PIN recovery): <input type="email" id="email" placeholder="example@domain.com" /></label>
           <label>Upload Photo: <input type="file" id="userPhoto" accept="image/*" /></label>
           <img id="userPhotoPreview" src="" style="max-width:100px;display:none;margin-top:5px;border:1px solid #ccc;border-radius:50%;" />
           <label><input type="checkbox" id="agreeTerms" onchange="toggleSaveButton()"> I agree to the <a href="#" onclick="showDisclaimerModal()">terms and privacy policy</a>.</label>
@@ -318,7 +330,7 @@
       <div id="changePinModal" class="modal" style="display:none;">
         <div class="modal-content">
           <h3>Change PIN</h3>
-          <label>CNIC: <input type="text" id="resetCnic" placeholder="XXXXX-XXXXXXX-X" required /></label>
+          <label>CNIC or Email: <input type="text" id="resetCnic" placeholder="Enter CNIC or Email" required /></label>
           <label>New PIN: <input type="password" id="resetPin" maxlength="4" pattern="\d{4}" required /></label>
           <button onclick="changePin()">Change</button>
           <button onclick="hideChangePin()">Cancel</button>
@@ -350,6 +362,9 @@
     </main>
   </div>
 
+  <!-- External Libraries for PDF Export and Fuzzy Search -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/fuse.js/6.6.2/fuse.min.js"></script>
   <script src="app.js"></script>
   <script>
     if ('serviceWorker' in navigator) {
