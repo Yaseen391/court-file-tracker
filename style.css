@@ -141,6 +141,11 @@ h1, h2, h3 {
   background-color: #00509e;
 }
 
+/* Hidden Sidebar Buttons */
+.sidebar-btn.hidden {
+  display: none;
+}
+
 /* Sidebar Overlay */
 .sidebar-overlay {
   display: none;
@@ -162,6 +167,8 @@ main {
   padding: 20px;
   flex-grow: 1;
   background: #f9f9f9;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 /* Screens */
@@ -289,10 +296,9 @@ button:hover {
 /* Dashboard and Fetcher Grids */
 .dashboard-grid, .fetcher-grid {
   display: grid;
-  gridqe-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 15px;
   margin-top: 20px;
-  touch-action: none;
 }
 
 .card {
