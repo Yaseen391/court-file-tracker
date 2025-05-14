@@ -11,59 +11,6 @@ h1, h2, h3 {
   margin: 10px 0;
 }
 
-/* Dark Mode */
-body.dark-mode {
-  background-color: #1a1a1a;
-  color: #e0e0e0;
-}
-
-body.dark-mode .topbar {
-  background: #1e3a8a;
-}
-
-body.dark-mode .sidebar {
-  background-color: #1e3a8a;
-}
-
-body.dark-mode .screen {
-  background: #2d2d2d;
-}
-
-body.dark-mode input,
-body.dark-mode select,
-body.dark-mode textarea {
-  background: #3a3a3a;
-  color: #e0e0e0;
-  border-color: #555;
-}
-
-body.dark-mode table {
-  background: #2d2d2d;
-  border-color: #555;
-}
-
-body.dark-mode table th {
-  background: #3a3a3a;
-}
-
-body.dark-mode table tbody tr:nth-child(even) {
-  background: #333;
-}
-
-body.dark-mode .card {
-  background: #3a3a3a;
-  border-left-color: #555;
-}
-
-body.dark-mode .modal-content {
-  background: #2d2d2d;
-  color: #e0e0e0;
-}
-
-body.dark-mode form {
-  background: #2d2d2d;
-}
-
 /* Top Bar */
 .topbar {
   background: #003366;
@@ -96,7 +43,7 @@ body.dark-mode form {
   margin: 0;
   font-size: 28px;
   font-weight: 700;
-  text-shadow: 1px ս: 1px 1px 2px rgba(0,0,0,0.2);
+  text-shadow: 1px 1px 2px rgba(0,0,0,0.2);
 }
 
 .top-title p {
@@ -182,9 +129,15 @@ body.dark-mode form {
   align-items: center;
   gap: 8px;
   border-radius: 4px;
+  transition: background-color 0.2s, transform 0.2s;
 }
 
 .sidebar button:hover {
+  background-color: #00509e;
+  transform: scale(1.05);
+}
+
+.sidebar button.active {
   background-color: #00509e;
 }
 
@@ -260,7 +213,7 @@ input:focus, select:focus, textarea:focus {
 }
 
 input:disabled {
-  background-color: #f0f0f0;
+  background-color: #e0e0e0;
   cursor: not-allowed;
 }
 
@@ -273,10 +226,12 @@ button[type="submit"], button {
   border-radius: 6px;
   cursor: pointer;
   font-size: 16px;
+  transition: background-color 0.2s, transform 0.2s;
 }
 
 button:hover {
   background-color: #00509e;
+  transform: scale(1.05);
 }
 
 /* Input Container for Delivered To */
@@ -334,9 +289,10 @@ button:hover {
 /* Dashboard and Fetcher Grids */
 .dashboard-grid, .fetcher-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  gridqe-template-columns: repeat(2, 1fr);
   gap: 15px;
   margin-top: 20px;
+  touch-action: none;
 }
 
 .card {
@@ -365,6 +321,11 @@ button:hover {
   cursor: pointer;
   width: 100%;
   text-align: left;
+  transition: transform 0.2s;
+}
+
+.card button:hover {
+  transform: scale(1.05);
 }
 
 .card-deliveries {
@@ -431,11 +392,17 @@ table th, table td {
   border: 1px solid #ccc;
   font-size: 14px;
   text-align: left;
+  white-space: nowrap;
 }
 
 table th {
   background-color: #f5f5f5;
   font-weight: bold;
+  cursor: pointer;
+}
+
+table th:hover {
+  background-color: #e0e0e0;
 }
 
 table tbody tr:nth-child(even) {
@@ -444,6 +411,14 @@ table tbody tr:nth-child(even) {
 
 table tbody tr:hover {
   background-color: #e6f0ff;
+}
+
+/* Table Container */
+.table-container {
+  overflow-x: auto;
+  overflow-y: auto;
+  max-height: 400px;
+  margin-top: 10px;
 }
 
 /* Profile Table */
@@ -465,6 +440,12 @@ table tbody tr:hover {
   width: 30%;
 }
 
+/* Photo Zoom */
+#profileModalPhoto:hover + .photo-zoom,
+.photo-zoom:hover {
+  display: block;
+}
+
 /* Custom Checkbox */
 .copy-agency-row {
   display: flex;
@@ -482,6 +463,12 @@ table tbody tr:hover {
 
 #copyAgency:hover {
   opacity: 0.8;
+}
+
+input[type="checkbox"] {
+  width: 20px;
+  height: 20px;
+  cursor: pointer;
 }
 
 /* Modals */
@@ -650,6 +637,11 @@ table tbody tr:hover {
   font-size: 14px;
 }
 
+/* Cropper Styles */
+.cropper-container {
+  margin: 10px 0;
+}
+
 /* Responsive Design */
 @media (max-width: 768px) {
   .sidebar {
@@ -701,6 +693,10 @@ table tbody tr:hover {
 
   .search-container label {
     min-width: auto;
+  }
+
+  .table-container {
+    max-height: 300px;
   }
 }
 
