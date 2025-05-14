@@ -16,35 +16,43 @@ let analytics = JSON.parse(localStorage.getItem('analytics')) || {
 
 // Google Drive API Configuration
 const CLIENT_ID = '1022877727253-vlif6k2sstl4gn98e8svsh8mhd3j0gl3.apps.googleusercontent.com';
-const API_KEY = 'YOUR_API_KEY'; // Replace with your Google API key
+const API_KEY = 'YOUR_ACTUAL_API_KEY_HERE'; // Replace with your Google API key
 const SCOPES = 'https://www.googleapis.com/auth/drive.file';
 let tokenClient;
 
 // Initialize Google API Client
 function initGoogleDrive() {
-  gapi.load('client', () => {
-    gapi.client.init({
-      apiKey: API_KEY,
-      discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest'],
-    }).then(() => {
-      tokenClient = google.accounts.oauth2.initTokenClient({
-        client_id: CLIENT_ID,
-        scope: SCOPES,
-        callback: (response) => {
-          if (response.access_token) {
-            localStorage.setItem('gapi_token', JSON.stringify({
-              access_token: response.access_token,
-              expires_at: Date.now() + (response.expires_in * 1000)
-            }));
-            document.getElementById('backupToDrive').style.display = 'inline-block';
-            document.getElementById('restoreFromDrive').style.display = 'inline-block';
-            document.getElementById('shareBackup').style.display = 'inline-block';
-            showToast('Signed in to Google Drive');
+  try {
+    gapi.load('client', () => {
+      gapi.client.init({
+        apiKey: API_KEY,
+        discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest'],
+      }).then(() => {
+        tokenClient = google.accounts.oauth2.initTokenClient({
+          client_id: CLIENT_ID,
+          scope: SCOPES,
+          callback: (response) => {
+            if (response.access_token) {
+              localStorage.setItem('gapi_token', JSON.stringify({
+                access_token: response.access_token,
+                expires_at: Date.now() + (response.expires_in * 1000)
+              }));
+              document.getElementById('backupToDrive').style.display = 'inline-block';
+              document.getElementById('restoreFromDrive').style.display = 'inline-block';
+              document.getElementById('shareBackup').style.display = 'inline-block';
+              showToast('Signed in to Google Drive');
+            }
           }
-        }
+        });
+      }).catch((error) => {
+        console.error('Google API initialization error:', error);
+        showToast('Failed to initialize Google Drive. Using local backup.');
       });
     });
-  });
+  } catch (error) {
+    console.error('Google API load error:', error);
+    showToast('Google Drive unavailable. Using local backup.');
+  }
 }
 
 // Sign in with Google
@@ -84,7 +92,7 @@ function backupToDrive() {
   const metadata = {
     name: `cft_backup_${formatDate(new Date(), 'YYYYMMDD_HHMMSS')}.json`,
     mimeType: 'application/json',
-    parents: ['appDataFolder'] // Use appDataFolder for privacy
+    parents: ['appDataFolder']
   };
   const form = new FormData();
   form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
@@ -129,7 +137,7 @@ function restoreFromDrive() {
       option.textContent = file.name;
       select.appendChild(option);
     });
-    document.getElementById('shareBackupModal').style.display = 'block'; // Reuse modal for selection
+    document.getElementById('shareBackupModal').style.display = 'block';
   }).catch((error) => {
     console.error('List files error:', error);
     showToast('Failed to list backups. Please try again.');
@@ -187,9 +195,11 @@ window.onload = () => {
     document.getElementById('adminForm').style.display = 'none';
     document.getElementById('savedProfile').style.display = 'block';
     updateSavedProfile();
+    document.querySelectorAll('.sidebar-btn').forEach(btn => btn.classList.remove('hidden'));
     navigate('dashboard');
   } else {
     navigate('admin');
+    document.querySelectorAll('.sidebar-btn').forEach(btn => btn.classList.add('hidden'));
   }
   updateDashboardCards();
   setupPushNotifications();
@@ -200,7 +210,7 @@ function setupPushNotifications() {
   if ('Notification' in window && navigator.serviceWorker) {
     Notification.requestPermission().then(permission => {
       if (permission === 'granted') {
-        setInterval(checkOverdueFiles, 3600000); // Check every hour
+        setInterval(checkOverdueFiles, 3600000);
       }
     });
   }
@@ -221,6 +231,10 @@ function checkOverdueFiles() {
 
 // Navigation
 function navigate(screenId) {
+  if (!userProfile && screenId !== 'admin' && screenId !== 'developersDisclaimer') {
+    showToast('Please complete Admin profile setup first');
+    return;
+  }
   document.querySelectorAll('.screen').forEach(screen => screen.classList.remove('active'));
   document.getElementById(screenId).classList.add('active');
   document.querySelectorAll('.sidebar button').forEach(btn => btn.classList.remove('active'));
@@ -254,37 +268,52 @@ function toggleSidebar() {
 document.getElementById('adminForm').addEventListener('submit', (e) => {
   e.preventDefault();
   document.getElementById('loadingIndicator').style.display = 'block';
-  setTimeout(() => {
-    const userPhoto = document.getElementById('userPhoto').cropperResult || document.getElementById('userPhoto').files[0];
-    const reader = new FileReader();
-    reader.onload = () => {
-      userProfile = {
-        clerkName: document.getElementById('clerkName').value,
-        judgeName: document.getElementById('judgeName').value,
-        courtName: document.getElementById('courtName').value,
-        mobile: document.getElementById('mobile').value,
-        cnic: document.getElementById('cnic').value,
-        pin: document.getElementById('pin').value,
-        email: document.getElementById('email').value,
-        photo: reader.result
+  try {
+    setTimeout(() => {
+      const userPhotoInput = document.getElementById('userPhoto');
+      const userPhoto = userPhotoInput.cropperResult || (userPhotoInput.files.length > 0 ? userPhotoInput.files[0] : null);
+      const saveProfile = (photoData) => {
+        userProfile = {
+          clerkName: document.getElementById('clerkName').value,
+          judgeName: document.getElementById('judgeName').value,
+          courtName: document.getElementById('courtName').value,
+          mobile: document.getElementById('mobile').value,
+          cnic: document.getElementById('cnic').value,
+          pin: document.getElementById('pin').value,
+          email: document.getElementById('email').value,
+          photo: photoData || ''
+        };
+        localStorage.setItem('userProfile', JSON.stringify(userProfile));
+        document.getElementById('setupMessage').style.display = 'none';
+        document.getElementById('adminForm').style.display = 'none';
+        document.getElementById('savedProfile').style.display = 'block';
+        updateSavedProfile();
+        document.querySelectorAll('.sidebar-btn').forEach(btn => btn.classList.remove('hidden'));
+        navigate('dashboard');
+        showToast('Profile saved successfully!');
+        document.getElementById('loadingIndicator').style.display = 'none';
       };
-      localStorage.setItem('userProfile', JSON.stringify(userProfile));
-      document.getElementById('setupMessage').style.display = 'none';
-      document.getElementById('adminForm').style.display = 'none';
-      document.getElementById('savedProfile').style.display = 'block';
-      updateSavedProfile();
-      navigate('dashboard');
-      showToast('Profile saved successfully!');
-      document.getElementById('loadingIndicator').style.display = 'none';
-    };
-    if (userPhoto) reader.readAsDataURL(userPhoto);
-    else {
-      userProfile.photo = '';
-      localStorage.setItem('userProfile', JSON.stringify(userProfile));
-      updateSavedProfile();
-      document.getElementById('loadingIndicator').style.display = 'none';
-    }
-  }, 500);
+      if (userPhoto) {
+        if (typeof userPhoto === 'string') {
+          saveProfile(userPhoto);
+        } else {
+          const reader = new FileReader();
+          reader.onload = () => saveProfile(reader.result);
+          reader.onerror = () => {
+            showToast('Failed to read photo. Please try again.');
+            document.getElementById('loadingIndicator').style.display = 'none';
+          };
+          reader.readAsDataURL(userPhoto);
+        }
+      } else {
+        saveProfile(null);
+      }
+    }, 500);
+  } catch (error) {
+    console.error('Profile save error:', error);
+    showToast('Error saving profile. Please try again.');
+    document.getElementById('loadingIndicator').style.display = 'none';
+  }
 });
 
 // Update Saved Profile
@@ -342,13 +371,11 @@ document.getElementById('userPhoto').addEventListener('change', (e) => {
 function cropUserPhoto() {
   if (userCropper) {
     const canvas = userCropper.getCroppedCanvas({ width: 200, height: 200 });
-    canvas.toBlob((blob) => {
-      const url = canvas.toDataURL('image/jpeg', 0.8); // 80% quality
-      document.getElementById('userPhoto').cropperResult = url;
-      document.getElementById('userPhotoCropper').style.display = 'none';
-      userCropper.destroy();
-      userCropper = null;
-    }, 'image/jpeg', 0.8);
+    const url = canvas.toDataURL('image/jpeg', 0.8);
+    document.getElementById('userPhoto').cropperResult = url;
+    document.getElementById('userPhotoCropper').style.display = 'none';
+    userCropper.destroy();
+    userCropper = null;
   }
 }
 
@@ -422,7 +449,6 @@ function updateDashboardCards() {
   document.getElementById('cardOverdue').innerHTML = `<span class="tooltip">Files pending over 10 days</span><h3>${overdue}</h3><p>Overdue Files</p>`;
   document.getElementById('cardSearchPrev').innerHTML = `<span class="tooltip">Search all previous records</span><h3>Search</h3><p>Previous Records</p>`;
 
-  // Chart.js Stats
   const ctx = document.getElementById('statsChart').getContext('2d');
   new Chart(ctx, {
     type: 'bar',
@@ -440,7 +466,6 @@ function updateDashboardCards() {
     }
   });
 
-  // Event Listeners
   document.getElementById('cardDeliveries').onclick = () => showDashboardReport('deliveries');
   document.getElementById('cardReturns').onclick = () => showDashboardReport('returns');
   document.getElementById('cardPending').onclick = () => showDashboardReport('pending');
@@ -506,7 +531,6 @@ function renderReportTable() {
   const tbody = document.getElementById('dashboardReportTable').querySelector('tbody');
   tbody.innerHTML = '';
 
-  // Sort data
   let sortedData = [...currentReportData];
   if (sortColumn) {
     sortedData.sort((a, b) => {
@@ -700,13 +724,11 @@ function autoFillCMS() {
       document.getElementById('swalFormNo').value = existing.swalFormNo;
       document.getElementById('swalDate').value = existing.swalDate.split('T')[0];
     }
-    // Disable fields except dateType and date
     ['caseType', 'petitioner', 'respondent', 'nature', 'firNo', 'firYear', 'firUs', 'policeStation', 'deliveredTo', 'deliveredType', 'swalFormNo', 'swalDate'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.disabled = true;
     });
   } else {
-    // Enable all fields
     ['caseType', 'petitioner', 'respondent', 'nature', 'firNo', 'firYear', 'firUs', 'policeStation', 'deliveredTo', 'deliveredType', 'swalFormNo', 'swalDate', 'dateType', 'date'].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.disabled = false;
@@ -885,7 +907,7 @@ function cropPhoto() {
   if (cropper) {
     const canvas = cropper.getCroppedCanvas({ width: 100, height: 100 });
     canvas.toBlob((blob) => {
-      const url = canvas.toDataURL('image/jpeg', 0.5); // 50% quality
+      const url = canvas.toDataURL('image/jpeg', 0.5);
       document.getElementById('profilePhoto').cropperResult = url;
       document.getElementById('photoCropper').style.display = 'none';
       cropper.destroy();
