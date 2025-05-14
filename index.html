@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1  maximum-scale=1.0, user-scalable=no" />
   <title>Court File Tracker</title>
   <link rel="manifest" href="manifest.json" />
   <link rel="stylesheet" href="style.css" />
@@ -31,7 +31,8 @@
       <button onclick="navigate('newFile')"><span>📂</span> New Entry</button>
       <button onclick="navigate('return')"><span>↩️</span> Return File</button>
       <button onclick="navigate('fileFetcher')"><span>👤</span> File Fetcher</button>
-      <button onclick="navigate('settings')"><span>⚙️</span> User Profile</button>
+      <button onclick="navigate('admin')"><span>🛡️</span> Admin</button>
+      <button onclick="navigate('developersDisclaimer')"><span>ℹ️</span> Developers Disclaimer</button>
     </aside>
 
     <!-- Main Screens -->
@@ -39,6 +40,9 @@
       <!-- Dashboard -->
       <section id="dashboard" class="screen">
         <h2>Dashboard Summary</h2>
+        <div id="dashboardStats" style="margin-bottom: 20px;">
+          <canvas id="statsChart" height="100"></canvas>
+        </div>
         <div id="dashboardCards" class="dashboard-grid">
           <div class="card card-deliveries" id="cardDeliveries">
             <span class="tooltip">Files delivered today</span>
@@ -66,7 +70,7 @@
           <div id="searchPrevRecords" style="display:none; margin-bottom: 10px;">
             <div class="search-container">
               <label>Title:
-                <input type="text" id="searchTitle" placeholder="A vs B" oninput="performDashboardSearch()" />
+                <input type="text" id="searchTitle" placeholder="A Vs. B" oninput="performDashboardSearch()" />
               </label>
               <label>CMS No:
                 <input type="number" id="searchCms" oninput="performDashboardSearch()" />
@@ -77,31 +81,43 @@
                   <ul id="searchSuggestions"></ul>
                 </div>
               </label>
+              <label>FIR No:
+                <input type="text" id="searchFirNo" oninput="performDashboardSearch()" />
+              </label>
+              <label>FIR Year:
+                <input type="number" id="searchFirYear" oninput="performDashboardSearch()" />
+              </label>
+              <label>Police Station:
+                <input type="text" id="searchPoliceStation" oninput="performDashboardSearch()" />
+              </label>
             </div>
           </div>
           <button onclick="printDashboardReport()">Print</button>
           <button onclick="exportDashboardReport('csv')">Export to CSV</button>
           <button onclick="exportDashboardReport('pdf')">Export to PDF</button>
-          <table id="dashboardReportTable" border="1" style="width:100%; border-collapse:collapse; margin-top:10px;">
-            <thead>
-              <tr>
-                <th>Sr#</th>
-                <th>CMS No</th>
-                <th>Title</th>
-                <th>Case Type</th>
-                <th>Nature</th>
-                <th>Swal Form Details</th>
-                <th>Delivered To</th>
-                <th>Delivery Date</th>
-                <th>Return Date</th>
-                <th>Time Span</th>
-                <th>Court</th>
-                <th>Clerk Name</th>
-                <th>Profile Details</th>
-              </tr>
-            </thead>
-            <tbody></tbody>
-          </table>
+          <div class="table-container">
+            <table id="dashboardReportTable" border="1" style="width:100%; border-collapse:collapse;">
+              <thead>
+                <tr>
+                  <th>Sr#</th>
+                  <th>CMS No</th>
+                  <th>Title</th>
+                  <th>Case Type</th>
+                  <th>Nature</th>
+                  <th>Date Type</th>
+                  <th>Swal Form Details</th>
+                  <th>Delivered To</th>
+                  <th>Delivery Date</th>
+                  <th>Return Date</th>
+                  <th>Time Span</th>
+                  <th>Court</th>
+                  <th>Clerk Name</th>
+                  <th>Profile Details</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
           <div id="pagination" style="margin-top: 10px; text-align: center;">
             <button id="prevPage" disabled>Previous</button>
             <span id="pageInfo"></span>
@@ -169,8 +185,8 @@
           <label>Delivered To Type: <span class="required">*</span>
             <select id="deliveredType" required>
               <option value="">Select</option>
+              <option value="munshi">Munshi/Clerk</option>
               <option value="advocate">Advocate</option>
-              <option value="munshi">Munshi</option>
               <option value="colleague">Colleague</option>
               <option value="other">Other</option>
             </select>
@@ -205,6 +221,7 @@
           <table id="pendingFilesTable" border="1" style="width:100%; border-collapse:collapse;">
             <thead>
               <tr>
+                <th>Select</th>
                 <th>CMS No</th>
                 <th>Title</th>
                 <th>Case Type</th>
@@ -214,6 +231,7 @@
             </thead>
             <tbody></tbody>
           </table>
+          <button onclick="bulkReturnFiles()" style="margin-top: 10px;">Return Selected</button>
         </div>
       </section>
 
@@ -238,10 +256,12 @@
               <option value="other">Other</option>
             </select>
           </label>
-          <label>Name: <span class="required">*</span><input type="text" id="profileName" required /></label>
           <div id="profileFields"></div>
-          <label>Upload Photo:<input type="file" id="profilePhoto" accept="image/*" /></label>
-          <img id="photoPreview" src="" style="max-width:100px;display:none;margin-top:5px;border:1px solid #ccc;border-radius:50%;" />
+          <label>Upload Photo: <span class="required">*</span><input type="file" id="profilePhoto" accept="image/*" required /></label>
+          <div id="photoCropper" style="display:none; margin-top:10px;">
+            <img id="photoPreview" style="max-width:100%; border:1px solid #ccc;" />
+            <button type="button" onclick="cropPhoto()">Crop & Save</button>
+          </div>
           <button type="submit">Add/Update Profile</button>
         </form>
         <div id="profileSearchSection" style="display:none; margin-top:20px;">
@@ -266,6 +286,7 @@
                 <th>Cell No</th>
                 <th>Chamber No</th>
                 <th>Files Delivered</th>
+                <th>Pending Files</th>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -274,9 +295,9 @@
         </div>
       </section>
 
-      <!-- Settings/User Profile -->
-      <section id="settings" class="screen active">
-        <h2>User Profile</h2>
+      <!-- Admin -->
+      <section id="admin" class="screen active">
+        <h2>Admin</h2>
         <div id="loadingIndicator" class="loading" style="display:none;">Saving...</div>
         <div id="setupMessage" style="display:block; color: #0066cc; margin-bottom: 10px;">
           Please complete your profile setup to continue using the app.
@@ -284,20 +305,26 @@
         <div id="savedProfile" style="display:none; background:white; padding:20px; border-radius:10px; max-width:600px; margin:auto;">
           <h3>Saved Profile</h3>
           <table class="profile-table">
-            <tr><th>Photo</th><td><img id="savedUserPhoto" src="" style="width:100px;height:100px;border-radius:50%;border:1px solid #ccc;display:none;" /></td></tr>
+            <tr><th>Photo</th><td><img id="savedUserPhoto" src="" style="width:120px;height:120px;border-radius:50%;border:1px solid #ccc;display:none;" /></td></tr>
             <tr><th>Name</th><td><span id="savedClerkName"></span></td></tr>
             <tr><th>Designation</th><td><span id="savedJudgeName"></span></td></tr>
             <tr><th>Court</th><td><span id="savedCourtName"></span></td></tr>
             <tr><th>Mobile</th><td><a id="savedMobile" href=""></a></td></tr>
+            <tr><th>Total Files</th><td><span id="totalFiles"></span></td></tr>
+            <tr><th>Total Profiles</th><td><span id="totalProfiles"></span></td></tr>
           </table>
           <button onclick="editUserProfile()">Edit Profile</button>
           <button id="changePinBtn" onclick="showChangePin()" style="display:none;">Change PIN</button>
-          <button onclick="toggleDarkMode()">Toggle Dark Mode</button>
-          <button onclick="backupData()">Backup All Data</button>
-          <button onclick="triggerRestore()">Restore Data</button>
+          <h4>Data Management</h4>
+          <button onclick="backupData()">Backup to Local</button>
+          <button onclick="triggerRestore()">Restore from Local</button>
+          <button onclick="signInWithGoogle()">Sign in with Google</button>
+          <button id="backupToDrive" style="display:none;" onclick="backupToDrive()">Backup to Google Drive</button>
+          <button id="restoreFromDrive" style="display:none;" onclick="restoreFromDrive()">Restore from Google Drive</button>
+          <button id="shareBackup" style="display:none;" onclick="showShareBackup()">Share Backup</button>
         </div>
         <input type="file" id="dataRestore" accept=".json" style="display:none;" onchange="restoreData()" />
-        <form id="settingsForm" style="display:block;">
+        <form id="adminForm" style="display:block;">
           <label>Full Name: <span class="required">*</span><input type="text" id="clerkName" required /></label>
           <label>Designation: <span class="required">*</span><input type="text" id="judgeName" required /></label>
           <label>Court Name: <span class="required">*</span><input type="text" id="courtName" required /></label>
@@ -310,11 +337,27 @@
           </label>
           <label>PIN (4 digits): <span class="required">*</span><input type="password" id="pin" maxlength="4" pattern="\d{4}" required /></label>
           <label>Email (for PIN recovery): <input type="email" id="email" placeholder="example@domain.com" /></label>
-          <label>Upload Photo: <input type="file" id="userPhoto" accept="image/*" /></label>
-          <img id="userPhotoPreview" src="" style="max-width:100px;display:none;margin-top:5px;border:1px solid #ccc;border-radius:50%;" />
+          <label>Upload Photo: <span class="required">*</span><input type="file" id="userPhoto" accept="image/*" required /></label>
+          <div id="userPhotoCropper" style="display:none; margin-top:10px;">
+            <img id="userPhotoPreview" style="max-width:100%; border:1px solid #ccc;" />
+            <button type="button" onclick="cropUserPhoto()">Crop & Save</button>
+          </div>
           <label><input type="checkbox" id="agreeTerms" onchange="toggleSaveButton()"> I agree to the <a href="#" onclick="showDisclaimerModal()">terms and privacy policy</a>.</label>
           <button type="submit" id="saveProfileBtn" disabled>Save</button>
         </form>
+      </section>
+
+      <!-- Developers Disclaimer -->
+      <section id="developersDisclaimer" class="screen">
+        <h2>Developers Disclaimer</h2>
+        <div id="disclaimerContent">
+          <p>This Court File Tracker (CFT) PWA is developed to assist court clerks and judiciary staff in managing file records efficiently. It is not an official judiciary tool. Users are responsible for ensuring data accuracy and compliance with legal standards.</p>
+          <p>Developer: [Your Name]</p>
+          <p>Contact: [Your Email or Placeholder]</p>
+          <p>Version: 1.0.0</p>
+          <p>Last Updated: May 15, 2025</p>
+          <!-- Instructions: Replace this div with your custom HTML content. Include your bio, image, and any other details. Host images locally or use base64 encoding. Ensure styles match existing CSS (e.g., .screen, h2, p). Test on mobile and desktop for responsiveness. -->
+        </div>
       </section>
 
       <!-- PIN Prompt Modal -->
@@ -342,7 +385,7 @@
         <div class="modal-content">
           <h3>Disclaimer & Privacy Policy</h3>
           <p><strong>Disclaimer:</strong> This is not an official judiciary tool. It is designed for the convenience of clerks and judiciary staff to digitize record-keeping. Users are responsible for their use of this tool.</p>
-          <p><strong>Privacy Policy:</strong> We do not store any data. Your data is saved locally in your browser. In future updates, data may be synced to your Google Drive via OAuth API.</p>
+          <p><strong>Privacy Policy:</strong> Your data is saved locally in your browser or synced to your Google Drive via OAuth API. No data is stored externally by the app.</p>
           <button onclick="document.getElementById('disclaimerModal').style.display='none';">Close</button>
         </div>
       </div>
@@ -351,9 +394,29 @@
       <div id="profileModal" class="modal" style="display:none;">
         <div class="modal-content">
           <h3 id="profileModalTitle"></h3>
-          <img id="profileModalPhoto" src="" style="width:100px;height:100px;border-radius:50%;border:1px solid #ccc;margin-bottom:10px;display:none;" />
+          <div style="position: relative; display: inline-block;">
+            <img id="profileModalPhoto" src="" style="width:100px;height:100px;border-radius:50%;border:1px solid #ccc;margin-bottom:10px;display:none;" />
+            <div class="photo-zoom" style="display:none; position:absolute; top:0; left:110px; z-index:10;">
+              <img id="profileModalPhotoZoom" src="" style="width:200px;height:200연:200px;border-radius:10px;border:2px solid #ccc;" />
+            </div>
+          </div>
           <table id="profileModalTable" class="profile-modal-table"></table>
           <button onclick="closeProfileModal()">Close</button>
+        </div>
+      </div>
+
+      <!-- Share Backup Modal -->
+      <div id="shareBackupModal" class="modal" style="display:none;">
+        <div class="modal-content">
+          <h3>Share Backup</h3>
+          <label>Select Backup:
+            <select id="backupFiles" required></select>
+          </label>
+          <label>Recipient Email:
+            <input type="email" id="shareEmail" placeholder="recipient@example.com" required />
+          </label>
+          <button onclick="shareBackup()">Share</button>
+          <button onclick="hideShareBackup()">Cancel</button>
         </div>
       </div>
 
@@ -362,9 +425,12 @@
     </main>
   </div>
 
-  <!-- External Libraries for PDF Export and Fuzzy Search -->
+  <!-- External Libraries -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/fuse.js/6.6.2/fuse.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.12/cropper.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+  <script src="https://apis.google.com/js/api.js"></script>
   <script src="app.js"></script>
   <script>
     if ('serviceWorker' in navigator) {
@@ -381,5 +447,6 @@
       console.log("PWA install prompt ready.");
     });
   </script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.12/cropper.min.css" />
 </body>
 </html>
