@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1  maximum-scale=1.0, user-scalable=no" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1.0, user-scalable=no" />
   <title>Court File Tracker</title>
   <link rel="manifest" href="manifest.json" />
   <link rel="stylesheet" href="style.css" />
@@ -27,10 +27,10 @@
     <!-- Sidebar -->
     <aside id="sidebar" class="sidebar">
       <img src="icon-192.png" alt="CFT Logo" class="sidebar-logo" />
-      <button onclick="navigate('dashboard')"><span>🏠</span> Dashboard</button>
-      <button onclick="navigate('newFile')"><span>📂</span> New Entry</button>
-      <button onclick="navigate('return')"><span>↩️</span> Return File</button>
-      <button onclick="navigate('fileFetcher')"><span>👤</span> File Fetcher</button>
+      <button class="sidebar-btn hidden" onclick="navigate('dashboard')"><span>🏠</span> Dashboard</button>
+      <button class="sidebar-btn hidden" onclick="navigate('newFile')"><span>📂</span> New Entry</button>
+      <button class="sidebar-btn hidden" onclick="navigate('return')"><span>↩️</span> Return File</button>
+      <button class="sidebar-btn hidden" onclick="navigate('fileFetcher')"><span>👤</span> File Fetcher</button>
       <button onclick="navigate('admin')"><span>🛡️</span> Admin</button>
       <button onclick="navigate('developersDisclaimer')"><span>ℹ️</span> Developers Disclaimer</button>
     </aside>
@@ -337,7 +337,7 @@
           </label>
           <label>PIN (4 digits): <span class="required">*</span><input type="password" id="pin" maxlength="4" pattern="\d{4}" required /></label>
           <label>Email (for PIN recovery): <input type="email" id="email" placeholder="example@domain.com" /></label>
-          <label>Upload Photo: <span class="required">*</span><input type="file" id="userPhoto" accept="image/*" required /></label>
+          <label>Upload Photo: <input type="file" id="userPhoto" accept="image/*" /></label>
           <div id="userPhotoCropper" style="display:none; margin-top:10px;">
             <img id="userPhotoPreview" style="max-width:100%; border:1px solid #ccc;" />
             <button type="button" onclick="cropUserPhoto()">Crop & Save</button>
@@ -397,7 +397,7 @@
           <div style="position: relative; display: inline-block;">
             <img id="profileModalPhoto" src="" style="width:100px;height:100px;border-radius:50%;border:1px solid #ccc;margin-bottom:10px;display:none;" />
             <div class="photo-zoom" style="display:none; position:absolute; top:0; left:110px; z-index:10;">
-              <img id="profileModalPhotoZoom" src="" style="width:200px;height:200연:200px;border-radius:10px;border:2px solid #ccc;" />
+              <img id="profileModalPhotoZoom" src="" style="width:200px;height:200px;border-radius:10px;border:2px solid #ccc;" />
             </div>
           </div>
           <table id="profileModalTable" class="profile-modal-table"></table>
