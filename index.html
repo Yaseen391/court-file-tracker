@@ -21,7 +21,8 @@
       <button id="closeBtn" class="window-btn close-btn" title="Close">✕</button>
     </div>
   </header>
-
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="https://apis.google.com/js/api.js"></script>
   <!-- Main App Container -->
   <div class="app-container">
     <!-- Sidebar -->
@@ -435,6 +436,7 @@
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', function () {
+        <script src="https://accounts.google.com/gsi/client" async defer></script>
         navigator.serviceWorker.register('service-worker.js')
           .then(() => console.log("Service Worker registered"));
       });
