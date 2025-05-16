@@ -158,7 +158,7 @@ h1, h2, h3 {
   z-index: 100;
 }
 
-.sidebar.active + .sidebar-overlay {
+.sidebar-overlay.active {
   display: block;
 }
 
@@ -661,10 +661,14 @@ input[type="checkbox"] {
 }
 
 #photoEditor, #userPhotoEditor {
-  display: flex;
+  display: none;
   flex-direction: column;
   align-items: flex-start;
   gap: 10px;
+}
+
+#photoEditor.active, #userPhotoEditor.active {
+  display: flex;
 }
 
 #photoEditor label, #userPhotoEditor label {
