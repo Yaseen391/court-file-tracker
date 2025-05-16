@@ -8,15 +8,68 @@ let currentPage = 1;
 const itemsPerPage = 10;
 let cropper = null;
 let userCropper = null;
+let chartInstance = null; // Store Chart.js instance to fix canvas reuse error
 let analytics = JSON.parse(localStorage.getItem('analytics')) || {
   filesEntered: 0,
   searchesPerformed: 0,
   backupsCreated: 0
 };
 
+// IndexedDB Setup for offline data persistence
+const dbName = 'CourtFileTrackerDB';
+const dbVersion = 1;
+let db;
+
+function initIndexedDB() {
+  const request = indexedDB.open(dbName, dbVersion);
+  request.onupgradeneeded = (event) => {
+    const db = event.target.result;
+    db.createObjectStore('data', { keyPath: 'key' });
+  };
+  request.onsuccess = (event) => {
+    db = event.target.result;
+    syncLocalStorageToIndexedDB();
+  };
+  request.onerror = () => console.error('IndexedDB error');
+}
+
+function syncLocalStorageToIndexedDB() {
+  const data = {
+    files: JSON.parse(localStorage.getItem('files')) || [],
+    profiles: JSON.parse(localStorage.getItem('profiles')) || [],
+    userProfile: JSON.parse(localStorage.getItem('userProfile')) || null,
+    offlineQueue: JSON.parse(localStorage.getItem('offlineQueue')) || [],
+    analytics: JSON.parse(localStorage.getItem('analytics')) || analytics
+  };
+  const transaction = db.transaction(['data'], 'readwrite');
+  const store = transaction.objectStore('data');
+  Object.entries(data).forEach(([key, value]) => {
+    store.put({ key, value });
+  });
+}
+
+function syncIndexedDBToLocalStorage() {
+  const transaction = db.transaction(['data'], 'readonly');
+  const store = transaction.objectStore('data');
+  const keys = ['files', 'profiles', 'userProfile', 'offlineQueue', 'analytics'];
+  keys.forEach(key => {
+    const request = store.get(key);
+    request.onsuccess = () => {
+      if (request.result) {
+        localStorage.setItem(key, JSON.stringify(request.result.value));
+        if (key === 'files') files = request.result.value;
+        if (key === 'profiles') profiles = request.result.value;
+        if (key === 'userProfile') userProfile = request.result.value;
+        if (key === 'offlineQueue') offlineQueue = request.result.value;
+        if (key === 'analytics') analytics = request.result.value;
+      }
+    };
+  });
+}
+
 // Google Drive API Configuration
 const CLIENT_ID = '1022877727253-vlif6k2sstl4gn98e8svsh8mhd3j0gl3.apps.googleusercontent.com';
-const API_KEY = 'YOUR_API_KEY'; // Replace with your Google API key
+const API_KEY = 'AIzaSyCmYFpMXEtPdfSg4-K7lgdqNc-njgqONmQ';
 const SCOPES = 'https://www.googleapis.com/auth/drive.file';
 let tokenClient;
 
@@ -40,9 +93,14 @@ function initGoogleDrive() {
             document.getElementById('restoreFromDrive').style.display = 'inline-block';
             document.getElementById('shareBackup').style.display = 'inline-block';
             showToast('Signed in to Google Drive');
+            syncLocalStorageToIndexedDB();
+            processOfflineQueue(); // Process any queued actions
           }
         }
       });
+    }).catch((error) => {
+      console.error('Google API init error:', error);
+      showToast('Failed to initialize Google Drive. Please try again.');
     });
   });
 }
@@ -51,6 +109,11 @@ function initGoogleDrive() {
 function signInWithGoogle() {
   if (!navigator.onLine) {
     showToast('No internet connection. Please try again later.');
+    return;
+  }
+  if (!tokenClient) {
+    showToast('Google Drive not initialized. Please try again.');
+    initGoogleDrive();
     return;
   }
   tokenClient.requestAccessToken();
@@ -67,6 +130,7 @@ function backupToDrive() {
   if (!navigator.onLine) {
     offlineQueue.push({ action: 'backupToDrive', data: null });
     localStorage.setItem('offlineQueue', JSON.stringify(offlineQueue));
+    syncLocalStorageToIndexedDB();
     showToast('Backup queued for when online');
     return;
   }
@@ -76,7 +140,11 @@ function backupToDrive() {
     return;
   }
   const data = {
-    files,
+    files: files.map(f => ({
+      ...f,
+      deliveredToName: f.deliveredToName,
+      deliveredToType: f.deliveredToType
+    })),
     profiles,
     userProfile: { ...userProfile, pin: null, cnic: maskCNIC(userProfile.cnic) }
   };
@@ -84,7 +152,7 @@ function backupToDrive() {
   const metadata = {
     name: `cft_backup_${formatDate(new Date(), 'YYYYMMDD_HHMMSS')}.json`,
     mimeType: 'application/json',
-    parents: ['appDataFolder'] // Use appDataFolder for privacy
+    parents: ['appDataFolder']
   };
   const form = new FormData();
   form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
@@ -97,6 +165,7 @@ function backupToDrive() {
   }).then(() => {
     analytics.backupsCreated++;
     localStorage.setItem('analytics', JSON.stringify(analytics));
+    syncLocalStorageToIndexedDB();
     showToast('Backup uploaded to Google Drive');
   }).catch((error) => {
     console.error('Backup error:', error);
@@ -129,7 +198,7 @@ function restoreFromDrive() {
       option.textContent = file.name;
       select.appendChild(option);
     });
-    document.getElementById('shareBackupModal').style.display = 'block'; // Reuse modal for selection
+    document.getElementById('shareBackupModal').style.display = 'block';
   }).catch((error) => {
     console.error('List files error:', error);
     showToast('Failed to list backups. Please try again.');
@@ -179,15 +248,32 @@ function maskCNIC(cnic) {
   return `${parts[0].slice(0, 2)}***-${parts[1].slice(0, 3)}****-${parts[2]}`;
 }
 
+// Process Offline Queue
+function processOfflineQueue() {
+  if (!navigator.onLine || !isGoogleTokenValid()) return;
+  offlineQueue.forEach(({ action, data }) => {
+    if (action === 'backupToDrive') backupToDrive();
+  });
+  offlineQueue = [];
+  localStorage.setItem('offlineQueue', JSON.stringify(offlineQueue));
+  syncLocalStorageToIndexedDB();
+}
+
 // Window Load
 window.onload = () => {
+  initIndexedDB();
   initGoogleDrive();
   if (userProfile) {
     document.getElementById('setupMessage').style.display = 'none';
     document.getElementById('adminForm').style.display = 'none';
     document.getElementById('savedProfile').style.display = 'block';
     updateSavedProfile();
-    navigate('dashboard');
+    if (!isGoogleTokenValid()) {
+      showToast('Please sign in to Google Drive to continue');
+      signInWithGoogle();
+    } else {
+      navigate('dashboard');
+    }
   } else {
     navigate('admin');
   }
@@ -200,7 +286,7 @@ function setupPushNotifications() {
   if ('Notification' in window && navigator.serviceWorker) {
     Notification.requestPermission().then(permission => {
       if (permission === 'granted') {
-        setInterval(checkOverdueFiles, 3600000); // Check every hour
+        setInterval(checkOverdueFiles, 3600000);
       }
     });
   }
@@ -219,8 +305,13 @@ function checkOverdueFiles() {
   }
 }
 
-// Navigation
+// Navigation with Google Drive check
 function navigate(screenId) {
+  if (userProfile && !isGoogleTokenValid() && screenId !== 'admin') {
+    showToast('Please sign in to Google Drive to access this section');
+    signInWithGoogle();
+    return;
+  }
   document.querySelectorAll('.screen').forEach(screen => screen.classList.remove('active'));
   document.getElementById(screenId).classList.add('active');
   document.querySelectorAll('.sidebar button').forEach(btn => btn.classList.remove('active'));
@@ -228,14 +319,6 @@ function navigate(screenId) {
   if (screenId === 'dashboard') updateDashboardCards();
   if (screenId === 'return') filterPendingFiles();
   if (screenId === 'fileFetcher') renderProfiles();
-  if (screenId === 'developersDisclaimer') {
-    // Instructions for Developers Disclaimer:
-    // 1. Design your content as HTML (e.g., <div><h3>About Me</h3><img src="your-image.jpg"><p>Your bio...</p></div>).
-    // 2. Replace the contents of <div id="disclaimerContent"> in index.html with your HTML.
-    // 3. Host images locally in the project folder or use base64 encoding.
-    // 4. Ensure styles match existing CSS (e.g., .screen, h2, p).
-    // 5. Test on mobile and desktop for responsiveness.
-  }
   if (window.innerWidth <= 768) {
     document.getElementById('sidebar').classList.remove('active');
     document.querySelector('.sidebar-overlay').classList.remove('active');
@@ -254,37 +337,45 @@ function toggleSidebar() {
 document.getElementById('adminForm').addEventListener('submit', (e) => {
   e.preventDefault();
   document.getElementById('loadingIndicator').style.display = 'block';
-  setTimeout(() => {
-    const userPhoto = document.getElementById('userPhoto').cropperResult || document.getElementById('userPhoto').files[0];
-    const reader = new FileReader();
-    reader.onload = () => {
-      userProfile = {
-        clerkName: document.getElementById('clerkName').value,
-        judgeName: document.getElementById('judgeName').value,
-        courtName: document.getElementById('courtName').value,
-        mobile: document.getElementById('mobile').value,
-        cnic: document.getElementById('cnic').value,
-        pin: document.getElementById('pin').value,
-        email: document.getElementById('email').value,
-        photo: reader.result
+  try {
+    setTimeout(() => {
+      const userPhoto = document.getElementById('userPhoto').cropperResult || (document.getElementById('userPhoto').files[0] ? document.getElementById('userPhoto').files[0] : null);
+      const reader = new FileReader();
+      reader.onload = () => {
+        userProfile = {
+          clerkName: document.getElementById('clerkName').value,
+          judgeName: document.getElementById('judgeName').value,
+          courtName: document.getElementById('courtName').value,
+          mobile: document.getElementById('mobile').value,
+          cnic: document.getElementById('cnic').value,
+          pin: document.getElementById('pin').value,
+          email: document.getElementById('email').value,
+          photo: reader.result || ''
+        };
+        localStorage.setItem('userProfile', JSON.stringify(userProfile));
+        syncLocalStorageToIndexedDB();
+        document.getElementById('setupMessage').style.display = 'none';
+        document.getElementById('adminForm').style.display = 'none';
+        document.getElementById('savedProfile').style.display = 'block';
+        updateSavedProfile();
+        showToast('Profile saved successfully! Please sign in to Google Drive.');
+        signInWithGoogle();
+        document.getElementById('loadingIndicator').style.display = 'none';
       };
-      localStorage.setItem('userProfile', JSON.stringify(userProfile));
-      document.getElementById('setupMessage').style.display = 'none';
-      document.getElementById('adminForm').style.display = 'none';
-      document.getElementById('savedProfile').style.display = 'block';
-      updateSavedProfile();
-      navigate('dashboard');
-      showToast('Profile saved successfully!');
-      document.getElementById('loadingIndicator').style.display = 'none';
-    };
-    if (userPhoto) reader.readAsDataURL(userPhoto);
-    else {
-      userProfile.photo = '';
-      localStorage.setItem('userProfile', JSON.stringify(userProfile));
-      updateSavedProfile();
-      document.getElementById('loadingIndicator').style.display = 'none';
-    }
-  }, 500);
+      if (userPhoto) reader.readAsDataURL(userPhoto);
+      else {
+        userProfile.photo = '';
+        localStorage.setItem('userProfile', JSON.stringify(userProfile));
+        syncLocalStorageToIndexedDB();
+        updateSavedProfile();
+        document.getElementById('loadingIndicator').style.display = 'none';
+      }
+    }, 500);
+  } catch (error) {
+    console.error('Admin form error:', error);
+    showToast('Failed to save profile. Please try again.');
+    document.getElementById('loadingIndicator').style.display = 'none';
+  }
 });
 
 // Update Saved Profile
@@ -341,14 +432,17 @@ document.getElementById('userPhoto').addEventListener('change', (e) => {
 
 function cropUserPhoto() {
   if (userCropper) {
-    const canvas = userCropper.getCroppedCanvas({ width: 200, height: 200 });
-    canvas.toBlob((blob) => {
-      const url = canvas.toDataURL('image/jpeg', 0.8); // 80% quality
+    try {
+      const canvas = userCropper.getCroppedCanvas({ width: 200, height: 200 });
+      const url = canvas.toDataURL('image/jpeg', 0.8);
       document.getElementById('userPhoto').cropperResult = url;
       document.getElementById('userPhotoCropper').style.display = 'none';
       userCropper.destroy();
       userCropper = null;
-    }, 'image/jpeg', 0.8);
+    } catch (error) {
+      console.error('Crop user photo error:', error);
+      showToast('Failed to crop photo. Please try again.');
+    }
   }
 }
 
@@ -393,6 +487,7 @@ function changePin() {
   if (resetCnic === userProfile.cnic || resetCnic === userProfile.email) {
     userProfile.pin = newPin;
     localStorage.setItem('userProfile', JSON.stringify(userProfile));
+    syncLocalStorageToIndexedDB();
     showToast('PIN changed successfully');
     hideChangePin();
   } else {
@@ -422,9 +517,15 @@ function updateDashboardCards() {
   document.getElementById('cardOverdue').innerHTML = `<span class="tooltip">Files pending over 10 days</span><h3>${overdue}</h3><p>Overdue Files</p>`;
   document.getElementById('cardSearchPrev').innerHTML = `<span class="tooltip">Search all previous records</span><h3>Search</h3><p>Previous Records</p>`;
 
+  // Destroy previous chart instance to fix canvas reuse error
+  if (chartInstance) {
+    chartInstance.destroy();
+    chartInstance = null;
+  }
+
   // Chart.js Stats
   const ctx = document.getElementById('statsChart').getContext('2d');
-  new Chart(ctx, {
+  chartInstance = new Chart(ctx, {
     type: 'bar',
     data: {
       labels: ['Deliveries', 'Returns', 'Pending', 'Tomorrow', 'Overdue'],
@@ -435,7 +536,13 @@ function updateDashboardCards() {
       }]
     },
     options: {
-      scales: { y: { beginAtZero: true } },
+      scales: {
+        y: {
+          beginAtZero: true,
+          stepSize: 1, // Integer ticks
+          ticks: { precision: 0 } // No decimals
+        }
+      },
       plugins: { legend: { display: false } }
     }
   });
@@ -526,9 +633,18 @@ function renderReportTable() {
 
   paginatedData.forEach((f, index) => {
     const row = document.createElement('tr');
-    const timeSpan = f.returned ? `${Math.ceil((new Date(f.returnedAt) - new Date(f.deliveredAt)) / (1000 * 60 * 60 * 24))} days` : getDynamicTimeSpan(f.deliveredAt);
-    const profile = profiles.find(p => p.name === f.deliveredTo && p.type === f.deliveredType) || {};
+    const timeSpan = f.returned ? getDynamicTimeSpan(f.deliveredAt, f.returnedAt) : getDynamicTimeSpan(f.deliveredAt);
+    const profile = profiles.find(p => p.name === f.deliveredToName && p.type === f.deliveredToType) || {};
     const swalDetails = f.swalFormNo ? `No: ${f.swalFormNo}, Date: ${formatDate(f.swalDate)}` : '';
+    const profileDetails = [
+      profile.chamberNo ? `Chamber No: ${profile.chamberNo}` : '',
+      profile.advocateName ? `Advocate Name: ${profile.advocateName}` : '',
+      profile.advocateCell ? `Advocate Cell: ${profile.advocateCell}` : '',
+      profile.designation ? `Designation: ${profile.designation}` : '',
+      profile.postedAt ? `Posted At: ${profile.postedAt}` : '',
+      profile.cnic ? `ID/CNIC: ${maskCNIC(profile.cnic)}` : '',
+      profile.relation ? `Relation: ${profile.relation}` : ''
+    ].filter(Boolean).join(', ');
     row.innerHTML = `
       <td>${start + index + 1}</td>
       <td>${f.cmsNo}</td>
@@ -537,13 +653,13 @@ function renderReportTable() {
       <td>${f.nature}</td>
       <td>${f.dateType === 'decision' ? 'Decision Date' : 'Next Hearing Date'}: ${formatDate(f.date)}</td>
       <td>${swalDetails}</td>
-      <td>${f.deliveredTo} (${f.deliveredType})</td>
-      <td>${formatDate(f.deliveredAt)}</td>
-      <td>${f.returned ? formatDate(f.returnedAt) : ''}</td>
+      <td><a href="#" onclick="showProfileDetails('${f.deliveredToName}', '${f.deliveredToType}')">${f.deliveredToName} (${f.deliveredToType})</a></td>
+      <td>${formatDate(f.deliveredAt, 'YYYY-MM-DD HH:mm:ss')}</td>
+      <td>${f.returned ? formatDate(f.returnedAt, 'YYYY-MM-DD HH:mm:ss') : ''}</td>
       <td class="time-span" data-delivered="${f.deliveredAt}" data-returned="${f.returned ? 'true' : 'false'}">${timeSpan}</td>
       <td>${f.courtName}</td>
       <td>${f.clerkName}</td>
-      <td><a href="#" onclick="showProfileDetails('${f.deliveredTo}', '${f.deliveredType}')">View Profile</a></td>
+      <td>${profileDetails}</td>
     `;
     tbody.appendChild(row);
   });
@@ -553,18 +669,17 @@ function renderReportTable() {
 }
 
 // Dynamic Time Span
-function getDynamicTimeSpan(deliveredAt) {
-  const diff = Date.now() - new Date(deliveredAt).getTime();
+function getDynamicTimeSpan(deliveredAt, returnedAt = null) {
+  const start = new Date(deliveredAt).getTime();
+  const end = returnedAt ? new Date(returnedAt).getTime() : Date.now();
+  const diff = end - start;
   const seconds = Math.floor(diff / 1000);
   const minutes = Math.floor(seconds / 60);
   const hours = Math.floor(minutes / 60);
   const days = Math.floor(hours / 24);
-  const weeks = Math.floor(days / 7);
   const months = Math.floor(days / 30);
-  if (months >= 12) return `${Math.floor(months / 12)}y ${months % 12}m`;
-  if (months >= 1) return `${months}m ${days % 30}d`;
-  if (weeks >= 1) return `${weeks}w ${days % 7}d`;
-  if (days >= 1) return `${days}d ${hours % 24}h`;
+  if (months >= 1) return `${months}m ${days % 30}d ${hours % 24}h ${minutes % 60}m ${seconds % 60}s`;
+  if (days >= 1) return `${days}d ${hours % 24}h ${minutes % 60}m ${seconds % 60}s`;
   return `${hours}h ${minutes % 60}m ${seconds % 60}s`;
 }
 
@@ -582,7 +697,7 @@ setInterval(updateDynamicTimeSpans, 1000);
 // Table Sorting
 document.getElementById('dashboardReportTable').querySelectorAll('th').forEach((th, index) => {
   th.addEventListener('click', () => {
-    const columns = ['cmsNo', 'title', 'caseType', 'nature', 'dateType', 'swalFormNo', 'deliveredTo', 'deliveredAt', 'returnedAt', 'timeSpan', 'courtName', 'clerkName'];
+    const columns = ['cmsNo', 'title', 'caseType', 'nature', 'dateType', 'swalFormNo', 'deliveredToName', 'deliveredAt', 'returnedAt', 'timeSpan', 'courtName', 'clerkName'];
     if (index >= 1 && index <= 12) {
       const newColumn = columns[index - 1];
       sortDirection = sortColumn === newColumn ? -sortDirection : 1;
@@ -613,55 +728,167 @@ document.getElementById('nextPage').onclick = () => {
   }
 };
 
+// Format Date with PKT
+function formatDate(date, format = 'YYYY-MM-DD') {
+  if (!date) return '';
+  const d = new Date(date);
+  // Adjust to PKT (UTC+5)
+  d.setHours(d.getHours() + 5);
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  const hours = String(d.getHours()).padStart(2, '0');
+  const minutes = String(d.getMinutes()).padStart(2, '0');
+  const seconds = String(d.getSeconds()).padStart(2, '0');
+  if (format === 'YYYY-MM-DD HH:mm:ss') {
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+  }
+  return `${year}-${month}-${day}`;
+}
+
+// Show Profile Details
+function showProfileDetails(name, type) {
+  const profile = profiles.find(p => p.name === name && p.type === type) || {};
+  document.getElementById('profileModalTitle').textContent = `${name} (${type})`;
+  const table = document.getElementById('profileModalTable');
+  table.innerHTML = `
+    <tr><th>Name</th><td>${profile.name || ''}</td></tr>
+    <tr><th>Type</th><td>${profile.type || ''}</td></tr>
+    ${profile.cellNo ? `<tr><th>Cell No</th><td>${profile.cellNo}</td></tr>` : ''}
+    ${profile.chamberNo ? `<tr><th>Chamber No</th><td>${profile.chamberNo}</td></tr>` : ''}
+    ${profile.advocateName ? `<tr><th>Advocate Name</th><td>${profile.advocateName}</td></tr>` : ''}
+    ${profile.advocateCell ? `<tr><th>Advocate Cell</th><td>${profile.advocateCell}</td></tr>` : ''}
+    ${profile.designation ? `<tr><th>Designation</th><td>${profile.designation}</td></tr>` : ''}
+    ${profile.postedAt ? `<tr><th>Posted At</th><td>${profile.postedAt}</td></tr>` : ''}
+    ${profile.cnic ? `<tr><th>ID/CNIC</th><td>${maskCNIC(profile.cnic)}</td></tr>` : ''}
+    ${profile.relation ? `<tr><th>Relation</th><td>${profile.relation}</td></tr>` : ''}
+  `;
+  if (profile.photo) {
+    document.getElementById('profileModalPhoto').src = profile.photo;
+    document.getElementById('profileModalPhotoZoom').src = profile.photo;
+    document.getElementById('profileModalPhoto').style.display = 'block';
+  } else {
+    document.getElementById('profileModalPhoto').style.display = 'none';
+    document.getElementById('profileModalPhotoZoom').style.display = 'none';
+  }
+  document.getElementById('profileModal').style.display = 'block';
+}
+
+function closeProfileModal() {
+  document.getElementById('profileModal').style.display = 'none';
+}
+
 // Dashboard Search
 function performDashboardSearch() {
   analytics.searchesPerformed++;
   localStorage.setItem('analytics', JSON.stringify(analytics));
-  const title = document.getElementById('searchTitle').value.toLowerCase();
-  const cms = document.getElementById('searchCms').value;
-  const fileTaker = document.getElementById('searchFileTaker').value.toLowerCase();
-  const firNo = document.getElementById('searchFirNo').value.toLowerCase();
-  const firYear = document.getElementById('searchFirYear').value;
-  const policeStation = document.getElementById('searchPoliceStation').value.toLowerCase();
+  syncLocalStorageToIndexedDB();
+  const searchTitle = document.getElementById('searchTitle').value.toLowerCase();
+  const searchCms = document.getElementById('searchCms').value;
+  const searchFileTaker = document.getElementById('searchFileTaker').value.toLowerCase();
+  const searchFirNo = document.getElementById('searchFirNo').value.toLowerCase();
+  const searchFirYear = document.getElementById('searchFirYear').value;
+  const searchPoliceStation = document.getElementById('searchPoliceStation').value.toLowerCase();
 
-  const fuse = new Fuse(files, {
-    keys: ['title', 'cmsNo', 'deliveredTo', 'firNo', 'firYear', 'policeStation'],
-    threshold: 0.3
+  currentReportData = files.filter(f => {
+    return (!searchTitle || f.title.toLowerCase().includes(searchTitle)) &&
+           (!searchCms || f.cmsNo.toString().includes(searchCms)) &&
+           (!searchFileTaker || f.deliveredToName.toLowerCase().includes(searchFileTaker)) &&
+           (!searchFirNo || (f.firNo && f.firNo.toLowerCase().includes(searchFirNo))) &&
+           (!searchFirYear || (f.firYear && f.firYear.toString().includes(searchFirYear))) &&
+           (!searchPoliceStation || (f.policeStation && f.policeStation.toLowerCase().includes(searchPoliceStation)));
   });
 
-  let results = files;
-  if (title || cms || fileTaker || firNo || firYear || policeStation) {
-    results = fuse.search({
-      $or: [
-        title ? { title } : null,
-        cms ? { cmsNo: cms } : null,
-        fileTaker ? { deliveredTo: fileTaker } : null,
-        firNo ? { firNo } : null,
-        firYear ? { firYear } : null,
-        policeStation ? { policeStation } : null
-      ].filter(Boolean)
-    }).map(result => result.item);
-  }
-
-  currentReportData = results;
   currentPage = 1;
   renderReportTable();
 }
 
-// Profile Suggestions
+// Print Dashboard Report
+function printDashboardReport() {
+  const reportTitle = document.getElementById('reportTitle').textContent;
+  const table = document.getElementById('dashboardReportTable').outerHTML;
+  const printWindow = window.open('', '_blank');
+  printWindow.document.write(`
+    <html>
+      <head>
+        <title>${reportTitle}</title>
+        <style>
+          body { font-family: Arial, sans-serif; margin: 20px; }
+          table { width: 100%; border-collapse: collapse; }
+          th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+          th { background-color: #f5f5f5; }
+          h2 { text-align: center; }
+        </style>
+      </head>
+      <body>
+        <h2>${reportTitle}</h2>
+        ${table}
+      </body>
+    </html>
+  `);
+  printWindow.document.close();
+  printWindow.print();
+}
+
+// Export Dashboard Report
+function exportDashboardReport(format) {
+  if (format === 'csv') {
+    let csv = 'Sr#,CMS No,Title,Case Type,Nature,Date Type,Swal Form Details,Delivered To,Delivery Date,Return Date,Time Span,Court,Clerk Name,Profile Details\n';
+    currentReportData.forEach((f, index) => {
+      const profile = profiles.find(p => p.name === f.deliveredToName && p.type === f.deliveredToType) || {};
+      const timeSpan = f.returned ? getDynamicTimeSpan(f.deliveredAt, f.returnedAt) : getDynamicTimeSpan(f.deliveredAt);
+      const swalDetails = f.swalFormNo ? `No: ${f.swalFormNo}, Date: ${formatDate(f.swalDate)}` : '';
+      const profileDetails = [
+        profile.chamberNo ? `Chamber No: ${profile.chamberNo}` : '',
+        profile.advocateName ? `Advocate Name: ${profile.advocateName}` : '',
+        profile.advocateCell ? `Advocate Cell: ${profile.advocateCell}` : '',
+        profile.designation ? `Designation: ${profile.designation}` : '',
+        profile.postedAt ? `Posted At: ${profile.postedAt}` : '',
+        profile.cnic ? `ID/CNIC: ${maskCNIC(profile.cnic)}` : '',
+        profile.relation ? `Relation: ${profile.relation}` : ''
+      ].filter(Boolean).join(', ');
+      csv += `${index + 1},${f.cmsNo},"${f.title.replace('vs', 'Vs.')}",${f.caseType},${f.nature},"${f.dateType}: ${formatDate(f.date)}","${swalDetails}","${f.deliveredToName} (${f.deliveredToType})","${formatDate(f.deliveredAt, 'YYYY-MM-DD HH:mm:ss')}","${f.returned ? formatDate(f.returnedAt, 'YYYY-MM-DD HH:mm:ss') : ''}",${timeSpan},${f.courtName},${f.clerkName},"${profileDetails}"\n`;
+    });
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `report_${new Date().toISOString()}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  } else if (format === 'pdf') {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    doc.text(document.getElementById('reportTitle').textContent, 10, 10);
+    doc.autoTable({ html: '#dashboardReportTable', startY: 20 });
+    doc.save(`report_${new Date().toISOString()}.pdf`);
+  }
+}
+
+// New File Form
+function toggleCriminalFields() {
+  const caseType = document.getElementById('caseType').value;
+  document.getElementById('criminalFields').style.display = caseType === 'criminal' ? 'block' : 'none';
+}
+
+function toggleCopyAgency() {
+  const copyAgency = document.getElementById('copyAgency').checked;
+  document.getElementById('copyAgencyFields').style.display = copyAgency ? 'block' : 'none';
+  document.getElementById('swalFormNo').required = copyAgency;
+  document.getElementById('swalDate').required = copyAgency;
+}
+
 function suggestProfiles(input, inputId) {
   const suggestions = document.getElementById(inputId === 'deliveredTo' ? 'suggestions' : 'searchSuggestions');
   suggestions.innerHTML = '';
   if (!input) return;
-
-  const fuse = new Fuse(profiles, { keys: ['name', 'cellNo', 'chamberNo'], threshold: 0.3 });
+  const fuse = new Fuse(profiles, { keys: ['name', 'type', 'cellNo'], threshold: 0.3 });
   const results = fuse.search(input).slice(0, 5);
-
   results.forEach(result => {
     const li = document.createElement('li');
     li.innerHTML = `
       <img src="${result.item.photo || 'icon-192.png'}" alt="Profile" />
-      <span>${result.item.name} (${result.item.type}) - ${result.item.cellNo}</span>
+      <span>${result.item.name} (${result.item.type})</span>
     `;
     li.onclick = () => {
       document.getElementById(inputId).value = result.item.name;
@@ -674,193 +901,183 @@ function suggestProfiles(input, inputId) {
   });
 }
 
-// Auto-Fill CMS
 function autoFillCMS() {
   const cmsNo = document.getElementById('cmsNo').value;
-  const existing = files.find(f => f.cmsNo === cmsNo);
-  if (existing) {
-    document.getElementById('caseType').value = existing.caseType;
-    document.getElementById('petitioner').value = existing.petitioner;
-    document.getElementById('respondent').value = existing.respondent;
-    document.getElementById('nature').value = existing.nature;
-    if (existing.caseType === 'criminal') {
-      document.getElementById('firNo').value = existing.firNo || '';
-      document.getElementById('firYear').value = existing.firYear || '';
-      document.getElementById('firUs').value = existing.firUs || '';
-      document.getElementById('policeStation').value = existing.policeStation || '';
-      toggleCriminalFields();
+  const existingFile = files.find(f => f.cmsNo === parseInt(cmsNo));
+  if (existingFile) {
+    const [petitioner, respondent] = existingFile.title.split('vs').map(s => s.trim());
+    document.getElementById('caseType').value = existingFile.caseType;
+    document.getElementById('petitioner').value = petitioner || '';
+    document.getElementById('respondent').value = respondent || '';
+    document.getElementById('nature').value = existingFile.nature;
+    document.getElementById('dateType').value = existingFile.dateType;
+    document.getElementById('date').value = existingFile.date;
+    if (existingFile.caseType === 'criminal') {
+      document.getElementById('firNo').value = existingFile.firNo || '';
+      document.getElementById('firYear').value = existingFile.firYear || '';
+      document.getElementById('firUs').value = existingFile.firUs || '';
+      document.getElementById('policeStation').value = existingFile.policeStation || '';
+      document.getElementById('criminalFields').style.display = 'block';
+    } else {
+      document.getElementById('criminalFields').style.display = 'none';
     }
-    document.getElementById('dateType').value = existing.dateType;
-    document.getElementById('date').value = existing.date.split('T')[0];
-    document.getElementById('deliveredTo').value = existing.deliveredTo;
-    document.getElementById('deliveredType').value = existing.deliveredType;
-    if (existing.swalFormNo) {
-      document.getElementById('copyAgency').checked = true;
-      toggleCopyAgency();
-      document.getElementById('swalFormNo').value = existing.swalFormNo;
-      document.getElementById('swalDate').value = existing.swalDate.split('T')[0];
-    }
-    // Disable fields except dateType and date
-    ['caseType', 'petitioner', 'respondent', 'nature', 'firNo', 'firYear', 'firUs', 'policeStation', 'deliveredTo', 'deliveredType', 'swalFormNo', 'swalDate'].forEach(id => {
-      const el = document.getElementById(id);
-      if (el) el.disabled = true;
-    });
-  } else {
-    // Enable all fields
-    ['caseType', 'petitioner', 'respondent', 'nature', 'firNo', 'firYear', 'firUs', 'policeStation', 'deliveredTo', 'deliveredType', 'swalFormNo', 'swalDate', 'dateType', 'date'].forEach(id => {
-      const el = document.getElementById(id);
-      if (el) el.disabled = false;
-    });
   }
 }
 
-// Toggle Criminal Fields
-function toggleCriminalFields() {
-  document.getElementById('criminalFields').style.display = document.getElementById('caseType').value === 'criminal' ? 'block' : 'none';
-}
-
-// Toggle Copy Agency
-function toggleCopyAgency() {
-  const isChecked = document.getElementById('copyAgency').checked;
-  document.getElementById('copyAgencyFields').style.display = isChecked ? 'block' : 'none';
-  document.getElementById('swalFormNo').required = isChecked;
-  document.getElementById('swalDate').required = isChecked;
-}
-
-// File Form Submission
 document.getElementById('fileForm').addEventListener('submit', (e) => {
   e.preventDefault();
   document.getElementById('loadingIndicator').style.display = 'block';
   setTimeout(() => {
-    const file = {
-      cmsNo: document.getElementById('cmsNo').value,
-      title: `${document.getElementById('petitioner').value} Vs. ${document.getElementById('respondent').value}`,
+    const fileData = {
+      cmsNo: parseInt(document.getElementById('cmsNo').value),
+      title: `${document.getElementById('petitioner').value} vs ${document.getElementById('respondent').value}`,
       caseType: document.getElementById('caseType').value,
       nature: document.getElementById('nature').value,
-      firNo: document.getElementById('firNo').value,
-      firYear: document.getElementById('firYear').value,
-      firUs: document.getElementById('firUs').value,
-      policeStation: document.getElementById('policeStation').value,
       dateType: document.getElementById('dateType').value,
       date: document.getElementById('date').value,
-      deliveredTo: document.getElementById('deliveredTo').value,
-      deliveredType: document.getElementById('deliveredType').value,
+      deliveredToName: document.getElementById('deliveredTo').value,
+      deliveredToType: document.getElementById('deliveredType').value,
       deliveredAt: new Date().toISOString(),
-      returned: false,
       courtName: userProfile.courtName,
       clerkName: userProfile.clerkName,
-      swalFormNo: document.getElementById('copyAgency').checked ? document.getElementById('swalFormNo').value : '',
-      swalDate: document.getElementById('copyAgency').checked ? document.getElementById('swalDate').value : ''
+      returned: false
     };
-    files.push(file);
-    localStorage.setItem('files', JSON.stringify(files));
+    if (fileData.caseType === 'criminal') {
+      fileData.firNo = document.getElementById('firNo').value;
+      fileData.firYear = document.getElementById('firYear').value;
+      fileData.firUs = document.getElementById('firUs').value;
+      fileData.policeStation = document.getElementById('policeStation').value;
+    }
+    if (document.getElementById('copyAgency').checked) {
+      fileData.swalFormNo = document.getElementById('swalFormNo').value;
+      fileData.swalDate = document.getElementById('swalDate').value;
+    }
+    files.push(fileData);
     analytics.filesEntered++;
+    localStorage.setItem('files', JSON.stringify(files));
     localStorage.setItem('analytics', JSON.stringify(analytics));
+    syncLocalStorageToIndexedDB();
     document.getElementById('fileForm').reset();
-    toggleCriminalFields();
-    toggleCopyAgency();
-    updateDashboardCards();
-    showToast('File saved and delivered!');
+    document.getElementById('criminalFields').style.display = 'none';
+    document.getElementById('copyAgencyFields').style.display = 'none';
+    document.getElementById('copyAgency').checked = false;
+    showToast('File saved and delivered successfully');
     document.getElementById('loadingIndicator').style.display = 'none';
+    updateDashboardCards();
   }, 500);
 });
 
-// Filter Pending Files
+// Return File
 function filterPendingFiles() {
-  const cms = document.getElementById('returnCms').value;
+  const cmsNo = document.getElementById('returnCms').value;
   const title = document.getElementById('returnTitle').value.toLowerCase();
   const tbody = document.getElementById('pendingFilesTable').querySelector('tbody');
   tbody.innerHTML = '';
-
-  const filteredFiles = files.filter(f => !f.returned && (!cms || f.cmsNo.includes(cms)) && (!title || f.title.toLowerCase().includes(title)));
-
+  const filteredFiles = files.filter(f => !f.returned &&
+    (!cmsNo || f.cmsNo.toString().includes(cmsNo)) &&
+    (!title || f.title.toLowerCase().includes(title)));
   filteredFiles.forEach(f => {
     const row = document.createElement('tr');
     row.innerHTML = `
-      <td><input type="checkbox" class="select-file" data-cms="${f.cmsNo}"></td>
+      <td><input type="checkbox" class="return-checkbox" data-cms="${f.cmsNo}"></td>
       <td>${f.cmsNo}</td>
       <td>${f.title.replace('vs', 'Vs.')}</td>
       <td>${f.caseType}</td>
-      <td><a href="#" onclick="showProfileDetails('${f.deliveredTo}', '${f.deliveredType}')">${f.deliveredTo} (${f.deliveredType})</a></td>
-      <td><button onclick="returnFile('${f.cmsNo}')">Return</button></td>
+      <td>${f.deliveredToName} (${f.deliveredToType})</td>
+      <td><button onclick="returnFile(${f.cmsNo})">Return</button></td>
     `;
     tbody.appendChild(row);
   });
 }
 
-// Bulk Return Files
-function bulkReturnFiles() {
-  const selected = Array.from(document.querySelectorAll('.select-file:checked')).map(cb => cb.dataset.cms);
-  if (selected.length === 0) {
-    showToast('Please select at least one file');
-    return;
-  }
-  if (confirm(`Return ${selected.length} file(s)?`)) {
-    selected.forEach(cms => returnFile(cms));
-    showToast(`${selected.length} file(s) returned`);
-  }
-}
-
-// Return File
 function returnFile(cmsNo) {
-  const file = files.find(f => f.cmsNo === cmsNo && !f.returned);
-  if (file) {
-    file.returned = true;
-    file.returnedAt = new Date().toISOString();
-    localStorage.setItem('files', JSON.stringify(files));
-    filterPendingFiles();
-    updateDashboardCards();
-    showToast(`File ${cmsNo} returned`);
+  promptPin((success) => {
+    if (success) {
+      const file = files.find(f => f.cmsNo === cmsNo && !f.returned);
+      if (file) {
+        file.returned = true;
+        file.returnedAt = new Date().toISOString();
+        localStorage.setItem('files', JSON.stringify(files));
+        syncLocalStorageToIndexedDB();
+        showToast(`File ${cmsNo} marked as returned`);
+        filterPendingFiles();
+        updateDashboardCards();
+      }
+    }
+  });
+}
+
+function bulkReturnFiles() {
+  promptPin((success) => {
+    if (success) {
+      const checkboxes = document.querySelectorAll('.return-checkbox:checked');
+      checkboxes.forEach(cb => {
+        const cmsNo = parseInt(cb.dataset.cms);
+        const file = files.find(f => f.cmsNo === cmsNo && !f.returned);
+        if (file) {
+          file.returned = true;
+          file.returnedAt = new Date().toISOString();
+        }
+      });
+      localStorage.setItem('files', JSON.stringify(files));
+      syncLocalStorageToIndexedDB();
+      showToast(`${checkboxes.length} file(s) marked as returned`);
+      filterPendingFiles();
+      updateDashboardCards();
+    }
+  });
+}
+
+// File Fetcher
+function showProfileForm(profile = null) {
+  document.getElementById('profileForm').style.display = 'block';
+  document.getElementById('profileList').style.display = 'none';
+  document.getElementById('profileSearchSection').style.display = 'none';
+  document.getElementById('profileType').value = profile ? profile.type : '';
+  toggleProfileFields();
+  if (profile) {
+    document.getElementById('profileName').value = profile.name;
+    document.getElementById('cellNo').value = profile.cellNo || '';
+    document.getElementById('chamberNo').value = profile.chamberNo || '';
+    document.getElementById('advocateName').value = profile.advocateName || '';
+    document.getElementById('advocateCell').value = profile.advocateCell || '';
+    document.getElementById('designation').value = profile.designation || '';
+    document.getElementById('postedAt').value = profile.postedAt || '';
+    document.getElementById('cnic').value = profile.cnic || '';
+    document.getElementById('relation').value = profile.relation || '';
+    if (profile.photo) {
+      document.getElementById('photoPreview').src = profile.photo;
+      document.getElementById('photoCropper').style.display = 'block';
+    }
   }
 }
 
-// Show Profile Form
-function showProfileForm() {
-  document.getElementById('profileForm').style.display = 'block';
-  document.getElementById('profileSearchSection').style.display = 'none';
-  document.getElementById('profileList').style.display = 'none';
-  document.getElementById('profileType').value = '';
-  toggleProfileFields();
-}
-
-// Toggle Profile Fields
 function toggleProfileFields() {
   const type = document.getElementById('profileType').value;
   const fields = document.getElementById('profileFields');
-  fields.innerHTML = '';
-  const required = '<span class="required">*</span>';
-  if (type === 'munshi') {
-    fields.innerHTML = `
-      <label>Name: ${required}<input type="text" id="profileName" required></label>
-      <label>Cell No: ${required}<input type="text" id="cellNo" required></label>
-      <label>Advocate Name: ${required}<input type="text" id="advocateName" required></label>
-      <label>Advocate Cell No: <input type="text" id="advocateCell"></label>
-      <label>Chamber No: <input type="text" id="chamberNo"></label>
+  fields.innerHTML = `
+    <label>Name: <span class="required">*</span><input type="text" id="profileName" required /></label>
+    <label>Cell No: <input type="text" id="cellNo" placeholder="0300-1234567" /></label>
+  `;
+  if (type === 'advocate') {
+    fields.innerHTML += `
+      <label>Chamber No: <input type="text" id="chamberNo" /></label>
+      <label>Advocate Name: <input type="text" id="advocateName" /></label>
+      <label>Advocate Cell: <input type="text" id="advocateCell" placeholder="0300-1234567" /></label>
     `;
-  } else if (type === 'advocate') {
-    fields.innerHTML = `
-      <label>Name: ${required}<input type="text" id="profileName" required></label>
-      <label>Cell No: ${required}<input type="text" id="cellNo" required></label>
-      <label>Chamber No: <input type="text" id="chamberNo"></label>
+  } else if (type === 'munshi') {
+    fields.innerHTML += `
+      <label>Designation: <input type="text" id="designation" /></label>
+      <label>Posted At: <input type="text" id="postedAt" /></label>
     `;
-  } else if (type === 'colleague') {
-    fields.innerHTML = `
-      <label>Name: ${required}<input type="text" id="profileName" required></label>
-      <label>Cell No: ${required}<input type="text" id="cellNo" required></label>
-      <label>Designation: ${required}<input type="text" id="designation" required></label>
-      <label>Posted At: ${required}<input type="text" id="postedAt" required></label>
-    `;
-  } else if (type === 'other') {
-    fields.innerHTML = `
-      <label>Name: ${required}<input type="text" id="profileName" required></label>
-      <label>Cell No: ${required}<input type="text" id="cellNo" required></label>
-      <label>ID/CNIC: ${required}<input type="text" id="cnic" required></label>
-      <label>Relation to Case: ${required}<input type="text" id="relation" required></label>
+  } else if (type === 'colleague' || type === 'other') {
+    fields.innerHTML += `
+      <label>ID/CNIC: <input type="text" id="cnic" placeholder="XXXXX-XXXXXXX-X" /></label>
+      <label>Relation: <input type="text" id="relation" /></label>
     `;
   }
 }
 
-// Crop Profile Photo
 document.getElementById('profilePhoto').addEventListener('change', (e) => {
   const file = e.target.files[0];
   if (file) {
@@ -883,94 +1100,109 @@ document.getElementById('profilePhoto').addEventListener('change', (e) => {
 
 function cropPhoto() {
   if (cropper) {
-    const canvas = cropper.getCroppedCanvas({ width: 100, height: 100 });
-    canvas.toBlob((blob) => {
-      const url = canvas.toDataURL('image/jpeg', 0.5); // 50% quality
+    try {
+      const canvas = cropper.getCroppedCanvas({ width: 200, height: 200 });
+      const url = canvas.toDataURL('image/jpeg', 0.8);
       document.getElementById('profilePhoto').cropperResult = url;
       document.getElementById('photoCropper').style.display = 'none';
       cropper.destroy();
       cropper = null;
-    }, 'image/jpeg', 0.5);
+    } catch (error) {
+      console.error('Crop photo error:', error);
+      showToast('Failed to crop photo. Please try again.');
+    }
   }
 }
 
-// Profile Form Submission
 document.getElementById('profileForm').addEventListener('submit', (e) => {
   e.preventDefault();
   document.getElementById('loadingIndicator').style.display = 'block';
-  setTimeout(() => {
-    const profilePhoto = document.getElementById('profilePhoto').cropperResult || document.getElementById('profilePhoto').files[0];
-    const type = document.getElementById('profileType').value;
-    const profile = { type, name: document.getElementById('profileName').value, cellNo: document.getElementById('cellNo').value };
-    if (type === 'munshi') {
-      profile.advocateName = document.getElementById('advocateName').value;
-      profile.advocateCell = document.getElementById('advocateCell').value;
-      profile.chamberNo = document.getElementById('chamberNo').value;
-    } else if (type === 'advocate') {
-      profile.chamberNo = document.getElementById('chamberNo').value;
-    } else if (type === 'colleague') {
-      profile.designation = document.getElementById('designation').value;
-      profile.postedAt = document.getElementById('postedAt').value;
-    } else if (type === 'other') {
-      profile.cnic = document.getElementById('cnic').value;
-      profile.relation = document.getElementById('relation').value;
-    }
-    const reader = new FileReader();
-    reader.onload = () => {
-      profile.photo = reader.result;
-      const existingIndex = profiles.findIndex(p => p.name === profile.name && p.type === profile.type);
-      if (existingIndex !== -1) {
-        profiles[existingIndex] = profile;
-      } else {
-        profiles.push(profile);
+  try {
+    setTimeout(() => {
+      const profilePhoto = document.getElementById('profilePhoto').cropperResult || (document.getElementById('profilePhoto').files[0] ? document.getElementById('profilePhoto').files[0] : null);
+      const reader = new FileReader();
+      reader.onload = () => {
+        const profile = {
+          type: document.getElementById('profileType').value,
+          name: document.getElementById('profileName').value,
+          cellNo: document.getElementById('cellNo').value,
+          photo: reader.result || ''
+        };
+        if (profile.type === 'advocate') {
+          profile.chamberNo = document.getElementById('chamberNo').value;
+          profile.advocateName = document.getElementById('advocateName').value;
+          profile.advocateCell = document.getElementById('advocateCell').value;
+        } else if (profile.type === 'munshi') {
+          profile.designation = document.getElementById('designation').value;
+          profile.postedAt = document.getElementById('postedAt').value;
+        } else if (profile.type === 'colleague' || profile.type === 'other') {
+          profile.cnic = document.getElementById('cnic').value;
+          profile.relation = document.getElementById('relation').value;
+        }
+        const existingIndex = profiles.findIndex(p => p.name === profile.name && p.type === profile.type);
+        if (existingIndex >= 0) {
+          profiles[existingIndex] = profile;
+        } else {
+          profiles.push(profile);
+        }
+        localStorage.setItem('profiles', JSON.stringify(profiles));
+        syncLocalStorageToIndexedDB();
+        document.getElementById('profileForm').reset();
+        document.getElementById('profileForm').style.display = 'none';
+        document.getElementById('photoCropper').style.display = 'none';
+        showToast('Profile saved successfully');
+        document.getElementById('loadingIndicator').style.display = 'none';
+        renderProfiles();
+      };
+      if (profilePhoto) reader.readAsDataURL(profilePhoto);
+      else {
+        profile.photo = '';
+        localStorage.setItem('profiles', JSON.stringify(profiles));
+        syncLocalStorageToIndexedDB();
+        document.getElementById('loadingIndicator').style.display = 'none';
       }
-      localStorage.setItem('profiles', JSON.stringify(profiles));
-      document.getElementById('profileForm').reset();
-      document.getElementById('profileForm').style.display = 'none';
-      renderProfiles();
-      showToast('Profile saved successfully!');
-      document.getElementById('loadingIndicator').style.display = 'none';
-    };
-    if (profilePhoto) reader.readAsDataURL(profilePhoto);
-    else {
-      profile.photo = '';
-      profiles.push(profile);
-      localStorage.setItem('profiles', JSON.stringify(profiles));
-      document.getElementById('loadingIndicator').style.display = 'none';
-    }
-  }, 500);
+    }, 500);
+  } catch (error) {
+    console.error('Profile form error:', error);
+    showToast('Failed to save profile. Please try again.');
+    document.getElementById('loadingIndicator').style.display = 'none';
+  }
 });
 
-// Show Profile Search
 function showProfileSearch() {
-  document.getElementById('profileForm').style.display = 'none';
   document.getElementById('profileSearchSection').style.display = 'block';
   document.getElementById('profileList').style.display = 'block';
+  document.getElementById('profileForm').style.display = 'none';
   renderProfiles();
 }
 
-// Render Profiles
 function renderProfiles() {
-  const type = document.getElementById('profileFilterType').value;
+  const filterType = document.getElementById('profileFilterType').value;
   const search = document.getElementById('profileSearch').value.toLowerCase();
   const tbody = document.getElementById('profileTable').querySelector('tbody');
   tbody.innerHTML = '';
-
-  const filteredProfiles = profiles.filter(p => (!type || p.type === type) && (!search || p.name.toLowerCase().includes(search) || p.cellNo.includes(search) || (p.chamberNo && p.chamberNo.includes(search))));
-
+  let filteredProfiles = profiles;
+  if (filterType) {
+    filteredProfiles = profiles.filter(p => p.type === filterType);
+  }
+  if (search) {
+    const fuse = new Fuse(filteredProfiles, { keys: ['name', 'type', 'cellNo', 'chamberNo'], threshold: 0.3 });
+    filteredProfiles = fuse.search(search).map(result => result.item);
+  }
   filteredProfiles.forEach(p => {
-    const pendingFiles = files.filter(f => f.deliveredTo === p.name && f.deliveredType === p.type && !f.returned).length;
+    const deliveredCount = files.filter(f => f.deliveredToName === p.name && f.deliveredToType === p.type).length;
+    const pendingCount = files.filter(f => f.deliveredToName === p.name && f.deliveredToType === p.type && !f.returned).length;
     const row = document.createElement('tr');
     row.innerHTML = `
-      <td><img src="${p.photo || 'icon-192.png'}" style="width:50px;height:50px;border-radius:50%;border:1px solid #ccc;"></td>
+      <td><img src="${p.photo || 'icon-192.png'}" style="width:50px;height:50px;border-radius:50%;border:1px solid #ccc;" /></td>
       <td>${p.name}</td>
       <td>${p.type}</td>
-      <td><a href="tel:${p.cellNo}">${p.cellNo}</a></td>
+      <td>${p.cellNo || ''}</td>
       <td>${p.chamberNo || ''}</td>
-      <td>${files.filter(f => f.deliveredTo === p.name && f.deliveredType === p.type).length}</td>
-      <td>${pendingFiles}</td>
+      <td>${deliveredCount}</td>
+      <td>${pendingCount}</td>
       <td>
-        <button onclick="editProfile('${p.name}', '${p.type}')">Edit</button>
+        <button onclick="showProfileForm(profiles[${profiles.indexOf(p)}])">Edit</button>
         <button onclick="deleteProfile('${p.name}', '${p.type}')">Delete</button>
       </td>
     `;
@@ -978,75 +1210,18 @@ function renderProfiles() {
   });
 }
 
-// Edit Profile
-function editProfile(name, type) {
-  const profile = profiles.find(p => p.name === name && p.type === type);
-  if (profile) {
-    showProfileForm();
-    document.getElementById('profileType').value = profile.type;
-    toggleProfileFields();
-    document.getElementById('profileName').value = profile.name;
-    document.getElementById('cellNo').value = profile.cellNo;
-    if (profile.type === 'munshi') {
-      document.getElementById('advocateName').value = profile.advocateName;
-      document.getElementById('advocateCell').value = profile.advocateCell;
-      document.getElementById('chamberNo').value = profile.chamberNo;
-    } else if (profile.type === 'advocate') {
-      document.getElementById('chamberNo').value = profile.chamberNo;
-    } else if (profile.type === 'colleague') {
-      document.getElementById('designation').value = profile.designation;
-      document.getElementById('postedAt').value = profile.postedAt;
-    } else if (profile.type === 'other') {
-      document.getElementById('cnic').value = profile.cnic;
-      document.getElementById('relation').value = profile.relation;
-    }
-  }
-}
-
-// Delete Profile
 function deleteProfile(name, type) {
   promptPin((success) => {
     if (success) {
       profiles = profiles.filter(p => p.name !== name || p.type !== type);
       localStorage.setItem('profiles', JSON.stringify(profiles));
-      renderProfiles();
+      syncLocalStorageToIndexedDB();
       showToast('Profile deleted successfully');
+      renderProfiles();
     }
   });
 }
 
-// Show Profile Details
-function showProfileDetails(name, type) {
-  const profile = profiles.find(p => p.name === name && p.type === type) || {};
-  document.getElementById('profileModal').style.display = 'block';
-  document.getElementById('profileModalTitle').textContent = `${name} (${type})`;
-  if (profile.photo) {
-    document.getElementById('profileModalPhoto').src = profile.photo;
-    document.getElementById('profileModalPhotoZoom').src = profile.photo;
-    document.getElementById('profileModalPhoto').style.display = 'block';
-  } else {
-    document.getElementById('profileModalPhoto').style.display = 'none';
-  }
-  const table = document.getElementById('profileModalTable');
-  table.innerHTML = `
-    <tr><th>Name</th><td>${profile.name || ''}</td></tr>
-    <tr><th>Type</th><td>${profile.type || ''}</td></tr>
-    <tr><th>Cell No</th><td><a href="tel:${profile.cellNo || ''}">${profile.cellNo || ''}</a></td></tr>
-    ${profile.chamberNo ? `<tr><th>Chamber No</th><td>${profile.chamberNo}</td></tr>` : ''}
-    ${profile.advocateName ? `<tr><th>Advocate Name</th><td>${profile.advocateName}</td></tr>` : ''}
-    ${profile.advocateCell ? `<tr><th>Advocate Cell No</th><td><a href="tel:${profile.advocateCell}">${profile.advocateCell}</a></td></tr>` : ''}
-    ${profile.designation ? `<tr><th>Designation</th><td>${profile.designation}</td></tr>` : ''}
-    ${profile.postedAt ? `<tr><th>Posted At</th><td>${profile.postedAt}</td></tr>` : ''}
-    ${profile.cnic ? `<tr><th>ID/CNIC</th><td>${maskCNIC(profile.cnic)}</td></tr>` : ''}
-    ${profile.relation ? `<tr><th>Relation to Case</th><td>${profile.relation}</td></tr>` : ''}
-  `;
-}
-
-function closeProfileModal() {
-  document.getElementById('profileModal').style.display = 'none';
-}
-
-// Import Profiles
 function triggerImport() {
   document.getElementById('profileImport').click();
 }
@@ -1056,169 +1231,80 @@ function importProfiles() {
   if (file) {
     const reader = new FileReader();
     reader.onload = () => {
-      try {
-        const imported = JSON.parse(reader.result);
-        if (!Array.isArray(imported)) throw new Error('Invalid format');
-        const validProfiles = imported.filter(p => p.name && p.type && p.cellNo);
-        profiles = [...profiles, ...validProfiles];
-        localStorage.setItem('profiles', JSON.stringify(profiles));
-        renderProfiles();
-        showToast(`${validProfiles.length} profiles imported successfully`);
-      } catch (e) {
-        showToast('Invalid file format');
-      }
+      const data = JSON.parse(reader.result);
+      profiles = data.profiles || [];
+      localStorage.setItem('profiles', JSON.stringify(profiles));
+      syncLocalStorageToIndexedDB();
+      showToast('Profiles imported successfully');
+      renderProfiles();
     };
     reader.readAsText(file);
   }
 }
 
-// Export Profiles
 function exportProfiles() {
-  const data = JSON.stringify(profiles);
-  const blob = new Blob([data], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'profiles.json';
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-// Backup Data
-function backupData() {
-  const data = { files, profiles, userProfile: { ...userProfile, pin: null, cnic: maskCNIC(userProfile.cnic) } };
+  const data = { profiles };
   const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `cft_backup_${formatDate(new Date(), 'YYYYMMDD_HHMMSS')}.json`;
+  a.download = `profiles_${new Date().toISOString()}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// Data Management
+function backupData() {
+  const data = {
+    files: files.map(f => ({
+      ...f,
+      deliveredToName: f.deliveredToName,
+      deliveredToType: f.deliveredToType
+    })),
+    profiles,
+    userProfile: { ...userProfile, pin: null, cnic: maskCNIC(userProfile.cnic) }
+  };
+  const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `backup_${new Date().toISOString()}.json`;
   a.click();
   URL.revokeObjectURL(url);
   analytics.backupsCreated++;
   localStorage.setItem('analytics', JSON.stringify(analytics));
-  showToast('Backup created successfully');
+  syncLocalStorageToIndexedDB();
 }
 
-// Trigger Restore
 function triggerRestore() {
-  promptPin((success) => {
-    if (success) document.getElementById('dataRestore').click();
-  });
+  document.getElementById('dataRestore').click();
 }
 
-// Restore Data
 function restoreData() {
   const file = document.getElementById('dataRestore').files[0];
   if (file) {
     const reader = new FileReader();
     reader.onload = () => {
-      try {
-        const data = JSON.parse(reader.result);
-        if (data.files && data.profiles && data.userProfile) {
-          files = data.files;
-          profiles = data.profiles;
-          userProfile = { ...data.userProfile, pin: userProfile.pin, cnic: userProfile.cnic };
-          localStorage.setItem('files', JSON.stringify(files));
-          localStorage.setItem('profiles', JSON.stringify(profiles));
-          localStorage.setItem('userProfile', JSON.stringify(userProfile));
-          updateSavedProfile();
-          updateDashboardCards();
-          showToast('Data restored successfully');
-        } else {
-          showToast('Invalid backup file');
-        }
-      } catch (e) {
-        showToast('Error restoring data');
+      const data = JSON.parse(reader.result);
+      files = data.files || [];
+      profiles = data.profiles || [];
+      if (data.userProfile && !userProfile) {
+        userProfile = { ...data.userProfile, pin: userProfile ? userProfile.pin : null };
       }
+      localStorage.setItem('files', JSON.stringify(files));
+      localStorage.setItem('profiles', JSON.stringify(profiles));
+      localStorage.setItem('userProfile', JSON.stringify(userProfile));
+      syncLocalStorageToIndexedDB();
+      showToast('Data restored successfully');
+      updateSavedProfile();
+      updateDashboardCards();
+      navigate('dashboard');
     };
     reader.readAsText(file);
   }
 }
 
-// Export Dashboard Report
-function exportDashboardReport(format) {
-  if (format === 'csv') {
-    let csv = 'Sr#,CMS No,Title,Case Type,Nature,Date Type,Swal Form Details,Delivered To,Delivery Date,Return Date,Time Span,Court,Clerk\n';
-    currentReportData.forEach((f, index) => {
-      const timeSpan = f.returned ? `${Math.ceil((new Date(f.returnedAt) - new Date(f.deliveredAt)) / (1000 * 60 * 60 * 24))} days` : getDynamicTimeSpan(f.deliveredAt);
-      const swalDetails = f.swalFormNo ? `No: ${f.swalFormNo}, Date: ${formatDate(f.swalDate)}` : '';
-      csv += `${index + 1},${f.cmsNo},"${f.title.replace('vs', 'Vs.')}",${f.caseType},${f.nature},"${f.dateType === 'decision' ? 'Decision Date' : 'Next Hearing Date'}: ${formatDate(f.date)}","${swalDetails}","${f.deliveredTo} (${f.deliveredType})",${formatDate(f.deliveredAt)},${f.returned ? formatDate(f.returnedAt) : ''},${timeSpan},${f.courtName},${f.clerkName}\n`;
-    });
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'dashboard_report.csv';
-    a.click();
-    URL.revokeObjectURL(url);
-  } else if (format === 'pdf') {
-    const { jsPDF } = window.jspdf;
-    const doc = new jsPDF();
-    doc.setFontSize(12);
-    doc.text(document.getElementById('reportTitle').textContent, 10, 10);
-    const tableData = currentReportData.map((f, index) => [
-      index + 1,
-      f.cmsNo,
-      f.title.replace('vs', 'Vs.'),
-      f.caseType,
-      f.nature,
-      `${f.dateType === 'decision' ? 'Decision Date' : 'Next Hearing Date'}: ${formatDate(f.date)}`,
-      f.swalFormNo ? `No: ${f.swalFormNo}, Date: ${formatDate(f.swalDate)}` : '',
-      `${f.deliveredTo} (${f.deliveredType})`,
-      formatDate(f.deliveredAt),
-      f.returned ? formatDate(f.returnedAt) : '',
-      f.returned ? `${Math.ceil((new Date(f.returnedAt) - new Date(f.deliveredAt)) / (1000 * 60 * 60 * 24))} days` : getDynamicTimeSpan(f.deliveredAt),
-      f.courtName,
-      f.clerkName
-    ]);
-    doc.autoTable({
-      head: [['Sr#', 'CMS No', 'Title', 'Case Type', 'Nature', 'Date Type', 'Swal Form Details', 'Delivered To', 'Delivery Date', 'Return Date', 'Time Span', 'Court', 'Clerk']],
-      body: tableData,
-      startY: 20,
-      styles: { fontSize: 8 },
-      headStyles: { fillColor: [0, 51, 102] }
-    });
-    doc.save('dashboard_report.pdf');
-  }
-}
-
-// Print Dashboard Report
-function printDashboardReport() {
-  const printContent = document.getElementById('dashboardReportPanel').innerHTML;
-  const newWindow = window.open('', '_blank');
-  newWindow.document.write(`
-    <html>
-      <head>
-        <title>Print Report</title>
-        <style>
-          body { font-family: Arial, sans-serif; }
-          table { width: 100%; border-collapse: collapse; }
-          th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
-          th { background-color: #f5f5f5; }
-        </style>
-      </head>
-      <body>${printContent}</body>
-    </html>
-  `);
-  newWindow.document.close();
-  newWindow.print();
-}
-
-// Format Date
-function formatDate(date, format = 'YYYY-MM-DD') {
-  if (!date) return '';
-  const d = new Date(date);
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  const hours = String(d.getHours()).padStart(2, '0');
-  const minutes = String(d.getMinutes()).padStart(2, '0');
-  const seconds = String(d.getSeconds()).padStart(2, '0');
-  if (format === 'YYYYMMDD_HHMMSS') return `${year}${month}${day}_${hours}${minutes}${seconds}`;
-  return `${year}-${month}-${day}`;
-}
-
-// Show Toast
+// Toast Notification
 function showToast(message) {
   const toast = document.getElementById('toast');
   toast.textContent = message;
@@ -1227,32 +1313,3 @@ function showToast(message) {
     toast.style.display = 'none';
   }, 3000);
 }
-
-// Offline Queue Processing
-function processOfflineQueue() {
-  if (navigator.onLine && offlineQueue.length > 0) {
-    offlineQueue.forEach(action => {
-      if (action.action === 'backupToDrive') {
-        backupToDrive();
-      }
-    });
-    offlineQueue = [];
-    localStorage.setItem('offlineQueue', JSON.stringify(offlineQueue));
-  }
-}
-
-window.addEventListener('online', processOfflineQueue);
-
-// Accessibility Enhancements
-document.querySelectorAll('button').forEach(btn => {
-  if (!btn.getAttribute('aria-label')) {
-    btn.setAttribute('aria-label', btn.textContent || 'Button');
-  }
-});
-
-document.querySelectorAll('input, select').forEach(input => {
-  if (!input.getAttribute('aria-label')) {
-    const label = input.closest('label')?.textContent.split(':')[0] || input.placeholder || 'Input';
-    input.setAttribute('aria-label', label);
-  }
-});
