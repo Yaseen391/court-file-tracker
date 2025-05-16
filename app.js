@@ -1,957 +1,452 @@
-// Utility Functions
-function $(id) { return document.getElementById(id); }
-function showToast(message, duration = 3000) {
-  const toast = $('toast');
-  toast.textContent = message;
-  toast.style.display = 'block';
-  setTimeout(() => { toast.style.display = 'none'; }, duration);
-}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1  maximum-scale=1.0, user-scalable=no" />
+  <title>Court File Tracker</title>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- Top Header -->
+  <header class="topbar">
+    <button id="menuBtn" onclick="toggleSidebar()">☰</button>
+    <div class="top-title">
+      <h1>Court File Tracker</h1>
+      <p>Smart Solutions for Efficient Record Management</p>
+    </div>
+    <div class="window-controls" style="display: none;">
+      <button id="minimizeBtn" class="window-btn minimize-btn" title="Minimize">−</button>
+      <button id="resizeBtn" class="window-btn resize-btn" title="Maximize/Restore">□</button>
+      <button id="closeBtn" class="window-btn close-btn" title="Close">✕</button>
+    </div>
+  </header>
 
-// Storage Functions
-function getFiles() {
-  return JSON.parse(localStorage.getItem('files') || '[]');
-}
+  <!-- Main App Container -->
+  <div class="app-container">
+    <!-- Sidebar -->
+    <aside id="sidebar" class="sidebar">
+      <img src="icon-192.png" alt="CFT Logo" class="sidebar-logo" />
+      <button onclick="navigate('dashboard')"><span>🏠</span> Dashboard</button>
+      <button onclick="navigate('newFile')"><span>📂</span> New Entry</button>
+      <button onclick="navigate('return')"><span>↩️</span> Return File</button>
+      <button onclick="navigate('fileFetcher')"><span>👤</span> File Fetcher</button>
+      <button onclick="navigate('admin')"><span>🛡️</span> Admin</button>
+      <button onclick="navigate('developersDisclaimer')"><span>ℹ️</span> Developers Disclaimer</button>
+    </aside>
 
-function saveFiles(files) {
-  localStorage.setItem('files', JSON.stringify(files));
-}
+    <!-- Main Screens -->
+    <main>
+      <!-- Dashboard -->
+      <section id="dashboard" class="screen">
+        <h2>Dashboard Summary</h2>
+        <div id="dashboardStats" style="margin-bottom: 20px;">
+          <canvas id="statsChart" height="100"></canvas>
+        </div>
+        <div id="dashboardCards" class="dashboard-grid">
+          <div class="card card-deliveries" id="cardDeliveries">
+            <span class="tooltip">Files delivered today</span>
+          </div>
+          <div class="card card-returns" id="cardReturns">
+            <span class="tooltip">Files returned today</span>
+          </div>
+          <div class="card card-pending" id="cardPending">
+            <span class="tooltip">Files not yet returned</span>
+          </div>
+          <div class="card card-tomorrow" id="cardTomorrow">
+            <span class="tooltip">Hearings scheduled for tomorrow</span>
+          </div>
+          <div class="card card-overdue" id="cardOverdue">
+            <span class="tooltip">Files pending over 10 days</span>
+          </div>
+          <div class="card card-search-prev" id="cardSearchPrev">
+            <span class="tooltip">Search all previous records</span>
+          </div>
+        </div>
 
-function getProfiles() {
-  return JSON.parse(localStorage.getItem('profiles') || '[]');
-}
+        <div id="dashboardReportPanel" style="display:none; margin-top: 20px;">
+          <div id="loadingIndicator" class="loading" style="display:none;">Loading...</div>
+          <h3 id="reportTitle"></h3>
+          <div id="searchPrevRecords" style="display:none; margin-bottom: 10px;">
+            <div class="search-container">
+              <label>Title:
+                <input type="text" id="searchTitle" placeholder="A Vs. B" oninput="performDashboardSearch()" />
+              </label>
+              <label>CMS No:
+                <input type="number" id="searchCms" oninput="performDashboardSearch()" />
+              </label>
+              <label>File Taker:
+                <div class="input-container">
+                  <input type="text" id="searchFileTaker" oninput="suggestProfiles(this.value, 'searchFileTaker')" autocomplete="off" />
+                  <ul id="searchSuggestions"></ul>
+                </div>
+              </label>
+              <label>FIR No:
+                <input type="text" id="searchFirNo" oninput="performDashboardSearch()" />
+              </label>
+              <label>FIR Year:
+                <input type="number" id="searchFirYear" oninput="performDashboardSearch()" />
+              </label>
+              <label>Police Station:
+                <input type="text" id="searchPoliceStation" oninput="performDashboardSearch()" />
+              </label>
+            </div>
+          </div>
+          <button onclick="printDashboardReport()">Print</button>
+          <button onclick="exportDashboardReport('csv')">Export to CSV</button>
+          <button onclick="exportDashboardReport('pdf')">Export to PDF</button>
+          <div class="table-container">
+            <table id="dashboardReportTable" border="1" style="width:100%; border-collapse:collapse;">
+              <thead>
+                <tr>
+                  <th>Sr#</th>
+                  <th>CMS No</th>
+                  <th>Title</th>
+                  <th>Case Type</th>
+                  <th>Nature</th>
+                  <th>Date Type</th>
+                  <th>Swal Form Details</th>
+                  <th>Delivered To</th>
+                  <th>Delivery Date</th>
+                  <th>Return Date</th>
+                  <th>Time Span</th>
+                  <th>Court</th>
+                  <th>Clerk Name</th>
+                  <th>Profile Details</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <div id="pagination" style="margin-top: 10px; text-align: center;">
+            <button id="prevPage" disabled>Previous</button>
+            <span id="pageInfo"></span>
+            <button id="nextPage">Next</button>
+          </div>
+        </div>
+      </section>
 
-function saveProfiles(profiles) {
-  try {
-    localStorage.setItem('profiles', JSON.stringify(profiles));
-  } catch (e) {
-    console.error('Error saving profiles:', e);
-    showToast('Failed to save profile. Storage may be full.', 5000);
-  }
-}
+      <!-- New File Entry -->
+      <section id="newFile" class="screen">
+        <h2>New File Entry & Delivery</h2>
+        <div id="loadingIndicator" class="loading" style="display:none;">Saving...</div>
+        <form id="fileForm">
+          <label>Case Type: <span class="required">*</span>
+            <select id="caseType" required onchange="toggleCriminalFields()">
+              <option value="">Select</option>
+              <option value="civil">Civil</option>
+              <option value="criminal">Criminal</option>
+            </select>
+          </label>
 
-function getUserProfile() {
-  return JSON.parse(localStorage.getItem('userProfile') || '{}');
-}
+          <label>CMS No: <span class="required">*</span>
+            <input type="number" id="cmsNo" required onblur="autoFillCMS()" />
+          </label>
 
-function saveUserProfile(profile) {
-  localStorage.setItem('userProfile', JSON.stringify(profile));
-}
+          <label>Petitioner: <span class="required">*</span>
+            <input type="text" id="petitioner" required />
+          </label>
 
-// Date Formatting (Pakistan Standard Time, 24-hour)
-function formatDate(date, includeTime = false) {
-  if (!date) return '';
-  const d = new Date(date);
-  const options = { timeZone: 'Asia/Karachi', year: 'numeric', month: '2-digit', day: '2-digit' };
-  let formatted = d.toLocaleDateString('en-GB', options).split('/').reverse().join('/');
-  if (includeTime) {
-    const timeOptions = { timeZone: 'Asia/Karachi', hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' };
-    formatted += `, ${d.toLocaleTimeString('en-GB', timeOptions)} PKT`;
-  }
-  return formatted;
-}
+          <label>Respondent: <span class="required">*</span>
+            <input type="text" id="respondent" required />
+          </label>
 
-// Sidebar Toggle
-function toggleSidebar() {
-  const sidebar = $('sidebar');
-  const overlay = document.querySelector('.sidebar-overlay') || document.createElement('div');
-  overlay.className = 'sidebar-overlay';
-  if (!overlay.parentElement) document.body.appendChild(overlay);
-  sidebar.classList.toggle('active');
-  overlay.style.display = sidebar.classList.contains('active') ? 'block' : 'none';
-  // Ensure sidebar closes when clicking outside
-  overlay.onclick = () => {
-    sidebar.classList.remove('active');
-    overlay.style.display = 'none';
-  };
-}
+          <label>Nature of Case: <span class="required">*</span>
+            <input type="text" id="nature" required />
+          </label>
 
-// Navigation
-function navigate(screenId) {
-  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-  $(screenId).classList.add('active');
-  document.querySelectorAll('.sidebar button').forEach(b => b.classList.remove('active'));
-  document.querySelector(`.sidebar button[onclick="navigate('${screenId}')"]`)?.classList.add('active');
-  localStorage.setItem('currentScreen', screenId);
-  if (window.innerWidth <= 768) {
-    $('sidebar').classList.remove('active');
-    document.querySelector('.sidebar-overlay')?.remove();
-  }
-  // Close dashboard report panel if open
-  $('dashboardReportPanel').style.display = 'none';
-  // Initialize screen-specific logic
-  if (screenId === 'dashboard') updateDashboard();
-  if (screenId === 'fileFetcher') resetFileFetcher();
-  if (screenId === 'return') filterPendingFiles();
-}
+          <div id="criminalFields" style="display:none">
+            <label>FIR No: <input type="text" id="firNo" /></label>
+            <label>FIR Year: <input type="number" id="firYear" min="1947" /></label>
+            <label>FIR U/S: <input type="text" id="firUs" /></label>
+            <label>Police Station: <input type="text" id="policeStation" /></label>
+          </div>
 
-// Dashboard Logic
-function updateDashboard() {
-  const files = getFiles();
-  const today = new Date().toLocaleDateString('en-GB', { timeZone: 'Asia/Karachi' });
-  const tomorrow = new Date(Date.now() + 86400000).toLocaleDateString('en-GB', { timeZone: 'Asia/Karachi' });
-  const tenDaysAgo = Date.now() - 10 * 86400000;
+          <label>Date Type: <span class="required">*</span>
+            <select id="dateType" required>
+              <option value="">Select</option>
+              <option value="decision">Decision Date</option>
+              <option value="hearing">Next Hearing Date</option>
+            </select>
+          </label>
 
-  const deliveries = files.filter(f => formatDate(f.deliveredAt).startsWith(today)).length;
-  const returns = files.filter(f => f.returned && formatDate(f.returnedAt).startsWith(today)).length;
-  const pending = files.filter(f => !f.returned).length;
-  const tomorrowHearings = files.filter(f => formatDate(f.date).startsWith(tomorrow)).length;
-  const overdue = files.filter(f => !f.returned && new Date(f.deliveredAt) < tenDaysAgo).length;
+          <label>Date: <span class="required">*</span>
+            <input type="date" id="date" required />
+          </label>
 
-  $('cardDeliveries').innerHTML = `<button onclick="showDashboardReport('deliveriesToday')">Deliveries Today<br>${deliveries}</button><span class="tooltip">Files delivered today</span>`;
-  $('cardReturns').innerHTML = `<button onclick="showDashboardReport('returnsToday')">Returns Today<br>${returns}</button><span class="tooltip">Files returned today</span>`;
-  $('cardPending').innerHTML = `<button onclick="showDashboardReport('pending')">Pending Files<br>${pending}</button><span class="tooltip">Files not yet returned</span>`;
-  $('cardTomorrow').innerHTML = `<button onclick="showDashboardReport('tomorrow')">Tomorrow Hearings<br>${tomorrowHearings}</button><span class="tooltip">Hearings scheduled for tomorrow</span>`;
-  $('cardOverdue').innerHTML = `<button onclick="showDashboardReport('overdue')">Overdue Files<br>${overdue}</button><span class="tooltip">Files pending over 10 days</span>`;
-  $('cardSearchPrev').innerHTML = `<button onclick="showDashboardReport('searchPrevRecords')">Search Prev. Records<br>Search All</button><span class="tooltip">Search all previous records</span>`;
-}
+          <div class="input-container">
+            <label>Delivered To (Name): <span class="required">*</span>
+              <input type="text" id="deliveredTo" oninput="suggestProfiles(this.value, 'deliveredTo')" required autocomplete="off" />
+              <ul id="suggestions"></ul>
+              <span class="hint" style="font-size:12px;color:#555;">Edit profiles in the File Fetcher section.</span>
+            </label>
+          </div>
 
-// Dashboard Report with Pagination
-let currentPage = 1;
-const rowsPerPage = 10;
-let currentReportData = [];
+          <label>Delivered To Type: <span class="required">*</span>
+            <select id="deliveredType" required>
+              <option value="">Select</option>
+              <option value="munshi">Munshi/Clerk</option>
+              <option value="advocate">Advocate</option>
+              <option value="colleague">Colleague</option>
+              <option value="other">Other</option>
+            </select>
+          </label>
 
-function showDashboardReport(type) {
-  $('loadingIndicator').style.display = 'block';
-  $('dashboardReportPanel').style.display = 'block';
-  let files = getFiles();
-  const today = new Date().toLocaleDateString('en-GB', { timeZone: 'Asia/Karachi' });
-  const tomorrow = new Date(Date.now() + 86400000).toLocaleDateString('en-GB', { timeZone: 'Asia/Karachi' });
-  const tenDaysAgo = Date.now() - 10 * 86400000;
-  let title = '';
+          <div class="copy-agency-row">
+            <input type="checkbox" id="copyAgency" onchange="toggleCopyAgency()" />
+            <label for="copyAgency">Sent to Copy Agency</label>
+          </div>
+          <div id="copyAgencyFields" style="display:none;">
+            <label>Swal Form No: <span class="required">*</span>
+              <input type="number" id="swalFormNo" />
+            </label>
+            <label>Swal Date: <span class="required">*</span>
+              <input type="date" id="swalDate" />
+            </label>
+          </div>
 
-  if (type === 'deliveriesToday') {
-    files = files.filter(f => formatDate(f.deliveredAt).startsWith(today));
-    title = 'Deliveries Today';
-  } else if (type === 'returnsToday') {
-    files = files.filter(f => f.returned && formatDate(f.returnedAt).startsWith(today));
-    title = 'Returns Today';
-  } else if (type === 'pending') {
-    files = files.filter(f => !f.returned);
-    title = 'Pending Files';
-  } else if (type === 'tomorrow') {
-    files = files.filter(f => formatDate(f.date).startsWith(tomorrow));
-    title = 'Tomorrow Hearings';
-  } else if (type === 'overdue') {
-    files = files.filter(f => !f.returned && new Date(f.deliveredAt) < tenDaysAgo);
-    title = 'Overdue Files';
-  } else if (type === 'searchPrevRecords') {
-    files = files; // All files
-    title = 'Search Previous Records';
-    $('searchPrevRecords').style.display = 'flex';
-    performDashboardSearch();
-    $('loadingIndicator').style.display = 'none';
-    return;
-  }
+          <button type="submit">Save and Deliver File</button>
+        </form>
+      </section>
 
-  $('searchPrevRecords').style.display = 'none';
-  currentReportData = files;
-  currentPage = 1;
-  renderReportTable(title);
-}
+      <!-- Return -->
+      <section id="return" class="screen">
+        <h2>Return File</h2>
+        <div id="loadingIndicator" class="loading" style="display:none;">Loading...</div>
+        <form id="returnForm">
+          <label>CMS No: <input type="number" id="returnCms" oninput="filterPendingFiles()" /></label>
+          <label>Title: <input type="text" id="returnTitle" oninput="filterPendingFiles()" /></label>
+        </form>
+        <div id="pendingFiles" style="margin-top: 10px;">
+          <table id="pendingFilesTable" border="1" style="width:100%; border-collapse:collapse;">
+            <thead>
+              <tr>
+                <th>Select</th>
+                <th>CMS No</th>
+                <th>Title</th>
+                <th>Case Type</th>
+                <th>Delivered To</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+          <button onclick="bulkReturnFiles()" style="margin-top: 10px;">Return Selected</button>
+        </div>
+      </section>
 
-function renderReportTable(title) {
-  $('reportTitle').textContent = title;
-  const tbody = $('dashboardReportTable').querySelector('tbody');
-  tbody.innerHTML = '';
-  const start = (currentPage - 1) * rowsPerPage;
-  const end = start + rowsPerPage;
-  const paginatedFiles = currentReportData.slice(start, end);
+      <!-- File Fetcher -->
+      <section id="fileFetcher" class="screen">
+        <h2>File Fetcher</h2>
+        <div id="loadingIndicator" class="loading" style="display:none;">Loading...</div>
+        <div class="fetcher-grid">
+          <button class="card card-add-profile" onclick="showProfileForm()">Add New Profile</button>
+          <button class="card card-search-profiles" onclick="showProfileSearch()">Search Existing Profiles</button>
+          <button class="card card-import" onclick="triggerImport()">Import Profiles</button>
+          <button class="card card-export" onclick="exportProfiles()">Export Profiles</button>
+        </div>
+        <input type="file" id="profileImport" accept=".json" style="display:none;" onchange="importProfiles()" />
+        <form id="profileForm" style="display:none; margin-top:20px;">
+          <label>Profile Type: <span class="required">*</span>
+            <select id="profileType" required onchange="toggleProfileFields()">
+              <option value="">Select</option>
+              <option value="munshi">Munshi/Clerk</option>
+              <option value="advocate">Advocate</option>
+              <option value="colleague">Colleague</option>
+              <option value="other">Other</option>
+            </select>
+          </label>
+          <div id="profileFields"></div>
+          <label>Upload Photo: <span class="required">*</span><input type="file" id="profilePhoto" accept="image/*" required /></label>
+          <div id="photoCropper" style="display:none; margin-top:10px;">
+            <img id="photoPreview" style="max-width:100%; border:1px solid #ccc;" />
+            <button type="button" onclick="cropPhoto()">Crop & Save</button>
+          </div>
+          <button type="submit">Add/Update Profile</button>
+        </form>
+        <div id="profileSearchSection" style="display:none; margin-top:20px;">
+          <label>Filter by Type:
+            <select id="profileFilterType" onchange="renderProfiles()">
+              <option value="">All</option>
+              <option value="munshi">Munshi/Clerk</option>
+              <option value="advocate">Advocate</option>
+              <option value="colleague">Colleague</option>
+              <option value="other">Other</option>
+            </select>
+          </label>
+          <label>Search: <input type="text" id="profileSearch" oninput="renderProfiles()" placeholder="Name, number, chamber..." /></label>
+        </div>
+        <div id="profileList" style="margin-top:20px; display:none;">
+          <table id="profileTable" border="1" style="width:100%; border-collapse:collapse;">
+            <thead>
+              <tr>
+                <th>Photo</th>
+                <th>Name</th>
+                <th>Type</th>
+                <th>Cell No</th>
+                <th>Chamber No</th>
+                <th>Files Delivered</th>
+                <th>Pending Files</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
 
-  paginatedFiles.forEach((f, index) => {
-    const profile = getProfiles().find(p => p.name === f.deliveredTo && p.type === f.deliveredType) || {};
-    const nature = f.caseType === 'criminal' && f.firNo
-      ? `${f.nature}, FIR No: ${f.firNo}, Year: ${f.firYear || ''}, U/S: ${f.firUs || ''}, Police Station: ${f.policeStation || ''}`
-      : f.nature;
-    const swalDetails = f.sentToCopyAgency ? `${f.swalFormNo}, ${formatDate(f.swalDate)}` : '';
-    const profileDetails = Object.entries(profile)
-      .filter(([key]) => key !== 'photo' && key !== 'name' && key !== 'type')
-      .map(([key, value]) => `${key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())}: ${value}`)
-      .join(', ');
-    const row = document.createElement('tr');
-    row.innerHTML = `
-      <td>${start + index + 1}</td>
-      <td>${f.cmsNo}</td>
-      <td>${f.title}</td>
-      <td>${f.caseType}</td>
-      <td>${nature}</td>
-      <td>${swalDetails}</td>
-      <td><a href="#" onclick="showProfileDetails('${f.deliveredTo}', '${f.deliveredType}')">${f.deliveredTo} (${f.deliveredType})</a></td>
-      <td>${formatDate(f.deliveredAt, true)}</td>
-      <td>${f.returned ? formatDate(f.returnedAt, true) : ''}</td>
-      <td>${f.timeSpan || ''}</td>
-      <td>${f.court}</td>
-      <td>${f.clerkName}</td>
-      <td>${profileDetails}</td>
-    `;
-    tbody.appendChild(row);
-  });
+      <!-- Admin -->
+      <section id="admin" class="screen active">
+        <h2>Admin</h2>
+        <div id="loadingIndicator" class="loading" style="display:none;">Saving...</div>
+        <div id="setupMessage" style="display:block; color: #0066cc; margin-bottom: 10px;">
+          Please complete your profile setup to continue using the app.
+        </div>
+        <div id="savedProfile" style="display:none; background:white; padding:20px; border-radius:10px; max-width:600px; margin:auto;">
+          <h3>Saved Profile</h3>
+          <table class="profile-table">
+            <tr><th>Photo</th><td><img id="savedUserPhoto" src="" style="width:120px;height:120px;border-radius:50%;border:1px solid #ccc;display:none;" /></td></tr>
+            <tr><th>Name</th><td><span id="savedClerkName"></span></td></tr>
+            <tr><th>Designation</th><td><span id="savedJudgeName"></span></td></tr>
+            <tr><th>Court</th><td><span id="savedCourtName"></span></td></tr>
+            <tr><th>Mobile</th><td><a id="savedMobile" href=""></a></td></tr>
+            <tr><th>Total Files</th><td><span id="totalFiles"></span></td></tr>
+            <tr><th>Total Profiles</th><td><span id="totalProfiles"></span></td></tr>
+          </table>
+          <button onclick="editUserProfile()">Edit Profile</button>
+          <button id="changePinBtn" onclick="showChangePin()" style="display:none;">Change PIN</button>
+          <h4>Data Management</h4>
+          <button onclick="backupData()">Backup to Local</button>
+          <button onclick="triggerRestore()">Restore from Local</button>
+          <button onclick="signInWithGoogle()">Sign in with Google</button>
+          <button id="backupToDrive" style="display:none;" onclick="backupToDrive()">Backup to Google Drive</button>
+          <button id="restoreFromDrive" style="display:none;" onclick="restoreFromDrive()">Restore from Google Drive</button>
+          <button id="shareBackup" style="display:none;" onclick="showShareBackup()">Share Backup</button>
+        </div>
+        <input type="file" id="dataRestore" accept=".json" style="display:none;" onchange="restoreData()" />
+        <form id="adminForm" style="display:block;">
+          <label>Full Name: <span class="required">*</span><input type="text" id="clerkName" required /></label>
+          <label>Designation: <span class="required">*</span><input type="text" id="judgeName" required /></label>
+          <label>Court Name: <span class="required">*</span><input type="text" id="courtName" required /></label>
+          <label>Mobile Number: <span class="required">*</span><input type="text" id="mobile" required placeholder="0300-1234567" /></label>
+          <label>CNIC: <span class="required">*</span>
+            <input type="text" id="cnic" required placeholder="XXXXX-XXXXXXX-X" />
+            <span class="tooltip">?
+              <span class="tooltiptext">CNIC is required to reset your PIN securely. It is not stored externally.</span>
+            </span>
+          </label>
+          <label>PIN (4 digits): <span class="required">*</span><input type="password" id="pin" maxlength="4" pattern="\d{4}" required /></label>
+          <label>Email (for PIN recovery): <input type="email" id="email" placeholder="example@domain.com" /></label>
+          <label>Upload Photo: <span class="required">*</span><input type="file" id="userPhoto" accept="image/*" required /></label>
+          <div id="userPhotoCropper" style="display:none; margin-top:10px;">
+            <img id="userPhotoPreview" style="max-width:100%; border:1px solid #ccc;" />
+            <button type="button" onclick="cropUserPhoto()">Crop & Save</button>
+          </div>
+          <label><input type="checkbox" id="agreeTerms" onchange="toggleSaveButton()"> I agree to the <a href="#" onclick="showDisclaimerModal()">terms and privacy policy</a>.</label>
+          <button type="submit" id="saveProfileBtn" disabled>Save</button>
+        </form>
+      </section>
 
-  updatePagination();
-  $('loadingIndicator').style.display = 'none';
-}
+      <!-- Developers Disclaimer -->
+      <section id="developersDisclaimer" class="screen">
+        <h2>Developers Disclaimer</h2>
+        <div id="disclaimerContent">
+          <p>This Court File Tracker (CFT) PWA is developed to assist court clerks and judiciary staff in managing file records efficiently. It is not an official judiciary tool. Users are responsible for ensuring data accuracy and compliance with legal standards.</p>
+          <p>Developer: [Your Name]</p>
+          <p>Contact: [Your Email or Placeholder]</p>
+          <p>Version: 1.0.0</p>
+          <p>Last Updated: May 15, 2025</p>
+          <!-- Instructions: Replace this div with your custom HTML content. Include your bio, image, and any other details. Host images locally or use base64 encoding. Ensure styles match existing CSS (e.g., .screen, h2, p). Test on mobile and desktop for responsiveness. -->
+        </div>
+      </section>
 
-function updatePagination() {
-  const totalPages = Math.ceil(currentReportData.length / rowsPerPage);
-  $('pageInfo').textContent = `Page ${currentPage} of ${totalPages}`;
-  $('prevPage').disabled = currentPage === 1;
-  $('nextPage').disabled = currentPage === totalPages;
-}
+      <!-- PIN Prompt Modal -->
+      <div id="pinModal" class="modal" style="display:none;">
+        <div class="modal-content">
+          <h3>Enter PIN</h3>
+          <input type="password" id="pinInput" maxlength="4" pattern="\d{4}" style="padding:8px; width:100%;" />
+          <button onclick="submitPin()">Submit</button>
+        </div>
+      </div>
 
-$('prevPage').onclick = () => {
-  if (currentPage > 1) {
-    currentPage--;
-    renderReportTable($('reportTitle').textContent);
-  }
-};
+      <!-- Change PIN Modal -->
+      <div id="changePinModal" class="modal" style="display:none;">
+        <div class="modal-content">
+          <h3>Change PIN</h3>
+          <label>CNIC or Email: <input type="text" id="resetCnic" placeholder="Enter CNIC or Email" required /></label>
+          <label>New PIN: <input type="password" id="resetPin" maxlength="4" pattern="\d{4}" required /></label>
+          <button onclick="changePin()">Change</button>
+          <button onclick="hideChangePin()">Cancel</button>
+        </div>
+      </div>
 
-$('nextPage').onclick = () => {
-  if (currentPage < Math.ceil(currentReportData.length / rowsPerPage)) {
-    currentPage++;
-    renderReportTable($('reportTitle').textContent);
-  }
-};
+      <!-- Disclaimer Modal -->
+      <div id="disclaimerModal" class="modal" style="display:none;">
+        <div class="modal-content">
+          <h3>Disclaimer & Privacy Policy</h3>
+          <p><strong>Disclaimer:</strong> This is not an official judiciary tool. It is designed for the convenience of clerks and judiciary staff to digitize record-keeping. Users are responsible for their use of this tool.</p>
+          <p><strong>Privacy Policy:</strong> Your data is saved locally in your browser or synced to your Google Drive via OAuth API. No data is stored externally by the app.</p>
+          <button onclick="document.getElementById('disclaimerModal').style.display='none';">Close</button>
+        </div>
+      </div>
 
-// Dashboard Search with Fuzzy Search
-let fuse = null;
-function performDashboardSearch() {
-  const title = $('searchTitle').value.trim().toLowerCase();
-  const cmsNo = $('searchCms').value.trim();
-  const fileTaker = $('searchFileTaker').value.trim().toLowerCase();
-  let files = getFiles();
+      <!-- Profile Details Modal -->
+      <div id="profileModal" class="modal" style="display:none;">
+        <div class="modal-content">
+          <h3 id="profileModalTitle"></h3>
+          <div style="position: relative; display: inline-block;">
+            <img id="profileModalPhoto" src="" style="width:100px;height:100px;border-radius:50%;border:1px solid #ccc;margin-bottom:10px;display:none;" />
+            <div class="photo-zoom" style="display:none; position:absolute; top:0; left:110px; z-index:10;">
+              <img id="profileModalPhotoZoom" src="" style="width:200px;height:200연:200px;border-radius:10px;border:2px solid #ccc;" />
+            </div>
+          </div>
+          <table id="profileModalTable" class="profile-modal-table"></table>
+          <button onclick="closeProfileModal()">Close</button>
+        </div>
+      </div>
 
-  if (title || cmsNo || fileTaker) {
-    if (!fuse) {
-      fuse = new Fuse(files, {
-        keys: ['title', 'cmsNo', 'deliveredTo'],
-        threshold: 0.4,
-        ignoreLocation: true,
+      <!-- Share Backup Modal -->
+      <div id="shareBackupModal" class="modal" style="display:none;">
+        <div class="modal-content">
+          <h3>Share Backup</h3>
+          <label>Select Backup:
+            <select id="backupFiles" required></select>
+          </label>
+          <label>Recipient Email:
+            <input type="email" id="shareEmail" placeholder="recipient@example.com" required />
+          </label>
+          <button onclick="shareBackup()">Share</button>
+          <button onclick="hideShareBackup()">Cancel</button>
+        </div>
+      </div>
+
+      <!-- Toast Notification -->
+      <div id="toast" class="toast" style="display:none;"></div>
+    </main>
+  </div>
+
+  <!-- External Libraries -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/fuse.js/6.6.2/fuse.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.12/cropper.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+  <script src="https://apis.google.com/js/api.js"></script>
+  <script src="app.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function () {
+        navigator.serviceWorker.register('service-worker.js')
+          .then(() => console.log("Service Worker registered"));
       });
     }
-    const searchTerms = [];
-    if (title) searchTerms.push({ title });
-    if (cmsNo) searchTerms.push({ cmsNo });
-    if (fileTaker) searchTerms.push({ deliveredTo: fileTaker });
-    files = fuse.search(searchTerms.length === 1 ? searchTerms[0] : { $and: searchTerms }).map(result => result.item);
-  }
 
-  currentReportData = files;
-  currentPage = 1;
-  renderReportTable('Search Previous Records');
-}
-
-// Export and Print Dashboard Report
-function exportDashboardReport(format) {
-  const files = currentReportData;
-  if (format === 'csv') {
-    const csv = ['Sr#,CMS No,Title,Case Type,Nature,Swal Form Details,Delivered To,Delivery Date,Return Date,Time Span,Court,Clerk Name,Profile Details'];
-    files.forEach((f, i) => {
-      const profile = getProfiles().find(p => p.name === f.deliveredTo && p.type === f.deliveredType) || {};
-      const nature = f.caseType === 'criminal' && f.firNo
-        ? `${f.nature}, FIR No: ${f.firNo}, Year: ${f.firYear || ''}, U/S: ${f.firUs || ''}, Police Station: ${f.policeStation || ''}`
-        : f.nature;
-      const swalDetails = f.sentToCopyAgency ? `${f.swalFormNo}, ${formatDate(f.swalDate)}` : '';
-      const profileDetails = Object.entries(profile)
-        .filter(([key]) => key !== 'photo' && key !== 'name' && key !== 'type')
-        .map(([key, value]) => `${key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())}: ${value}`)
-        .join(', ');
-      csv.push(`${i + 1},${f.cmsNo},${f.title},${f.caseType},${nature},${swalDetails},${f.deliveredTo} (${f.deliveredType}),${formatDate(f.deliveredAt, true)},${f.returned ? formatDate(f.returnedAt, true) : ''},${f.timeSpan || ''},${f.court},${f.clerkName},${profileDetails}`);
+    let deferredPrompt;
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredPrompt = e;
+      console.log("PWA install prompt ready.");
     });
-    const blob = new Blob([csv.join('\n')], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${$('reportTitle').textContent.replace(/\s+/g, '_')}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-  } else if (format === 'pdf') {
-    const { jsPDF } = window.jspdf;
-    const doc = new jsPDF();
-    doc.setFontSize(16);
-    doc.text($('reportTitle').textContent, 10, 10);
-    doc.autoTable({
-      startY: 20,
-      head: [['Sr#', 'CMS No', 'Title', 'Case Type', 'Nature', 'Swal Form Details', 'Delivered To', 'Delivery Date', 'Return Date', 'Time Span', 'Court', 'Clerk Name', 'Profile Details']],
-      body: files.map((f, i) => {
-        const profile = getProfiles().find(p => p.name === f.deliveredTo && p.type === f.deliveredType) || {};
-        const nature = f.caseType === 'criminal' && f.firNo
-          ? `${f.nature}, FIR No: ${f.firNo}, Year: ${f.firYear || ''}, U/S: ${f.firUs || ''}, Police Station: ${f.policeStation || ''}`
-          : f.nature;
-        const swalDetails = f.sentToCopyAgency ? `${f.swalFormNo}, ${formatDate(f.swalDate)}` : '';
-        const profileDetails = Object.entries(profile)
-          .filter(([key]) => key !== 'photo' && key !== 'name' && key !== 'type')
-          .map(([key, value]) => `${key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())}: ${value}`)
-          .join(', ');
-        return [i + 1, f.cmsNo, f.title, f.caseType, nature, swalDetails, `${f.deliveredTo} (${f.deliveredType})`, formatDate(f.deliveredAt, true), f.returned ? formatDate(f.returnedAt, true) : '', f.timeSpan || '', f.court, f.clerkName, profileDetails];
-      }),
-      styles: { fontSize: 8 },
-      columnStyles: { 4: { cellWidth: 30 }, 12: { cellWidth: 30 } },
-    });
-    doc.save(`${$('reportTitle').textContent.replace(/\s+/g, '_')}.pdf`);
-  }
-}
-
-function printDashboardReport() {
-  const printWindow = window.open('', '_blank');
-  printWindow.document.write(`
-    <html>
-      <head><title>${$('reportTitle').textContent}</title>
-      <style>
-        body { font-family: Arial, sans-serif; }
-        table { width: 100%; border-collapse: collapse; }
-        th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
-        th { background: #f5f5f5; }
-      </style>
-      </head>
-      <body>
-        <h2>${$('reportTitle').textContent}</h2>
-        ${$('dashboardReportTable').outerHTML}
-      </body>
-    </html>
-  `);
-  printWindow.document.close();
-  printWindow.print();
-}
-
-// Profile Details Modal
-function showProfileDetails(name, type) {
-  const profile = getProfiles().find(p => p.name === name && p.type === type) || {};
-  $('profileModalTitle').textContent = `${name} (${type})`;
-  const table = $('profileModalTable');
-  table.innerHTML = '';
-  for (const [key, value] of Object.entries(profile)) {
-    if (key === 'photo') {
-      $('profileModalPhoto').src = value || '';
-      $('profileModalPhoto').style.display = value ? 'block' : 'none';
-      continue;
-    }
-    const row = document.createElement('tr');
-    row.innerHTML = `<th>${key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())}</th><td>${value}</td>`;
-    table.appendChild(row);
-  }
-  $('profileModal').style.display = 'block';
-}
-
-function closeProfileModal() {
-  $('profileModal').style.display = 'none';
-}
-
-// New File Entry
-$('fileForm').onsubmit = async e => {
-  e.preventDefault();
-  $('loadingIndicator').style.display = 'block';
-  const userProfile = getUserProfile();
-  if (!userProfile.pin) {
-    showToast('Please set up your profile first.', 5000);
-    navigate('settings');
-    return;
-  }
-  const pin = await promptPin();
-  if (pin !== userProfile.pin) {
-    showToast('Incorrect PIN.', 5000);
-    $('loadingIndicator').style.display = 'none';
-    return;
-  }
-  const newFile = {
-    id: Date.now().toString(), // Unique ID for each delivery
-    caseType: $('caseType').value,
-    cmsNo: $('cmsNo').value,
-    title: `${$('petitioner').value} vs. ${$('respondent').value}`,
-    nature: $('nature').value,
-    firNo: $('firNo').value,
-    firYear: $('firYear').value,
-    firUs: $('firUs').value,
-    policeStation: $('policeStation').value,
-    dateType: $('dateType').value,
-    date: $('date').value,
-    deliveredTo: $('deliveredTo').value,
-    deliveredType: $('deliveredType').value,
-    sentToCopyAgency: $('copyAgency').checked,
-    swalFormNo: $('swalFormNo').value,
-    swalDate: $('swalDate').value,
-    deliveredAt: new Date().toISOString(),
-    court: userProfile.courtName,
-    clerkName: userProfile.clerkName,
-    returned: false,
-  };
-  const files = getFiles();
-  files.push(newFile);
-  saveFiles(files);
-  showToast('File saved and delivered successfully!');
-  $('fileForm').reset();
-  toggleCriminalFields();
-  toggleCopyAgency();
-  $('loadingIndicator').style.display = 'none';
-};
-
-function toggleCriminalFields() {
-  $('criminalFields').style.display = $('caseType').value === 'criminal' ? 'block' : 'none';
-}
-
-function autoFillCMS() {
-  const cmsNo = $('cmsNo').value;
-  const files = getFiles();
-  const existing = files.find(f => f.cmsNo === cmsNo && !f.returned);
-  if (existing) {
-    $('caseType').value = existing.caseType;
-    toggleCriminalFields();
-    const [petitioner, respondent] = existing.title.split(' vs. ');
-    $('petitioner').value = petitioner;
-    $('respondent').value = respondent;
-    $('nature').value = existing.nature;
-    $('firNo').value = existing.firNo || '';
-    $('firYear').value = existing.firYear || '';
-    $('firUs').value = existing.firUs || '';
-    $('policeStation').value = existing.policeStation || '';
-    $('dateType').value = existing.dateType;
-    $('date').value = existing.date;
-  }
-}
-
-function toggleCopyAgency() {
-  $('copyAgencyFields').style.display = $('copyAgency').checked ? 'block' : 'none';
-  $('swalFormNo').required = $('copyAgency').checked;
-  $('swalDate').required = $('copyAgency').checked;
-}
-
-// Profile Suggestions
-function suggestProfiles(value, inputId) {
-  const suggestions = $(inputId === 'deliveredTo' ? 'suggestions' : 'searchSuggestions');
-  suggestions.innerHTML = '';
-  if (!value) return;
-  const profiles = getProfiles().filter(p => p.name.toLowerCase().includes(value.toLowerCase()));
-  profiles.forEach(p => {
-    const li = document.createElement('li');
-    li.innerHTML = `<img src="${p.photo || ''}" style="${p.photo ? '' : 'display:none;'}">${p.name} (${p.type})`;
-    li.onclick = () => {
-      $(inputId).value = p.name;
-      if (inputId === 'deliveredTo') $('deliveredType').value = p.type;
-      suggestions.innerHTML = '';
-      if (inputId === 'searchFileTaker') performDashboardSearch();
-    };
-    suggestions.appendChild(li);
-  });
-}
-
-// Return File
-function filterPendingFiles() {
-  const cms = $('returnCms').value.trim();
-  const title = $('returnTitle').value.trim().toLowerCase();
-  const files = getFiles().filter(f => !f.returned);
-  const filtered = files.filter(f =>
-    (!cms || f.cmsNo.includes(cms)) &&
-    (!title || f.title.toLowerCase().includes(title))
-  );
-  const tbody = $('pendingFilesTable').querySelector('tbody');
-  tbody.innerHTML = '';
-  filtered.forEach(f => {
-    const row = document.createElement('tr');
-    row.innerHTML = `
-      <td>${f.cmsNo}</td>
-      <td>${f.title}</td>
-      <td>${f.caseType}</td>
-      <td>${f.deliveredTo} (${f.deliveredType})</td>
-      <td><button onclick="returnFile('${f.id}')">Return</button></td>
-    `;
-    tbody.appendChild(row);
-  });
-}
-
-async function returnFile(fileId) {
-  const userProfile = getUserProfile();
-  const pin = await promptPin();
-  if (pin !== userProfile.pin) {
-    showToast('Incorrect PIN.', 5000);
-    return;
-  }
-  const files = getFiles();
-  const file = files.find(f => f.id === fileId);
-  if (!file) return;
-  file.returned = true;
-  file.returnedAt = new Date().toISOString();
-  const delivered = new Date(file.deliveredAt);
-  const returned = new Date(file.returnedAt);
-  const diff = Math.round((returned - delivered) / (1000 * 60 * 60 * 24));
-  file.timeSpan = `${diff} day${diff !== 1 ? 's' : ''}`;
-  saveFiles(files);
-  showToast('File returned successfully!');
-  filterPendingFiles();
-}
-
-// File Fetcher
-function resetFileFetcher() {
-  $('profileForm').style.display = 'none';
-  $('profileSearchSection').style.display = 'none';
-  $('profileList').style.display = 'none';
-  $('profileForm').reset();
-  toggleProfileFields();
-}
-
-function showProfileForm() {
-  $('profileForm').style.display = 'block';
-  $('profileSearchSection').style.display = 'none';
-  $('profileList').style.display = 'none';
-}
-
-function showProfileSearch() {
-  $('profileForm').style.display = 'none';
-  $('profileSearchSection').style.display = 'block';
-  $('profileList').style.display = 'block';
-  renderProfiles();
-}
-
-function toggleProfileFields() {
-  const type = $('profileType').value;
-  const fields = $('profileFields');
-  fields.innerHTML = '';
-  let html = '<label>Cell No: <span class="required">*</span><input type="text" id="cellNo" required placeholder="0300-1234567" /></label>';
-  if (type === 'advocate') {
-    html += `
-      <label>Advocate Name: <span class="required">*</span><input type="text" id="advocateName" required /></label>
-      <label>Advocate Cell: <input type="text" id="advocateCell" placeholder="0300-1234567" /></label>
-      <label>Chamber No: <input type="text" id="chamberNo" /></label>
-    `;
-  } else if (type === 'colleague' || type === 'other') {
-    html += `<label>Details: <input type="text" id="details" /></label>`;
-  }
-  fields.innerHTML = html;
-
-  // Attach mobile formatters
-  const cellNo = $('cellNo');
-  const advocateCell = $('advocateCell');
-  if (cellNo) {
-    cellNo.oninput = () => formatMobile(cellNo);
-    formatMobile(cellNo);
-  }
-  if (advocateCell) {
-    advocateCell.oninput = () => formatMobile(advocateCell);
-    formatMobile(advocateCell);
-  }
-}
-
-function formatMobile(input) {
-  let value = input.value.replace(/\D/g, '');
-  if (value.length > 4) {
-    value = `${value.slice(0, 4)}-${value.slice(4, 11)}`;
-  }
-  input.value = value;
-}
-
-$('profileForm').onsubmit = async e => {
-  e.preventDefault();
-  $('loadingIndicator').style.display = 'block';
-  const userProfile = getUserProfile();
-  const pin = await promptPin();
-  if (pin !== userProfile.pin) {
-    showToast('Incorrect PIN.', 5000);
-    $('loadingIndicator').style.display = 'none';
-    return;
-  }
-  const profiles = getProfiles();
-  const photo = $('profilePhoto').files[0];
-  let photoUrl = '';
-  if (photo) {
-    photoUrl = await new Promise(resolve => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result);
-      reader.readAsDataURL(photo);
-    });
-  }
-  const profile = {
-    name: $('profileName').value,
-    type: $('profileType').value,
-    cellNo: $('cellNo').value,
-    photo: photoUrl || profiles[parseInt($('profileForm').dataset.editIndex)]?.photo || '',
-  };
-  if (profile.type === 'advocate') {
-    profile.advocateName = $('advocateName').value;
-    profile.advocateCell = $('advocateCell').value;
-    profile.chamberNo = $('chamberNo').value;
-  } else if (profile.type === 'colleague' || profile.type === 'other') {
-    profile.details = $('details').value;
-  }
-  const editIndex = parseInt($('profileForm').dataset.editIndex);
-  if (!isNaN(editIndex)) {
-    profiles[editIndex] = profile;
-  } else {
-    profiles.push(profile);
-  }
-  saveProfiles(profiles);
-  showToast('Profile saved successfully!');
-  $('profileForm').reset();
-  $('profileForm').dataset.editIndex = '';
-  $('photoPreview').style.display = 'none';
-  toggleProfileFields();
-  showProfileSearch();
-  renderProfiles();
-  $('loadingIndicator').style.display = 'none';
-};
-
-$('profilePhoto').onchange = () => {
-  const file = $('profilePhoto').files[0];
-  if (file) {
-    const reader = new FileReader();
-    reader.onload = () => {
-      $('photoPreview').src = reader.result;
-      $('photoPreview').style.display = 'block';
-    };
-    reader.readAsDataURL(file);
-  }
-};
-
-function renderProfiles() {
-  const type = $('profileFilterType').value;
-  const search = $('profileSearch').value.trim().toLowerCase();
-  let profiles = getProfiles();
-  if (type) profiles = profiles.filter(p => p.type === type);
-  if (search) {
-    profiles = profiles.filter(p =>
-      p.name.toLowerCase().includes(search) ||
-      p.cellNo.includes(search) ||
-      p.chamberNo?.includes(search)
-    );
-  }
-  const tbody = $('profileTable').querySelector('tbody');
-  tbody.innerHTML = '';
-  profiles.forEach((p, i) => {
-    const filesDelivered = getFiles().filter(f => f.deliveredTo === p.name && f.deliveredType === p.type).length;
-    const row = document.createElement('tr');
-    row.innerHTML = `
-      <td><img src="${p.photo || ''}" style="width:40px;height:40px;border-radius:50%;${p.photo ? '' : 'display:none;'}" /></td>
-      <td>${p.name}</td>
-      <td>${p.type}</td>
-      <td>${p.cellNo}</td>
-      <td>${p.chamberNo || ''}</td>
-      <td>${filesDelivered}</td>
-      <td>
-        <button onclick="editProfile(${i})">Edit</button>
-        <button onclick="deleteProfile(${i})">Delete</button>
-      </td>
-    `;
-    tbody.appendChild(row);
-  });
-}
-
-function editProfile(index) {
-  const profiles = getProfiles();
-  const p = profiles[index];
-  $('profileType').value = p.type;
-  toggleProfileFields();
-  $('profileName').value = p.name;
-  $('cellNo').value = p.cellNo;
-  if (p.type === 'advocate') {
-    $('advocateName').value = p.advocateName;
-    $('advocateCell').value = p.advocateCell;
-    $('chamberNo').value = p.chamberNo;
-  } else if (p.type === 'colleague' || p.type === 'other') {
-    $('details').value = p.details;
-  }
-  $('photoPreview').src = p.photo || '';
-  $('photoPreview').style.display = p.photo ? 'block' : 'none';
-  $('profileForm').dataset.editIndex = index;
-  showProfileForm();
-}
-
-function deleteProfile(index) {
-  if (!confirm('Are you sure you want to delete this profile?')) return;
-  const profiles = getProfiles();
-  profiles.splice(index, 1);
-  saveProfiles(profiles);
-  renderProfiles();
-  showToast('Profile deleted successfully!');
-}
-
-function triggerImport() {
-  $('profileImport').click();
-}
-
-function importProfiles() {
-  const file = $('profileImport').files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = () => {
-    try {
-      const imported = JSON.parse(reader.result);
-      const profiles = getProfiles();
-      profiles.push(...imported);
-      saveProfiles(profiles);
-      showToast('Profiles imported successfully!');
-      showProfileSearch();
-      renderProfiles();
-    } catch (e) {
-      showToast('Invalid file format.', 5000);
-    }
-  };
-  reader.readAsText(file);
-}
-
-function exportProfiles() {
-  const profiles = getProfiles();
-  const blob = new Blob([JSON.stringify(profiles, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'profiles.json';
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-// User Profile
-$('settingsForm').onsubmit = async e => {
-  e.preventDefault();
-  $('loadingIndicator').style.display = 'block';
-  const photo = $('userPhoto').files[0];
-  let photoUrl = '';
-  if (photo) {
-    photoUrl = await new Promise(resolve => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result);
-      reader.readAsDataURL(photo);
-    });
-  }
-  const profile = {
-    clerkName: $('clerkName').value,
-    judgeName: $('judgeName').value,
-    courtName: $('courtName').value,
-    mobile: $('mobile').value,
-    cnic: $('cnic').value,
-    pin: $('pin').value,
-    email: $('email').value,
-    photo: photoUrl || getUserProfile().photo || '',
-  };
-  saveUserProfile(profile);
-  showToast('Profile saved successfully!');
-  displaySavedProfile();
-  $('loadingIndicator').style.display = 'none';
-};
-
-function displaySavedProfile() {
-  const profile = getUserProfile();
-  if (!profile.clerkName) {
-    $('settingsForm').style.display = 'block';
-    $('savedProfile').style.display = 'none';
-    $('setupMessage').style.display = 'block';
-    return;
-  }
-  $('savedClerkName').textContent = profile.clerkName;
-  $('savedJudgeName').textContent = profile.judgeName;
-  $('savedCourtName').textContent = profile.courtName;
-  $('savedMobile').textContent = profile.mobile;
-  $('savedMobile').href = `tel:${profile.mobile}`;
-  $('savedUserPhoto').src = profile.photo || '';
-  $('savedUserPhoto').style.display = profile.photo ? 'block' : 'none';
-  $('settingsForm').style.display = 'none';
-  $('savedProfile').style.display = 'block';
-  $('setupMessage').style.display = 'none';
-  $('changePinBtn').style.display = profile.cnic || profile.email ? 'inline-block' : 'none';
-}
-
-function editUserProfile() {
-  const profile = getUserProfile();
-  $('clerkName').value = profile.clerkName;
-  $('judgeName').value = profile.judgeName;
-  $('courtName').value = profile.courtName;
-  $('mobile').value = profile.mobile;
-  $('cnic').value = profile.cnic;
-  $('pin').value = profile.pin;
-  $('email').value = profile.email;
-  $('userPhotoPreview').src = profile.photo || '';
-  $('userPhotoPreview').style.display = profile.photo ? 'block' : 'none';
-  $('settingsForm').style.display = 'block';
-  $('savedProfile').style.display = 'none';
-  $('setupMessage').style.display = 'block';
-}
-
-$('userPhoto').onchange = () => {
-  const file = $('userPhoto').files[0];
-  if (file) {
-    const reader = new FileReader();
-    reader.onload = () => {
-      $('userPhotoPreview').src = reader.result;
-      $('userPhotoPreview').style.display = 'block';
-    };
-    reader.readAsDataURL(file);
-  }
-};
-
-function toggleSaveButton() {
-  $('saveProfileBtn').disabled = !$('agreeTerms').checked;
-}
-
-function showDisclaimerModal() {
-  $('disclaimerModal').style.display = 'block';
-}
-
-async function promptPin() {
-  return new Promise(resolve => {
-    $('pinModal').style.display = 'block';
-    $('pinInput').value = '';
-    $('pinInput').focus();
-    $('pinInput').onkeypress = e => {
-      if (e.key === 'Enter') submitPin();
-    };
-    window.submitPin = () => {
-      const pin = $('pinInput').value;
-      $('pinModal').style.display = 'none';
-      resolve(pin);
-    };
-  });
-}
-
-function showChangePin() {
-  $('changePinModal').style.display = 'block';
-  $('resetCnic').value = '';
-  $('resetPin').value = '';
-}
-
-function hideChangePin() {
-  $('changePinModal').style.display = 'none';
-}
-
-function changePin() {
-  const profile = getUserProfile();
-  const input = $('resetCnic').value;
-  if (input !== profile.cnic && input !== profile.email) {
-    showToast('Invalid CNIC or Email.', 5000);
-    return;
-  }
-  profile.pin = $('resetPin').value;
-  saveUserProfile(profile);
-  showToast('PIN changed successfully!');
-  hideChangePin();
-  displaySavedProfile();
-}
-
-// Dark Mode
-function toggleDarkMode() {
-  document.body.classList.toggle('dark-mode');
-  localStorage.setItem('darkMode', document.body.classList.contains('dark-mode'));
-}
-
-// Backup and Restore
-function backupData() {
-  const data = {
-    files: getFiles(),
-    profiles: getProfiles(),
-    userProfile: getUserProfile(),
-  };
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'cft_backup.json';
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-function triggerRestore() {
-  $('dataRestore').click();
-}
-
-function restoreData() {
-  const file = $('dataRestore').files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = () => {
-    try {
-      const data = JSON.parse(reader.result);
-      if (data.files) saveFiles(data.files);
-      if (data.profiles) saveProfiles(data.profiles);
-      if (data.userProfile) saveUserProfile(data.userProfile);
-      showToast('Data restored successfully!');
-      displaySavedProfile();
-      if ($('dashboard').classList.contains('active')) updateDashboard();
-      if ($('fileFetcher').classList.contains('active')) resetFileFetcher();
-      if ($('return').classList.contains('active')) filterPendingFiles();
-    } catch (e) {
-      showToast('Invalid backup file.', 5000);
-    }
-  };
-  reader.readAsText(file);
-}
-
-// Offline Support
-let offlineQueue = JSON.parse(localStorage.getItem('offlineQueue') || '[]');
-function saveOfflineQueue() {
-  localStorage.setItem('offlineQueue', JSON.stringify(offlineQueue));
-}
-
-function queueOfflineAction(action, data) {
-  offlineQueue.push({ action, data, timestamp: new Date().toISOString() });
-  saveOfflineQueue();
-  showToast('Action queued offline. Will sync when online.', 5000);
-}
-
-async function syncOfflineQueue() {
-  if (!navigator.onLine || !offlineQueue.length) return;
-  const userProfile = getUserProfile();
-  for (const { action, data } of offlineQueue) {
-    if (action === 'saveFile') {
-      const files = getFiles();
-      files.push(data);
-      saveFiles(files);
-    } else if (action === 'returnFile') {
-      const files = getFiles();
-      const file = files.find(f => f.id === data.id);
-      if (file) {
-        file.returned = true;
-        file.returnedAt = data.returnedAt;
-        file.timeSpan = data.timeSpan;
-        saveFiles(files);
-      }
-    } else if (action === 'saveProfile') {
-      const profiles = getProfiles();
-      profiles.push(data);
-      saveProfiles(profiles);
-    }
-  }
-  offlineQueue = [];
-  saveOfflineQueue();
-  showToast('Offline actions synced successfully!');
-}
-
-// Event Listeners
-window.onload = () => {
-  const profile = getUserProfile();
-  if (profile.clerkName) {
-    const screen = localStorage.getItem('currentScreen') || 'dashboard';
-    navigate(screen);
-    displaySavedProfile();
-  } else {
-    navigate('settings');
-  }
-  if (localStorage.getItem('darkMode') === 'true') document.body.classList.add('dark-mode');
-  syncOfflineQueue();
-};
-
-window.addEventListener('online', syncOfflineQueue);
-
-// Close Sidebar on Outside Click
-document.addEventListener('click', e => {
-  const sidebar = $('sidebar');
-  const menuBtn = $('menuBtn');
-  const reportPanel = $('dashboardReportPanel');
-  if (window.innerWidth <= 768 && sidebar.classList.contains('active') &&
-      !sidebar.contains(e.target) && !menuBtn.contains(e.target) &&
-      !reportPanel.contains(e.target)) {
-    sidebar.classList.remove('active');
-    document.querySelector('.sidebar-overlay')?.remove();
-  }
-});
-
-// Close Dashboard Report on Outside Click
-$('dashboardReportPanel').onclick = e => {
-  if (e.target === $('dashboardReportPanel')) {
-    $('dashboardReportPanel').style.display = 'none';
-    $('sidebar').classList.remove('active');
-    document.querySelector('.sidebar-overlay')?.remove();
-  }
-};
-
-// Debounce Search Inputs
-let searchTimeout;
-['searchTitle', 'searchCms', 'searchFileTaker'].forEach(id => {
-  $(id).addEventListener('input', () => {
-    clearTimeout(searchTimeout);
-    searchTimeout = setTimeout(performDashboardSearch, 300);
-  });
-});
+  </script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.12/cropper.min.css" />
+</body>
+</html>
