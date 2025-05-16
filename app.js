@@ -35,15 +35,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // Setup event listeners
 function setupEventListeners() {
-  // Navigation
+  // Hamburger menu
+  document.getElementById('menuBtn').addEventListener('click', () => toggleSidebar(true));
+
+  // Sidebar overlay
+  document.querySelector('.sidebar-overlay').addEventListener('click', () => toggleSidebar(false));
+
+  // Sidebar navigation
   document.querySelectorAll('.sidebar-btn').forEach(btn => {
     btn.addEventListener('click', () => {
-      if (!pinVerified && btn.textContent.includes('Admin')) return;
-      if (!pinVerified) {
+      const screen = btn.dataset.screen;
+      if (!pinVerified && screen !== 'admin' && screen !== 'developersDisclaimer') {
         showPinModal();
         return;
       }
-      navigate(btn.getAttribute('onclick').match(/'([^']+)'/)[1]);
+      navigate(screen);
     });
   });
 
@@ -62,14 +68,91 @@ function setupEventListeners() {
     card.addEventListener('click', () => handleCardClick(card.id));
   });
 
-  // Menu and sidebar
-  document.getElementById('menuBtn').addEventListener('click', toggleSidebar);
-  document.getElementById('pinModal').addEventListener('submit', submitPin);
+  // File Fetcher buttons
+  document.getElementById('addProfileBtn').addEventListener('click', showProfileForm);
+  document.getElementById('searchProfilesBtn').addEventListener('click', showProfileSearch);
+  document.getElementById('importProfilesBtn').addEventListener('click', triggerImport);
+  document.getElementById('exportProfilesBtn').addEventListener('click', exportProfiles);
+  document.getElementById('profileImport').addEventListener('change', importProfiles);
+
+  // Profile photo editor
+  document.getElementById('saveProfilePhotoBtn').addEventListener('click', saveProfilePhoto);
+
+  // Admin buttons
+  document.getElementById('editProfileBtn').addEventListener('click', editUserProfile);
+  document.getElementById('changePinBtn').addEventListener('click', showChangePin);
+  document.getElementById('backupLocalBtn').addEventListener('click', backupData);
+  document.getElementById('restoreLocalBtn').addEventListener('click', triggerRestore);
+  document.getElementById('signInGoogleBtn').addEventListener('click', signInWithGoogle);
+  document.getElementById('backupToDrive').addEventListener('click', backupToDrive);
+  document.getElementById('restoreFromDrive').addEventListener('click', restoreFromDrive);
+  document.getElementById('shareBackup').addEventListener('click', showShareBackup);
+  document.getElementById('dataRestore').addEventListener('change', restoreData);
+
+  // Admin photo editor
+  document.getElementById('saveUserPhotoBtn').addEventListener('click', saveUserPhoto);
+
+  // Modals
+  document.getElementById('submitPinBtn').addEventListener('click', submitPin);
+  document.getElementById('changePinSubmitBtn').addEventListener('click', changePin);
+  document.getElementById('cancelPinBtn').addEventListener('click', hideChangePin);
+  document.getElementById('disclaimerLink').addEventListener('click', (e) => {
+    e.preventDefault();
+    showDisclaimerModal();
+  });
+  document.getElementById('closeDisclaimerBtn').addEventListener('click', () => {
+    document.getElementById('disclaimerModal').style.display = 'none';
+  });
+  document.getElementById('closeProfileModalBtn').addEventListener('click', closeProfileModal);
+  document.getElementById('shareBackupBtn').addEventListener('click', shareBackup);
+  document.getElementById('cancelShareBackupBtn').addEventListener('click', hideShareBackup);
+
+  // Terms checkbox
+  document.getElementById('agreeTerms').addEventListener('change', toggleSaveButton);
+
+  // Profile search inputs
+  document.getElementById('profileFilterType').addEventListener('change', renderProfiles);
+  document.getElementById('profileSearch').addEventListener('input', renderProfiles);
+
+  // Dashboard search inputs
+  document.getElementById('searchTitle').addEventListener('input', performDashboardSearch);
+  document.getElementById('searchCms').addEventListener('input', performDashboardSearch);
+  document.getElementById('searchFileTaker').addEventListener('input', (e) => suggestProfiles(e.target.value, 'searchFileTaker'));
+  document.getElementById('searchFirNo').addEventListener('input', performDashboardSearch);
+  document.getElementById('searchFirYear').addEventListener('input', performDashboardSearch);
+  document.getElementById('searchPoliceStation').addEventListener('input', performDashboardSearch);
+
+  // Dashboard report buttons
+  document.getElementById('printReportBtn').addEventListener('click', printDashboardReport);
+  document.getElementById('exportCsvBtn').addEventListener('click', () => exportDashboardReport('csv'));
+  document.getElementById('exportPdfBtn').addEventListener('click', () => exportDashboardReport('pdf'));
+
+  // Pagination
+  document.getElementById('prevPage').addEventListener('click', () => {
+    if (currentPage > 1) {
+      currentPage--;
+      performDashboardSearch();
+    }
+  });
+  document.getElementById('nextPage').addEventListener('click', () => {
+    currentPage++;
+    performDashboardSearch();
+  });
+
+  // File form inputs
+  document.getElementById('caseType').addEventListener('change', toggleCriminalFields);
+  document.getElementById('cmsNo').addEventListener('blur', autoFillCMS);
+  document.getElementById('deliveredTo').addEventListener('input', (e) => suggestProfiles(e.target.value, 'deliveredTo'));
+  document.getElementById('copyAgency').addEventListener('change', toggleCopyAgency);
+
+  // Return form inputs
+  document.getElementById('returnCms').addEventListener('input', filterPendingFiles);
+  document.getElementById('returnTitle').addEventListener('input', filterPendingFiles);
+  document.getElementById('bulkReturnBtn').addEventListener('click', bulkReturnFiles);
 }
 
 // Initialize Google Drive API
 function initGoogleDrive() {
-  // Load gapi client
   gapi.load('client', () => {
     gapi.client.init({
       apiKey: API_KEY,
@@ -83,7 +166,6 @@ function initGoogleDrive() {
     });
   });
 
-  // Initialize Google Identity Services
   if (window.google && window.google.accounts) {
     tokenClient = google.accounts.oauth2.initTokenClient({
       client_id: CLIENT_ID,
@@ -103,7 +185,6 @@ function initGoogleDrive() {
     });
     gisInited = true;
   } else {
-    // Retry loading gsi/client
     setTimeout(initGoogleDrive, 1000);
   }
 }
@@ -131,13 +212,12 @@ function navigate(screen) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   document.getElementById(screen).classList.add('active');
   document.querySelectorAll('.sidebar-btn').forEach(btn => btn.classList.remove('active'));
-  document.querySelector(`.sidebar-btn[onclick*="${screen}"]`).classList.add('active');
+  document.querySelector(`.sidebar-btn[data-screen="${screen}"]`).classList.add('active');
   toggleSidebar(false);
 
-  // Screen-specific logic
   if (screen === 'dashboard') renderDashboard();
   if (screen === 'return') filterPendingFiles();
-  if (screen === 'fileFetcher') renderProfiles();
+  if (screen === 'fileFetcher') showProfileSearch();
 }
 
 // PIN verification
@@ -169,6 +249,11 @@ function submitPin() {
 // File submission
 function handleFileSubmit(e) {
   e.preventDefault();
+  const form = e.target;
+  if (!form.checkValidity()) {
+    form.reportValidity();
+    return;
+  }
   const fileData = {
     id: Date.now(),
     caseType: document.getElementById('caseType').value,
@@ -188,14 +273,14 @@ function handleFileSubmit(e) {
     swalDate: document.getElementById('swalDate').value,
     deliveryDate: new Date().toISOString().split('T')[0],
     status: 'pending',
-    court: userProfile.courtName,
-    clerkName: userProfile.clerkName,
+    court: userProfile.courtName || 'Unknown',
+    clerkName: userProfile.clerkName || 'Unknown',
   };
   files.push(fileData);
   updateStats();
   saveData();
   showToast('File saved and delivered.');
-  document.getElementById('fileForm').reset();
+  form.reset();
   toggleCriminalFields();
   toggleCopyAgency();
 }
@@ -203,59 +288,85 @@ function handleFileSubmit(e) {
 // Profile submission
 function handleProfileSubmit(e) {
   e.preventDefault();
+  const form = e.target;
+  if (!form.checkValidity()) {
+    form.reportValidity();
+    return;
+  }
   const profileData = {
     id: Date.now(),
     type: document.getElementById('profileType').value,
     name: document.getElementById('profileName').value,
     cellNo: document.getElementById('profileCellNo').value,
-    chamberNo: document.getElementById('profileChamberNo')?.value || '',
+    chamberNo: document.getElementById('profileChamberNo').value || '',
     photo: editedPhoto || '',
   };
   profiles.push(profileData);
   saveData();
   showToast('Profile saved.');
-  document.getElementById('profileForm').reset();
+  form.reset();
   document.getElementById('profileForm').style.display = 'none';
-  document.getElementById('photoEditor').style.display = 'none';
+  document.getElementById('photoEditor').classList.remove('active');
   editedPhoto = null;
-  renderProfiles();
+  showProfileSearch();
 }
 
 // Admin submission
 function handleAdminSubmit(e) {
   e.preventDefault();
-  userProfile = {
-    clerkName: document.getElementById('clerkName').value,
-    judgeName: document.getElementById('judgeName').value,
-    courtName: document.getElementById('courtName').value,
-    mobile: document.getElementById('mobile').value,
-    cnic: document.getElementById('cnic').value,
-    pin: document.getElementById('pin').value,
-    email: document.getElementById('email').value,
+  const form = e.target;
+  if (!form.checkValidity()) {
+    form.reportValidity();
+    return;
+  }
+  const newProfile = {
+    clerkName: document.getElementById('clerkName').value.trim(),
+    judgeName: document.getElementById('judgeName').value.trim(),
+    courtName: document.getElementById('courtName').value.trim(),
+    mobile: document.getElementById('mobile').value.trim(),
+    cnic: document.getElementById('cnic').value.trim(),
+    pin: document.getElementById('pin').value.trim(),
+    email: document.getElementById('email').value.trim(),
     photo: editedPhoto || '',
   };
-  saveData();
-  pinVerified = true;
-  showToast('Profile saved.');
-  loadUserProfile();
-  navigate('dashboard');
+  if (!newProfile.pin.match(/^\d{4}$/)) {
+    showToast('PIN must be 4 digits.', 'error');
+    return;
+  }
+  userProfile = newProfile;
+  try {
+    saveData();
+    pinVerified = true;
+    showToast('Admin profile saved.');
+    loadUserProfile();
+    navigate('dashboard');
+  } catch (err) {
+    console.error('Failed to save admin profile:', err);
+    showToast('Failed to save admin profile.', 'error');
+  }
 }
 
 // Photo upload handling
 function handlePhotoUpload(e) {
   const file = e.target.files[0];
   if (!file) return;
+  if (!file.type.startsWith('image/')) {
+    showToast('Please upload an image file.', 'error');
+    return;
+  }
   isAdminPhoto = e.target.id === 'userPhoto';
   const previewId = isAdminPhoto ? 'userPhotoPreview' : 'profilePhotoPreview';
   const editorId = isAdminPhoto ? 'userPhotoEditor' : 'photoEditor';
   const preview = document.getElementById(previewId);
+  const editor = document.getElementById(editorId);
   const reader = new FileReader();
   reader.onload = () => {
     preview.src = reader.result;
-    document.getElementById(editorId).style.display = 'block';
+    editor.classList.add('active');
     resetPhotoEditor();
     setupPhotoEditor(previewId);
   };
+  reader.onerror = () => showToast('Failed to load image.', 'error');
   reader.readAsDataURL(file);
 }
 
@@ -277,31 +388,24 @@ function setupPhotoEditor(previewId) {
   const container = document.getElementById(isAdminPhoto ? 'userPhotoPreviewContainer' : 'profilePhotoPreviewContainer');
 
   // Zoom handling
-  zoomInput.addEventListener('input', () => {
+  const updateZoom = () => {
     scale = parseFloat(zoomInput.value);
     updatePhotoTransform();
-  });
+  };
+  zoomInput.removeEventListener('input', updateZoom); // Prevent duplicate listeners
+  zoomInput.addEventListener('input', updateZoom);
 
   // Drag handling (mouse)
-  preview.addEventListener('mousedown', startDragging);
-  document.addEventListener('mousemove', drag);
-  document.addEventListener('mouseup', stopDragging);
-
-  // Drag handling (touch)
-  preview.addEventListener('touchstart', startDragging);
-  document.addEventListener('touchmove', drag);
-  document.addEventListener('touchend', stopDragging);
-
-  function startDragging(e) {
+  const startDragging = (e) => {
     e.preventDefault();
     isDragging = true;
     const clientX = e.type.includes('touch') ? e.touches[0].clientX : e.clientX;
     const clientY = e.type.includes('touch') ? e.touches[0].clientY : e.clientY;
     dragStartX = clientX - translateX;
     dragStartY = clientY - translateY;
-  }
+  };
 
-  function drag(e) {
+  const drag = (e) => {
     if (!isDragging) return;
     e.preventDefault();
     const clientX = e.type.includes('touch') ? e.touches[0].clientX : e.clientX;
@@ -309,24 +413,38 @@ function setupPhotoEditor(previewId) {
     translateX = clientX - dragStartX;
     translateY = clientY - dragStartY;
     requestAnimationFrame(updatePhotoTransform);
-  }
+  };
 
-  function stopDragging() {
+  const stopDragging = () => {
     isDragging = false;
-  }
+  };
+
+  preview.removeEventListener('mousedown', startDragging);
+  preview.removeEventListener('touchstart', startDragging);
+  document.removeEventListener('mousemove', drag);
+  document.removeEventListener('touchmove', drag);
+  document.removeEventListener('mouseup', stopDragging);
+  document.removeEventListener('touchend', stopDragging);
+
+  preview.addEventListener('mousedown', startDragging);
+  preview.addEventListener('touchstart', startDragging);
+  document.addEventListener('mousemove', drag);
+  document.addEventListener('touchmove', drag);
+  document.addEventListener('mouseup', stopDragging);
+  document.addEventListener('touchend', stopDragging);
 
   // Pinch-to-zoom (mobile)
   let lastDistance = 0;
-  preview.addEventListener('touchstart', (e) => {
+  const startPinch = (e) => {
     if (e.touches.length === 2) {
       lastDistance = Math.hypot(
         e.touches[0].clientX - e.touches[1].clientX,
         e.touches[0].clientY - e.touches[1].clientY
       );
     }
-  });
+  };
 
-  preview.addEventListener('touchmove', (e) => {
+  const pinchZoom = (e) => {
     if (e.touches.length === 2) {
       e.preventDefault();
       const distance = Math.hypot(
@@ -339,7 +457,12 @@ function setupPhotoEditor(previewId) {
       lastDistance = distance;
       updatePhotoTransform();
     }
-  });
+  };
+
+  preview.removeEventListener('touchstart', startPinch);
+  preview.removeEventListener('touchmove', pinchZoom);
+  preview.addEventListener('touchstart', startPinch);
+  preview.addEventListener('touchmove', pinchZoom);
 }
 
 // Update photo transform
@@ -362,31 +485,42 @@ function saveUserPhoto() {
 function savePhoto(isAdmin) {
   const preview = document.getElementById(isAdmin ? 'userPhotoPreview' : 'profilePhotoPreview');
   const container = document.getElementById(isAdmin ? 'userPhotoPreviewContainer' : 'profilePhotoPreviewContainer');
-  const size = isAdmin ? 120 : 200; // Admin: 120x120, Profile: 200x200
+  const size = isAdmin ? 120 : 200;
   const canvas = document.createElement('canvas');
   canvas.width = size;
   canvas.height = size;
   const ctx = canvas.getContext('2d');
 
-  // Calculate the visible portion
   const img = new Image();
   img.src = preview.src;
   img.onload = () => {
-    const containerRect = container.getBoundingClientRect();
     const imgWidth = img.width * scale;
     const imgHeight = img.height * scale;
     let offsetX = -translateX / scale;
     let offsetY = -translateY / scale;
 
-    // Center the image if it's smaller than the container
     if (imgWidth < size) offsetX = (size - imgWidth) / 2 / scale;
     if (imgHeight < size) offsetY = (size - imgHeight) / 2 / scale;
 
     ctx.drawImage(img, offsetX, offsetY, img.width, img.height, 0, 0, size / scale, size / scale);
     editedPhoto = canvas.toDataURL('image/jpeg', 0.8);
-    document.getElementById(isAdmin ? 'userPhotoEditor' : 'photoEditor').style.display = 'none';
+    document.getElementById(isAdmin ? 'userPhotoEditor' : 'photoEditor').classList.remove('active');
     showToast('Photo saved.');
   };
+  img.onerror = () => showToast('Failed to process image.', 'error');
+}
+
+// Toggle save button
+function toggleSaveButton() {
+  document.getElementById('saveProfileBtn').disabled = !document.getElementById('agreeTerms').checked;
+}
+
+// Toggle sidebar
+function toggleSidebar(show) {
+  const sidebar = document.getElementById('sidebar');
+  const overlay = document.querySelector('.sidebar-overlay');
+  sidebar.classList.toggle('active', show);
+  overlay.classList.toggle('active', show);
 }
 
 // Render dashboard
@@ -452,7 +586,7 @@ function renderProfiles() {
     filteredProfiles = profiles.filter(p => p.type === filterType);
   }
   if (search) {
-    fuse = new Fuse(filteredProfiles, { keys: ['name', 'cellNo', 'chamberNo'] });
+    fuse = new Fuse(filteredProfiles, { keys: ['name', 'cellNo', 'chamberNo'], threshold: 0.3 });
     filteredProfiles = fuse.search(search).map(result => result.item);
   }
   const tbody = document.getElementById('profileTable').querySelector('tbody');
@@ -460,7 +594,7 @@ function renderProfiles() {
   filteredProfiles.forEach(p => {
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td><img src="${p.photo || 'icon-192.png'}" style="width:50px;height:50px;border-radius:50%;" /></td>
+      <td><img src="${p.photo || 'icon-192.png'}" style="width:50px;height:50px;border-radius:50%;" alt="Profile photo" /></td>
       <td>${p.name}</td>
       <td>${p.type}</td>
       <td>${p.cellNo}</td>
@@ -478,9 +612,15 @@ function renderProfiles() {
 
 // Save data
 function saveData() {
-  localStorage.setItem('files', JSON.stringify(files));
-  localStorage.setItem('profiles', JSON.stringify(profiles));
-  localStorage.setItem('userProfile', JSON.stringify(userProfile));
+  try {
+    localStorage.setItem('files', JSON.stringify(files));
+    localStorage.setItem('profiles', JSON.stringify(profiles));
+    localStorage.setItem('userProfile', JSON.stringify(userProfile));
+    localStorage.setItem('stats', JSON.stringify(stats));
+  } catch (e) {
+    console.error('Failed to save data:', e);
+    showToast('Failed to save data.', 'error');
+  }
 }
 
 // Show toast
@@ -498,17 +638,18 @@ function loadUserProfile() {
     document.getElementById('setupMessage').style.display = 'none';
     document.getElementById('adminForm').style.display = 'none';
     document.getElementById('savedProfile').style.display = 'block';
-    document.getElementById('savedClerkName').textContent = userProfile.clerkName;
-    document.getElementById('savedJudgeName').textContent = userProfile.judgeName;
-    document.getElementById('savedCourtName').textContent = userProfile.courtName;
-    document.getElementById('savedMobile').textContent = userProfile.mobile;
-    document.getElementById('savedMobile').href = `tel:${userProfile.mobile}`;
+    document.getElementById('savedClerkName').textContent = userProfile.clerkName || '';
+    document.getElementById('savedJudgeName').textContent = userProfile.judgeName || '';
+    document.getElementById('savedCourtName').textContent = userProfile.courtName || '';
+    document.getElementById('savedMobile').textContent = userProfile.mobile || '';
+    document.getElementById('savedMobile').href = userProfile.mobile ? `tel:${userProfile.mobile}` : '#';
     if (userProfile.photo) {
       document.getElementById('savedUserPhoto').src = userProfile.photo;
       document.getElementById('savedUserPhoto').style.display = 'block';
     }
-    document.getElement Osprey('totalFiles').textContent = files.length;
+    document.getElementById('totalFiles').textContent = files.length;
     document.getElementById('totalProfiles').textContent = profiles.length;
+    document.getElementById('changePinBtn').style.display = 'inline-block';
   }
 }
 
@@ -553,7 +694,7 @@ function restoreFromDrive() {
     pageSize: 10,
   }).then(response => {
     const select = document.getElementById('backupFiles');
-    select.innerHTML = '';
+    select.innerHTML = '<option value="">Select a backup</option>';
     response.result.files.forEach(file => {
       const option = document.createElement('option');
       option.value = file.id;
@@ -567,14 +708,7 @@ function restoreFromDrive() {
   });
 }
 
-// Additional helper functions (stubs for brevity)
-function toggleSidebar(show) {
-  const sidebar = document.getElementById('sidebar');
-  const overlay = document.querySelector('.sidebar-overlay');
-  sidebar.classList.toggle('active', show);
-  overlay?.classList.toggle('active', show);
-}
-
+// Additional helper functions
 function toggleCriminalFields() {
   document.getElementById('criminalFields').style.display = document.getElementById('caseType').value === 'criminal' ? 'block' : 'none';
 }
@@ -584,19 +718,100 @@ function toggleCopyAgency() {
 }
 
 function handleCardClick(cardId) {
-  // Implement dashboard card actions
+  if (cardId === 'cardSearchPrev') {
+    document.getElementById('dashboardReportPanel').style.display = 'block';
+    document.getElementById('searchPrevRecords').style.display = 'block';
+    performDashboardSearch();
+  }
 }
 
-function filterPendingFiles() {
-  // Implement pending files filtering
+function filterPendingFiles(e) {
+  if (e) e.preventDefault();
+  const cms = document.getElementById('returnCms').value;
+  const title = document.getElementById('returnTitle').value.toLowerCase();
+  const filteredFiles = files.filter(f => f.status === 'pending' &&
+    (!cms || f.cmsNo.includes(cms)) &&
+    (!title || f.title.toLowerCase().includes(title))
+  );
+  const tbody = document.getElementById('pendingFilesTable').querySelector('tbody');
+  tbody.innerHTML = '';
+  filteredFiles.forEach(f => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><input type="checkbox" class="return-checkbox" data-id="${f.id}" /></td>
+      <td>${f.cmsNo}</td>
+      <td>${f.title}</td>
+      <td>${f.caseType}</td>
+      <td>${f.deliveredTo}</td>
+      <td><button onclick="returnFile(${f.id})">Return</button></td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+function bulkReturnFiles() {
+  const checkboxes = document.querySelectorAll('.return-checkbox:checked');
+  checkboxes.forEach(cb => {
+    const id = parseInt(cb.dataset.id);
+    const file = files.find(f => f.id === id);
+    if (file) {
+      file.status = 'returned';
+      file.returnDate = new Date().toISOString().split('T')[0];
+    }
+  });
+  updateStats();
+  saveData();
+  showToast('Selected files returned.');
+  filterPendingFiles();
+}
+
+function returnFile(id) {
+  const file = files.find(f => f.id === id);
+  if (file) {
+    file.status = 'returned';
+    file.returnDate = new Date().toISOString().split('T')[0];
+    updateStats();
+    saveData();
+    showToast('File returned.');
+    filterPendingFiles();
+  }
 }
 
 function suggestProfiles(value, inputId) {
-  // Implement profile suggestions
+  const ul = document.getElementById(inputId === 'deliveredTo' ? 'suggestions' : 'searchSuggestions');
+  ul.innerHTML = '';
+  if (!value) return;
+  const filtered = profiles.filter(p => p.name.toLowerCase().includes(value.toLowerCase()));
+  filtered.forEach(p => {
+    const li = document.createElement('li');
+    li.innerHTML = `
+      <img src="${p.photo || 'icon-192.png'}" alt="Profile photo" />
+      <span>${p.name} (${p.cellNo})</span>
+    `;
+    li.addEventListener('click', () => {
+      document.getElementById(inputId).value = p.name;
+      ul.innerHTML = '';
+    });
+    ul.appendChild(li);
+  });
 }
 
 function editProfile(id) {
-  // Implement profile editing
+  const profile = profiles.find(p => p.id === id);
+  if (!profile) return;
+  document.getElementById('profileType').value = profile.type;
+  document.getElementById('profileName').value = profile.name;
+  document.getElementById('profileCellNo').value = profile.cellNo;
+  document.getElementById('profileChamberNo').value = profile.chamberNo;
+  if (profile.photo) {
+    document.getElementById('profilePhotoPreview').src = profile.photo;
+    document.getElementById('photoEditor').classList.add('active');
+    editedPhoto = profile.photo;
+  }
+  document.getElementById('profileForm').style.display = 'block';
+  document.getElementById('profileSearchSection').style.display = 'none';
+  document.getElementById('profileList').style.display = 'none';
+  profiles = profiles.filter(p => p.id !== id);
 }
 
 function deleteProfile(id) {
@@ -609,6 +824,9 @@ function showProfileForm() {
   document.getElementById('profileForm').style.display = 'block';
   document.getElementById('profileSearchSection').style.display = 'none';
   document.getElementById('profileList').style.display = 'none';
+  document.getElementById('profileForm').reset();
+  document.getElementById('photoEditor').classList.remove('active');
+  editedPhoto = null;
 }
 
 function showProfileSearch() {
@@ -622,24 +840,72 @@ function triggerImport() {
   document.getElementById('profileImport').click();
 }
 
-function importProfiles() {
-  // Implement profile import
+function importProfiles(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const data = JSON.parse(reader.result);
+      profiles = data.profiles || [];
+      saveData();
+      showToast('Profiles imported.');
+      renderProfiles();
+    } catch (err) {
+      showToast('Invalid import file.', 'error');
+    }
+  };
+  reader.readAsText(file);
 }
 
 function exportProfiles() {
-  // Implement profile export
+  const data = JSON.stringify({ profiles });
+  const blob = new Blob([data], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'profiles.json';
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast('Profiles exported.');
 }
 
 function backupData() {
-  // Implement local backup
+  const backupData = { files, profiles, userProfile, stats };
+  const blob = new Blob([JSON.stringify(backupData)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `CFT_Backup_${new Date().toISOString().split('T')[0]}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast('Backup saved locally.');
 }
 
 function triggerRestore() {
   document.getElementById('dataRestore').click();
 }
 
-function restoreData() {
-  // Implement local restore
+function restoreData(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const data = JSON.parse(reader.result);
+      files = data.files || [];
+      profiles = data.profiles || [];
+      userProfile = data.userProfile || {};
+      stats = data.stats || { deliveries: 0, returns: 0, pending: 0, tomorrow: 0, overdue: 0 };
+      saveData();
+      loadUserProfile();
+      renderDashboard();
+      showToast('Data restored.');
+    } catch (err) {
+      showToast('Invalid restore file.', 'error');
+    }
+  };
+  reader.readAsText(file);
 }
 
 function showShareBackup() {
@@ -651,7 +917,26 @@ function hideShareBackup() {
 }
 
 function shareBackup() {
-  // Implement backup sharing
+  const fileId = document.getElementById('backupFiles').value;
+  const email = document.getElementById('shareEmail').value;
+  if (!fileId || !email) {
+    showToast('Please select a backup and enter an email.', 'error');
+    return;
+  }
+  gapi.client.drive.permissions.create({
+    fileId: fileId,
+    resource: {
+      type: 'user',
+      role: 'reader',
+      emailAddress: email,
+    },
+  }).then(() => {
+    showToast('Backup shared.');
+    hideShareBackup();
+  }).catch(err => {
+    console.error('Share failed:', err);
+    showToast('Failed to share backup.', 'error');
+  });
 }
 
 function showChangePin() {
@@ -663,17 +948,212 @@ function hideChangePin() {
 }
 
 function changePin() {
-  // Implement PIN change
+  const cnic = document.getElementById('resetCnic').value;
+  const newPin = document.getElementById('resetPin').value;
+  if (!newPin.match(/^\d{4}$/)) {
+    showToast('New PIN must be 4 digits.', 'error');
+    return;
+  }
+  if (cnic === userProfile.cnic || cnic === userProfile.email) {
+    userProfile.pin = newPin;
+    saveData();
+    showToast('PIN changed.');
+    hideChangePin();
+  } else {
+    showToast('Invalid CNIC or email.', 'error');
+  }
 }
 
 function showDisclaimerModal() {
   document.getElementById('disclaimerModal').style.display = 'flex';
 }
 
-function toggleSaveButton() {
-  document.getElementById('saveProfileBtn').disabled = !document.getElementById('agreeTerms').checked;
-}
-
 function closeProfileModal() {
   document.getElementById('profileModal').style.display = 'none';
+}
+
+function editUserProfile() {
+  document.getElementById('setupMessage').style.display = 'none';
+  document.getElementById('savedProfile').style.display = 'none';
+  document.getElementById('adminForm').style.display = 'block';
+  document.getElementById('clerkName').value = userProfile.clerkName || '';
+  document.getElementById('judgeName').value = userProfile.judgeName || '';
+  document.getElementById('courtName').value = userProfile.courtName || '';
+  document.getElementById('mobile').value = userProfile.mobile || '';
+  document.getElementById('cnic').value = userProfile.cnic || '';
+  document.getElementById('pin').value = userProfile.pin || '';
+  document.getElementById('email').value = userProfile.email || '';
+  if (userProfile.photo) {
+    document.getElementById('userPhotoPreview').src = userProfile.photo;
+    document.getElementById('userPhotoEditor').classList.add('active');
+    editedPhoto = userProfile.photo;
+  }
+}
+
+function autoFillCMS() {
+  const cmsNo = document.getElementById('cmsNo').value;
+  const existingFile = files.find(f => f.cmsNo === cmsNo);
+  if (existingFile) {
+    document.getElementById('petitioner').value = existingFile.title.split(' Vs. ')[0];
+    document.getElementById('respondent').value = existingFile.title.split(' Vs. ')[1];
+    document.getElementById('nature').value = existingFile.nature;
+    document.getElementById('caseType').value = existingFile.caseType;
+    toggleCriminalFields();
+    document.getElementById('firNo').value = existingFile.firNo || '';
+    document.getElementById('firYear').value = existingFile.firYear || '';
+    document.getElementById('firUs').value = existingFile.firUs || '';
+    document.getElementById('policeStation').value = existingFile.policeStation || '';
+  }
+}
+
+function performDashboardSearch() {
+  const title = document.getElementById('searchTitle').value.toLowerCase();
+  const cms = document.getElementById('searchCms').value;
+  const fileTaker = document.getElementById('searchFileTaker').value.toLowerCase();
+  const firNo = document.getElementById('searchFirNo').value.toLowerCase();
+  const firYear = document.getElementById('searchFirYear').value;
+  const policeStation = document.getElementById('searchPoliceStation').value.toLowerCase();
+
+  let filteredFiles = files;
+  if (title) filteredFiles = filteredFiles.filter(f => f.title.toLowerCase().includes(title));
+  if (cms) filteredFiles = filteredFiles.filter(f => f.cmsNo.includes(cms));
+  if (fileTaker) filteredFiles = filteredFiles.filter(f => f.deliveredTo.toLowerCase().includes(fileTaker));
+  if (firNo) filteredFiles = filteredFiles.filter(f => f.firNo && f.firNo.toLowerCase().includes(firNo));
+  if (firYear) filteredFiles = filteredFiles.filter(f => f.firYear && f.firYear.includes(firYear));
+  if (policeStation) filteredFiles = filteredFiles.filter(f => f.policeStation && f.policeStation.toLowerCase().includes(policeStation));
+
+  const start = (currentPage - 1) * itemsPerPage;
+  const paginatedFiles = filteredFiles.slice(start, start + itemsPerPage);
+
+  const tbody = document.getElementById('dashboardReportTable').querySelector('tbody');
+  tbody.innerHTML = '';
+  paginatedFiles.forEach((f, index) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${start + index + 1}</td>
+      <td>${f.cmsNo}</td>
+      <td>${f.title}</td>
+      <td>${f.caseType}</td>
+      <td>${f.nature}</td>
+      <td>${f.dateType}</td>
+      <td>${f.swalFormNo ? `No: ${f.swalFormNo}, Date: ${f.swalDate}` : '-'}</td>
+      <td>${f.deliveredTo}</td>
+      <td>${f.deliveryDate}</td>
+      <td>${f.returnDate || '-'}</td>
+      <td>${f.returnDate ? Math.ceil((new Date(f.returnDate) - new Date(f.deliveryDate)) / (1000 * 60 * 60 * 24)) + ' days' : '-'}</td>
+      <td>${f.court}</td>
+      <td>${f.clerkName}</td>
+      <td><button onclick="showProfileDetails('${f.deliveredTo}')">View</button></td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  document.getElementById('pageInfo').textContent = `Page ${currentPage} of ${Math.ceil(filteredFiles.length / itemsPerPage)}`;
+  document.getElementById('prevPage').disabled = currentPage === 1;
+  document.getElementById('nextPage').disabled = start + itemsPerPage >= filteredFiles.length;
+}
+
+function showProfileDetails(name) {
+  const profile = profiles.find(p => p.name === p.deliveredTo);
+  if (!profile) {
+    showToast('Profile not found.', 'error');
+    return;
+  }
+  document.getElementById('profileModalTitle').textContent = profile.name;
+  if (profile.photo) {
+    document.getElementById('profileModalPhoto').src = profile.photo;
+    document.getElementById('profileModalPhoto').style.display = 'block';
+    document.getElementById('profileModalPhotoZoom').src = profile.photo;
+  }
+  const table = document.getElementById('profileModalTable');
+  table.innerHTML = `
+    <tr><th>Type</th><td>${profile.type}</td></tr>
+    <tr><th>Cell No</th><td>${profile.cellNo}</td></tr>
+    <tr><th>Chamber No</th><td>${profile.chamberNo || '-'}</td></tr>
+    <tr><th>Files Delivered</th><td>${files.filter(f => f.deliveredTo === profile.name && f.status === 'delivered').length}</td></tr>
+    <tr><th>Pending Files</th><td>${files.filter(f => f.deliveredTo === profile.name && f.status === 'pending').length}</td></tr>
+  `;
+  document.getElementById('profileModal').style.display = 'flex';
+}
+
+function printDashboardReport() {
+  window.print();
+}
+
+function exportDashboardReport(format) {
+  const title = document.getElementById('searchTitle').value.toLowerCase();
+  const cms = document.getElementById('searchCms').value;
+  const fileTaker = document.getElementById('searchFileTaker').value.toLowerCase();
+  const firNo = document.getElementById('searchFirNo').value.toLowerCase();
+  const firYear = document.getElementById('searchFirYear').value;
+  const policeStation = document.getElementById('searchPoliceStation').value.toLowerCase();
+
+  let filteredFiles = files;
+  if (title) filteredFiles = filteredFiles.filter(f => f.title.toLowerCase().includes(title));
+  if (cms) filteredFiles = filteredFiles.filter(f => f.cmsNo.includes(cms));
+  if (fileTaker) filteredFiles = filteredFiles.filter(f => f.deliveredTo.toLowerCase().includes(fileTaker));
+  if (firNo) filteredFiles = filteredFiles.filter(f => f.firNo && f.firNo.toLowerCase().includes(firNo));
+  if (firYear) filteredFiles = filteredFiles.filter(f => f.firYear && f.firYear.includes(firYear));
+  if (policeStation) filteredFiles = filteredFiles.filter(f => f.policeStation && f.policeStation.toLowerCase().includes(policeStation));
+
+  if (format === 'csv') {
+    const headers = ['Sr#', 'CMS No', 'Title', 'Case Type', 'Nature', 'Date Type', 'Swal Form Details', 'Delivered To', 'Delivery Date', 'Return Date', 'Time Span', 'Court', 'Clerk Name'];
+    const rows = filteredFiles.map((f, index) => [
+      index + 1,
+      f.cmsNo,
+      f.title,
+      f.caseType,
+      f.nature,
+      f.dateType,
+      f.swalFormNo ? `No: ${f.swalFormNo}, Date: ${f.swalDate}` : '-',
+      f.deliveredTo,
+      f.deliveryDate,
+      f.returnDate || '-',
+      f.returnDate ? Math.ceil((new Date(f.returnDate) - new Date(f.deliveryDate)) / (1000 * 60 * 60 * 24)) + ' days' : '-',
+      f.court,
+      f.clerkName,
+    ].map(field => `"${field}"`).join(','));
+
+    const csv = [headers.join(','), ...rows].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'report.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('Report exported as CSV.');
+  } else if (format === 'pdf') {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    doc.setFontSize(16);
+    doc.text('Court File Tracker Report', 20, 20);
+    doc.setFontSize(12);
+    const headers = [['Sr#', 'CMS No', 'Title', 'Case Type', 'Nature', 'Date Type', 'Swal Form', 'Delivered To', 'Delivery Date', 'Return Date', 'Time Span', 'Court', 'Clerk Name']];
+    const data = filteredFiles.map((f, index) => [
+      index + 1,
+      f.cmsNo,
+      f.title,
+      f.caseType,
+      f.nature,
+      f.dateType,
+      f.swalFormNo ? `No: ${f.swalFormNo}, Date: ${f.swalDate}` : '-',
+      f.deliveredTo,
+      f.deliveryDate,
+      f.returnDate || '-',
+      f.returnDate ? Math.ceil((new Date(f.returnDate) - new Date(f.deliveryDate)) / (1000 * 60 * 60 * 24)) + ' days' : '-',
+      f.court,
+      f.clerkName,
+    ]);
+    doc.autoTable({
+      head: headers,
+      body: data,
+      startY: 30,
+      theme: 'grid',
+      styles: { fontSize: 8 },
+      columnStyles: { 2: { cellWidth: 30 } },
+    });
+    doc.save('report.pdf');
+    showToast('Report exported as PDF.');
+  }
 }
