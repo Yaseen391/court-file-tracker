@@ -289,10 +289,11 @@ button:hover {
 /* Dashboard and Fetcher Grids */
 .dashboard-grid, .fetcher-grid {
   display: grid;
-  gridqe-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(2, 1fr); /* 2x2 grid */
+  grid-template-rows: repeat(3, auto); /* 3 rows */
   gap: 15px;
   margin-top: 20px;
-  touch-action: none;
+  overflow-y: auto; /* Enable touch scrolling */
 }
 
 .card {
@@ -316,7 +317,7 @@ button:hover {
   border: none;
   padding: 0;
   color: inherit;
-  font-weight: bold;
+  font-weight: bold; /* Bold button text */
   font-size: 16px;
   cursor: pointer;
   width: 100%;
@@ -667,7 +668,7 @@ input[type="checkbox"] {
   }
 
   .dashboard-grid, .fetcher-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: 1fr; /* Single column on mobile */
   }
 
   .window-controls {
