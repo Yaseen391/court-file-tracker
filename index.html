@@ -10,7 +10,7 @@
 <body>
   <!-- Top Header -->
   <header class="topbar">
-    <button id="menuBtn" onclick="toggleSidebar()">☰</button>
+    <button id="menuBtn">☰</button>
     <div class="top-title">
       <h1>Court File Tracker</h1>
       <p>Smart Solutions for Efficient Record Management</p>
@@ -31,13 +31,14 @@
     <!-- Sidebar -->
     <aside id="sidebar" class="sidebar">
       <img src="icon-192.png" alt="CFT Logo" class="sidebar-logo" />
-      <button class="sidebar-btn hidden" onclick="navigate('dashboard')"><span>🏠</span> Dashboard</button>
-      <button class="sidebar-btn hidden" onclick="navigate('newFile')"><span>📂</span> New Entry</button>
-      <button class="sidebar-btn hidden" onclick="navigate('return')"><span>↩️</span> Return File</button>
-      <button class="sidebar-btn hidden" onclick="navigate('fileFetcher')"><span>👤</span> File Fetcher</button>
-      <button onclick="navigate('admin')"><span>🛡️</span> Admin</button>
-      <button onclick="navigate('developersDisclaimer')"><span>ℹ️</span> Developers Disclaimer</button>
+      <button class="sidebar-btn hidden" data-screen="dashboard"><span>🏠</span> Dashboard</button>
+      <button class="sidebar-btn hidden" data-screen="newFile"><span>📂</span> New Entry</button>
+      <button class="sidebar-btn hidden" data-screen="return"><span>↩️</span> Return File</button>
+      <button class="sidebar-btn hidden" data-screen="fileFetcher"><span>👤</span> File Fetcher</button>
+      <button class="sidebar-btn" data-screen="admin"><span>🛡️</span> Admin</button>
+      <button class="sidebar-btn" data-screen="developersDisclaimer"><span>ℹ️</span> Developers Disclaimer</button>
     </aside>
+    <div class="sidebar-overlay"></div>
 
     <!-- Main Screens -->
     <main>
@@ -74,31 +75,31 @@
           <div id="searchPrevRecords" style="display:none; margin-bottom: 10px;">
             <div class="search-container">
               <label>Title:
-                <input type="text" id="searchTitle" placeholder="A Vs. B" oninput="performDashboardSearch()" />
+                <input type="text" id="searchTitle" placeholder="A Vs. B" />
               </label>
               <label>CMS No:
-                <input type="number" id="searchCms" oninput="performDashboardSearch()" />
+                <input type="number" id="searchCms" />
               </label>
               <label>File Taker:
                 <div class="input-container">
-                  <input type="text" id="searchFileTaker" oninput="suggestProfiles(this.value, 'searchFileTaker')" autocomplete="off" />
+                  <input type="text" id="searchFileTaker" autocomplete="off" />
                   <ul id="searchSuggestions"></ul>
                 </div>
               </label>
               <label>FIR No:
-                <input type="text" id="searchFirNo" oninput="performDashboardSearch()" />
+                <input type="text" id="searchFirNo" />
               </label>
               <label>FIR Year:
-                <input type="number" id="searchFirYear" oninput="performDashboardSearch()" />
+                <input type="number" id="searchFirYear" />
               </label>
               <label>Police Station:
-                <input type="text" id="searchPoliceStation" oninput="performDashboardSearch()" />
+                <input type="text" id="searchPoliceStation" />
               </label>
             </div>
           </div>
-          <button onclick="printDashboardReport()">Print</button>
-          <button onclick="exportDashboardReport('csv')">Export to CSV</button>
-          <button onclick="exportDashboardReport('pdf')">Export to PDF</button>
+          <button id="printReportBtn">Print</button>
+          <button id="exportCsvBtn">Export to CSV</button>
+          <button id="exportPdfBtn">Export to PDF</button>
           <div class="table-container">
             <table id="dashboardReportTable" border="1" style="width:100%; border-collapse:collapse;">
               <thead>
@@ -136,7 +137,7 @@
         <div id="loadingIndicator" class="loading" style="display:none;">Saving...</div>
         <form id="fileForm">
           <label>Case Type: <span class="required">*</span>
-            <select id="caseType" required onchange="toggleCriminalFields()">
+            <select id="caseType" required>
               <option value="">Select</option>
               <option value="civil">Civil</option>
               <option value="criminal">Criminal</option>
@@ -144,7 +145,7 @@
           </label>
 
           <label>CMS No: <span class="required">*</span>
-            <input type="number" id="cmsNo" required onblur="autoFillCMS()" />
+            <input type="number" id="cmsNo" required />
           </label>
 
           <label>Petitioner: <span class="required">*</span>
@@ -180,7 +181,7 @@
 
           <div class="input-container">
             <label>Delivered To (Name): <span class="required">*</span>
-              <input type="text" id="deliveredTo" oninput="suggestProfiles(this.value, 'deliveredTo')" required autocomplete="off" />
+              <input type="text" id="deliveredTo" required autocomplete="off" />
               <ul id="suggestions"></ul>
               <span class="hint" style="font-size:12px;color:#555;">Edit profiles in the File Fetcher section.</span>
             </label>
@@ -197,7 +198,7 @@
           </label>
 
           <div class="copy-agency-row">
-            <input type="checkbox" id="copyAgency" onchange="toggleCopyAgency()" />
+            <input type="checkbox" id="copyAgency" />
             <label for="copyAgency">Sent to Copy Agency</label>
           </div>
           <div id="copyAgencyFields" style="display:none;">
@@ -218,8 +219,8 @@
         <h2>Return File</h2>
         <div id="loadingIndicator" class="loading" style="display:none;">Loading...</div>
         <form id="returnForm">
-          <label>CMS No: <input type="number" id="returnCms" oninput="filterPendingFiles()" /></label>
-          <label>Title: <input type="text" id="returnTitle" oninput="filterPendingFiles()" /></label>
+          <label>CMS No: <input type="number" id="returnCms" /></label>
+          <label>Title: <input type="text" id="returnTitle" /></label>
         </form>
         <div id="pendingFiles" style="margin-top: 10px;">
           <table id="pendingFilesTable" border="1" style="width:100%; border-collapse:collapse;">
@@ -235,7 +236,7 @@
             </thead>
             <tbody></tbody>
           </table>
-          <button onclick="bulkReturnFiles()" style="margin-top: 10px;">Return Selected</button>
+          <button id="bulkReturnBtn" style="margin-top: 10px;">Return Selected</button>
         </div>
       </section>
 
@@ -244,15 +245,15 @@
         <h2>File Fetcher</h2>
         <div id="loadingIndicator" class="loading" style="display:none;">Loading...</div>
         <div class="fetcher-grid">
-          <button class="card card-add-profile" onclick="showProfileForm()">Add New Profile</button>
-          <button class="card card-search-profiles" onclick="showProfileSearch()">Search Existing Profiles</button>
-          <button class="card card-import" onclick="triggerImport()">Import Profiles</button>
-          <button class="card card-export" onclick="exportProfiles()">Export Profiles</button>
+          <button class="card card-add-profile" id="addProfileBtn">Add New Profile</button>
+          <button class="card card-search-profiles" id="searchProfilesBtn">Search Existing Profiles</button>
+          <button class="card card-import" id="importProfilesBtn">Import Profiles</button>
+          <button class="card card-export" id="exportProfilesBtn">Export Profiles</button>
         </div>
-        <input type="file" id="profileImport" accept=".json" style="display:none;" onchange="importProfiles()" />
+        <input type="file" id="profileImport" accept=".json" style="display:none;" />
         <form id="profileForm" style="display:none; margin-top:20px;">
           <label>Profile Type: <span class="required">*</span>
-            <select id="profileType" required onchange="toggleProfileFields()">
+            <select id="profileType" required>
               <option value="">Select</option>
               <option value="munshi">Munshi/Clerk</option>
               <option value="advocate">Advocate</option>
@@ -260,7 +261,17 @@
               <option value="other">Other</option>
             </select>
           </label>
-          <div id="profileFields"></div>
+          <div id="profileFields">
+            <label>Name: <span class="required">*</span>
+              <input type="text" id="profileName" required />
+            </label>
+            <label>Cell No: <span class="required">*</span>
+              <input type="text" id="profileCellNo" required />
+            </label>
+            <label>Chamber No:
+              <input type="text" id="profileChamberNo" />
+            </label>
+          </div>
           <label>Upload Photo: <span class="required">*</span>
             <input type="file" id="profilePhoto" accept="image/*" required />
           </label>
@@ -271,13 +282,13 @@
             <label>Zoom:
               <input type="range" id="profileZoom" min="1" max="3" step="0.1" value="1" aria-label="Zoom photo" />
             </label>
-            <button type="button" onclick="saveProfilePhoto()">Save Photo</button>
+            <button type="button" id="saveProfilePhotoBtn">Save Photo</button>
           </div>
           <button type="submit">Add/Update Profile</button>
         </form>
         <div id="profileSearchSection" style="display:none; margin-top:20px;">
           <label>Filter by Type:
-            <select id="profileFilterType" onchange="renderProfiles()">
+            <select id="profileFilterType">
               <option value="">All</option>
               <option value="munshi">Munshi/Clerk</option>
               <option value="advocate">Advocate</option>
@@ -285,7 +296,7 @@
               <option value="other">Other</option>
             </select>
           </label>
-          <label>Search: <input type="text" id="profileSearch" oninput="renderProfiles()" placeholder="Name, number, chamber..." /></label>
+          <label>Search: <input type="text" id="profileSearch" placeholder="Name, number, chamber..." /></label>
         </div>
         <div id="profileList" style="margin-top:20px; display:none;">
           <table id="profileTable" border="1" style="width:100%; border-collapse:collapse;">
@@ -324,17 +335,17 @@
             <tr><th>Total Files</th><td><span id="totalFiles"></span></td></tr>
             <tr><th>Total Profiles</th><td><span id="totalProfiles"></span></td></tr>
           </table>
-          <button onclick="editUserProfile()">Edit Profile</button>
-          <button id="changePinBtn" onclick="showChangePin()" style="display:none;">Change PIN</button>
+          <button id="editProfileBtn">Edit Profile</button>
+          <button id="changePinBtn" style="display:none;">Change PIN</button>
           <h4>Data Management</h4>
-          <button onclick="backupData()">Backup to Local</button>
-          <button onclick="triggerRestore()">Restore from Local</button>
-          <button onclick="signInWithGoogle()">Sign in with Google</button>
-          <button id="backupToDrive" style="display:none;" onclick="backupToDrive()">Backup to Google Drive</button>
-          <button id="restoreFromDrive" style="display:none;" onclick="restoreFromDrive()">Restore from Google Drive</button>
-          <button id="shareBackup" style="display:none;" onclick="showShareBackup()">Share Backup</button>
+          <button id="backupLocalBtn">Backup to Local</button>
+          <button id="restoreLocalBtn">Restore from Local</button>
+          <button id="signInGoogleBtn">Sign in with Google</button>
+          <button id="backupToDrive" style="display:none;">Backup to Google Drive</button>
+          <button id="restoreFromDrive" style="display:none;">Restore from Google Drive</button>
+          <button id="shareBackup" style="display:none;">Share Backup</button>
         </div>
-        <input type="file" id="dataRestore" accept=".json" style="display:none;" onchange="restoreData()" />
+        <input type="file" id="dataRestore" accept=".json" style="display:none;" />
         <form id="adminForm" style="display:block;">
           <label>Full Name: <span class="required">*</span><input type="text" id="clerkName" required /></label>
           <label>Designation: <span class="required">*</span><input type="text" id="judgeName" required /></label>
@@ -356,9 +367,9 @@
             <label>Zoom:
               <input type="range" id="userZoom" min="1" max="3" step="0.1" value="1" aria-label="Zoom photo" />
             </label>
-            <button type="button" onclick="saveUserPhoto()">Save Photo</button>
+            <button type="button" id="saveUserPhotoBtn">Save Photo</button>
           </div>
-          <label><input type="checkbox" id="agreeTerms" onchange="toggleSaveButton()"> I agree to the <a href="#" onclick="showDisclaimerModal()">terms and privacy policy</a>.</label>
+          <label><input type="checkbox" id="agreeTerms"> I agree to the <a href="#" id="disclaimerLink">terms and privacy policy</a>.</label>
           <button type="submit" id="saveProfileBtn" disabled>Save</button>
         </form>
       </section>
@@ -372,7 +383,6 @@
           <p>Contact: [Your Email or Placeholder]</p>
           <p>Version: 1.0.0</p>
           <p>Last Updated: May 15, 2025</p>
-          <!-- Instructions: Replace this div with your custom HTML content. Include your bio, image, and any other details. Host images locally or use base64 encoding. Ensure styles match existing CSS (e.g., .screen, h2, p). Test on mobile and desktop for responsiveness. -->
         </div>
       </section>
 
@@ -381,7 +391,7 @@
         <div class="modal-content">
           <h3>Enter PIN</h3>
           <input type="password" id="pinInput" maxlength="4" pattern="\d{4}" style="padding:8px; width:100%;" />
-          <button onclick="submitPin()">Submit</button>
+          <button id="submitPinBtn">Submit</button>
         </div>
       </div>
 
@@ -391,8 +401,8 @@
           <h3>Change PIN</h3>
           <label>CNIC or Email: <input type="text" id="resetCnic" placeholder="Enter CNIC or Email" required /></label>
           <label>New PIN: <input type="password" id="resetPin" maxlength="4" pattern="\d{4}" required /></label>
-          <button onclick="changePin()">Change</button>
-          <button onclick="hideChangePin()">Cancel</button>
+          <button id="changePinSubmitBtn">Change</button>
+          <button id="cancelPinBtn">Cancel</button>
         </div>
       </div>
 
@@ -402,7 +412,7 @@
           <h3>Disclaimer & Privacy Policy</h3>
           <p><strong>Disclaimer:</strong> This is not an official judiciary tool. It is designed for the convenience of clerks and judiciary staff to digitize record-keeping. Users are responsible for their use of this tool.</p>
           <p><strong>Privacy Policy:</strong> Your data is saved locally in your browser or synced to your Google Drive via OAuth API. No data is stored externally by the app.</p>
-          <button onclick="document.getElementById('disclaimerModal').style.display='none';">Close</button>
+          <button id="closeDisclaimerBtn">Close</button>
         </div>
       </div>
 
@@ -417,7 +427,7 @@
             </div>
           </div>
           <table id="profileModalTable" class="profile-modal-table"></table>
-          <button onclick="closeProfileModal()">Close</button>
+          <button id="closeProfileModalBtn">Close</button>
         </div>
       </div>
 
@@ -431,8 +441,8 @@
           <label>Recipient Email:
             <input type="email" id="shareEmail" placeholder="recipient@example.com" required />
           </label>
-          <button onclick="shareBackup()">Share</button>
-          <button onclick="hideShareBackup()">Cancel</button>
+          <button id="shareBackupBtn">Share</button>
+          <button id="cancelShareBackupBtn">Cancel</button>
         </div>
       </div>
 
