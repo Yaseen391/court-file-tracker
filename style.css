@@ -758,3 +758,20 @@ input[type="checkbox"] {
   margin-bottom: 16px;
   color: #003366;
 }
+.card p {
+  color: white;
+  font-weight: bold;
+  font-size: 14px;
+  margin: 5px 0 0;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  text-shadow: 1px 1px 1px rgba(0,0,0,0.2);
+}
+
+.card h3 {
+  color: white;
+  font-weight: bold;
+  font-size: 24px;
+  margin: 0;
+  text-shadow: 1px 1px 1px rgba(0,0,0,0.2);
+}
