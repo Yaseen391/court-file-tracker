@@ -26,6 +26,7 @@
   <div class="app-container">
     <!-- Sidebar -->
     <aside id="sidebar" class="sidebar">
+      <div class="sidebar-overlay" onclick="toggleSidebar()"></div>
       <img src="icon-192.png" alt="CFT Logo" class="sidebar-logo" />
       <button onclick="navigate('dashboard')"><span>🏠</span> Dashboard</button>
       <button onclick="navigate('newFile')"><span>📂</span> New Entry</button>
@@ -34,7 +35,6 @@
       <button onclick="navigate('admin')"><span>🛡️</span> Admin</button>
       <button onclick="navigate('developersDisclaimer')"><span>ℹ️</span> Developers Disclaimer</button>
     </aside>
-    <div class="sidebar-overlay" onclick="toggleSidebar()"></div>
 
     <!-- Main Screens -->
     <main>
@@ -358,7 +358,7 @@
       </section>
 
       <!-- PIN Prompt Modal -->
-      <div id="pinModal" class="modal" onclick="closeModalIfOutside(event, 'pinModal')" style="display:none;">
+      <div id="pinModal" class="modal" onclick="closeModalIfOutside(event, 'pinModal')">
         <div class="modal-content">
           <h3>Enter PIN</h3>
           <input type="password" id="pinInput" maxlength="4" pattern="\d{4}" style="padding:8px; width:100%;" />
@@ -367,7 +367,7 @@
       </div>
 
       <!-- Change PIN Modal -->
-      <div id="changePinModal" class="modal" onclick="closeModalIfOutside(event, 'changePinModal')" style="display:none;">
+      <div id="changePinModal" class="modal" onclick="closeModalIfOutside(event, 'changePinModal')">
         <div class="modal-content">
           <h3>Change PIN</h3>
           <label>CNIC or Email: <input type="text" id="resetCnic" placeholder="Enter CNIC or Email" required /></label>
@@ -378,7 +378,7 @@
       </div>
 
       <!-- Disclaimer Modal -->
-      <div id="disclaimerModal" class="modal" onclick="closeModalIfOutside(event, 'disclaimerModal')" style="display:none;">
+      <div id="disclaimerModal" class="modal" onclick="closeModalIfOutside(event, 'disclaimerModal')">
         <div class="modal-content">
           <h3>Disclaimer & Privacy Policy</h3>
           <p><strong>Disclaimer:</strong> This is not an official judiciary tool. It is designed for the convenience of clerks and judiciary staff to digitize record-keeping. Users are responsible for their use of this tool.</p>
@@ -388,7 +388,7 @@
       </div>
 
       <!-- Profile Details Modal -->
-      <div id="profileModal" class="modal" onclick="closeModalIfOutside(event, 'profileModal')" style="display:none;">
+      <div id="profileModal" class="modal" onclick="closeModalIfOutside(event, 'profileModal')">
         <div class="modal-content">
           <h3 id="profileModalTitle"></h3>
           <div style="position: relative; display: inline-block;">
@@ -403,7 +403,7 @@
       </div>
 
       <!-- Share Backup Modal -->
-      <div id="shareBackupModal" class="modal" onclick="closeModalIfOutside(event, 'shareBackupModal')" style="display:none;">
+      <div id="shareBackupModal" class="modal" onclick="closeModalIfOutside(event, 'shareBackupModal')">
         <div class="modal-content">
           <h3>Share Backup</h3>
           <label>Select Backup:
