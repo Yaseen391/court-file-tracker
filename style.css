@@ -186,8 +186,8 @@ main {
 
 .screen.active p {
   text-align: center;
-  font-size: 16px;
-  color: #333;
+  font-size: 20px;
+  color: #0000;
   margin: 10px 0;
 }
 
