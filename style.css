@@ -187,7 +187,7 @@ main {
 .screen.active p {
   text-align: center;
   font-size: 20px;
-  color: #0000;
+  color: #FFFFFF;
   margin: 10px 0;
 }
 
@@ -258,24 +258,6 @@ button:hover {
   width: 100%;
   box-sizing: border-box;
 }
-.card p {
-  color: white;
-  font-weight: bold;
-  font-size: 14px;
-  margin: 5px 0 0;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  text-shadow: 1px 1px 1px rgba(0,0,0,0.2);
-}
-
-.card h3 {
-  color: white;
-  font-weight: bold;
-  font-size: 24px;
-  margin: 0;
-  text-shadow: 1px 1px 1px rgba(0,0,0,0.2);
-}
-
 
 /* Suggestions List */
 #suggestions, #searchSuggestions {
