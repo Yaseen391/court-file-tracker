@@ -1120,7 +1120,7 @@ function toggleProfileFields() {
     <label>Name: <span class="required">*</span><input type="text" id="profileName" required /></label>
     <label>Cell No: <span class="required">*</span><input type="text" id="cellNo" required /></label>
   `;
-  if (type === 'munshi' || type === 'advocate') {
+  if (type === 'munshi' || type === 'munshi') {
     fields.innerHTML += `<label>Chamber No: <input type="text" id="chamberNo" /></label>`;
   }
   if (type === 'advocate') {
