@@ -1,5 +1,5 @@
 // Service Worker for Court File Tracker
-const CACHE_NAME = 'cft-cache-v1';
+const CACHE_NAME = 'cft-cache-v2'; // Updated cache name to force re-cache
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -9,18 +9,24 @@ const STATIC_ASSETS = [
   '/icon-512.png',
   '/icon-192-maskable.png',
   '/icon-512-maskable.png',
+  '/manifest.json', // Added manifest
+  '/offline.html', // Added offline page
   'https://cdnjs.cloudflare.com/ajax/libs/croppie/2.6.5/croppie.min.css',
   'https://cdnjs.cloudflare.com/ajax/libs/croppie/2.6.5/croppie.min.js',
   'https://cdn.jsdelivr.net/npm/chart.js',
   'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
-  'https://cdn.jsdelivr.net/npm/fuse.js@6.6.2/dist/fuse.min.js'
+  'https://cdn.jsdelivr.net/npm/fuse.js@6.6.2/dist/fuse.min.js',
+  'https://accounts.google.com/gsi/client', // Added Google API client
+  'https://apis.google.com/js/api.js' // Added Google API script
 ];
 
 // Install Event: Cache static assets
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(STATIC_ASSETS);
+      return cache.addAll(STATIC_ASSETS).catch((error) => {
+        console.error('Cache addAll failed:', error);
+      });
     })
   );
   self.skipWaiting();
@@ -45,9 +51,13 @@ self.addEventListener('activate', (event) => {
 // Fetch Event: Cache-first for static assets, network-first for APIs
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
-  
-  // Handle Google API requests
-  if (url.origin === 'https://apis.google.com' || url.origin === 'https://www.googleapis.com') {
+
+  // Handle Google API requests (network-only)
+  if (
+    url.origin === 'https://apis.google.com' ||
+    url.origin === 'https://www.googleapis.com' ||
+    url.origin === 'https://accounts.google.com'
+  ) {
     event.respondWith(
       fetch(event.request).catch(() => {
         return new Response(JSON.stringify({ error: 'Network unavailable' }), {
@@ -76,11 +86,11 @@ self.addEventListener('fetch', (event) => {
         return networkResponse;
       });
     }).catch(() => {
-      // Fallback to cached index.html for navigation requests
+      // Fallback to offline page for navigation requests
       if (event.request.mode === 'navigate') {
-        return caches.match('/index.html');
+        return caches.match('/offline.html');
       }
-      return new Response('Offline', { status: 503 });
+      return new Response('Offline: Please check your internet connection.', { status: 503 });
     })
   );
 });
