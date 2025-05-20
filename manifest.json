@@ -4,9 +4,12 @@
   "start_url": "/index.html",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#ffffff",
-  "theme_color": "#0288d1",
-  "description": "A PWA for managing court files efficiently.",
+  "background_color": "#f4f7fa",
+  "theme_color": "#003366",
+  "description": "A Progressive Web App for court clerks to manage file records efficiently, with offline access and Google Drive backup support.",
+  "lang": "en",
+  "dir": "ltr",
+  "orientation": "portrait-primary",
   "icons": [
     {
       "src": "/icon-192.png",
@@ -29,6 +32,20 @@
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/screenshots/mobile.png",
+      "sizes": "720x1280",
+      "type": "image/png",
+      "description": "Mobile view of the Court File Tracker dashboard"
+    },
+    {
+      "src": "/screenshots/desktop.png",
+      "sizes": "1280x720",
+      "type": "image/png",
+      "description": "Desktop view of the Court File Tracker dashboard"
     }
   ]
 }
