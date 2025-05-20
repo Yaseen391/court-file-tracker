@@ -2,23 +2,43 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1.0, user-scalable=no" />
   <title>Offline - Court File Tracker</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <div class="app-container">
+    <!-- Top Header -->
     <header class="topbar">
+      <button id="menuBtn" disabled>☰</button>
       <div class="top-title">
         <h1>Court File Tracker</h1>
         <p>Smart Solutions for Efficient Record Management</p>
       </div>
     </header>
+
+    <!-- Sidebar (Placeholder) -->
+    <aside id="sidebar" class="sidebar">
+      <div class="sidebar-overlay"></div>
+      <img src="icon-192.png" alt="CFT Logo" class="sidebar-logo" />
+      <button disabled><span>📱</span> Install App</button>
+      <button disabled><span>🏠</span> Dashboard</button>
+      <button disabled><span>📂</span> New Entry</button>
+      <button disabled><span>↩️</span> Return File</button>
+      <button disabled><span>👤</span> File Fetcher</button>
+      <button disabled><span>🛡️</span> Admin</button>
+      <button disabled><span>ℹ️</span> Developers Disclaimer</button>
+    </aside>
+
+    <!-- Main Content -->
     <main>
       <section class="screen active">
-        <h2>Offline</h2>
-        <p>You are currently offline. Please connect to the internet to access all features.</p>
-        <p>Some cached data may be available in the Dashboard or File Fetcher sections.</p>
+        <h2>Offline Mode</h2>
+        <p>You are currently offline. Please connect to the internet to access all features, including Google Drive backups and restores.</p>
+        <p><strong>Limited Access:</strong> You may be able to view cached data in the Dashboard or File Fetcher sections.</p>
+        <p><strong>Pending Actions:</strong> Any backup or data transfer requests will be queued and processed when you reconnect.</p>
+        <p><strong>Install the App:</strong> Install Court File Tracker as a Progressive Web App for enhanced offline access. Reconnect to the internet and look for the "Install App" button in the sidebar.</p>
+        <button onclick="window.location.reload()" style="margin-top: 10px;">Try Reconnecting</button>
       </section>
     </main>
   </div>
