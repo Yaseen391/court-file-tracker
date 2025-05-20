@@ -12,7 +12,7 @@ let analytics = JSON.parse(localStorage.getItem('analytics')) || {
   backupsCreated: 0
 };
 let chartInstance = null;
-let deferredPrompt; // Added for PWA install prompt
+let deferredPrompt = null; // For PWA install prompt
 
 // IndexedDB Setup
 const dbName = 'CourtFileTrackerDB';
@@ -67,9 +67,9 @@ function syncIndexedDBToLocalStorage() {
 }
 
 // Google Drive API Configuration
-const CLIENT_ID = '1022877727253-vlif6k2sstl4gn98e8svsh8mhd3j0gl3.apps.googleusercontent.com';
-const API_KEY = 'AIzaSyCmYFpMXEtPdfSg4-K7lgdqNc-njgqONmQ';
-const SCOPES = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.appdata';
+const CLIENT_ID = 'YOUR_CLIENT_ID'; // Replace with your actual Client ID
+const API_KEY = 'YOUR_API_KEY'; // Replace with your actual API Key
+const SCOPES = 'https://www.googleapis.com/auth/drive.file';
 let tokenClient;
 
 function initGoogleDrive() {
@@ -83,37 +83,30 @@ function initGoogleDrive() {
         scope: SCOPES,
         callback: (response) => {
           if (response.access_token) {
-            const tokenData = {
+            localStorage.setItem('gapi_token', JSON.stringify({
               access_token: response.access_token,
               expires_at: Date.now() + (response.expires_in * 1000)
-            };
-            localStorage.setItem('gapi_token', JSON.stringify(tokenData));
-            updateGoogleDriveButtons(true);
+            }));
+            document.getElementById('backupToDrive').style.display = 'inline-block';
+            document.getElementById('restoreFromDrive').style.display = 'inline-block';
+            document.getElementById('triggerAutoBackup').style.display = 'inline-block';
+            document.getElementById('showTransferDataModal').style.display = 'inline-block';
             showToast('Signed in to Google Drive');
             syncLocalStorageToIndexedDB();
             processOfflineQueue();
-            createAppDataFolder();
           } else {
             console.error('Google sign-in failed:', response);
             showToast('Failed to sign in to Google Drive. Please try again.');
           }
         }
       });
-      if (isGoogleTokenValid()) {
-        updateGoogleDriveButtons(true);
-        createAppDataFolder();
-      }
+      // Trigger automatic backup every 24 hours
+      setInterval(triggerAutoBackup, 24 * 60 * 60 * 1000);
     }).catch((error) => {
       console.error('Google API init error:', error);
       showToast('Failed to initialize Google Drive. Please try again.');
     });
   });
-}
-
-function updateGoogleDriveButtons(show) {
-  document.getElementById('backupToDrive').style.display = show ? 'inline-block' : 'none';
-  document.getElementById('restoreFromDrive').style.display = show ? 'inline-block' : 'none';
-  document.getElementById('shareBackup').style.display = show ? 'inline-block' : 'none';
 }
 
 function signInWithGoogle() {
@@ -126,7 +119,6 @@ function signInWithGoogle() {
     initGoogleDrive();
     return;
   }
-  console.log('Triggering Google Drive sign-in');
   tokenClient.requestAccessToken();
 }
 
@@ -139,59 +131,16 @@ function refreshGoogleToken() {
   if (!navigator.onLine || !tokenClient) return;
   const token = JSON.parse(localStorage.getItem('gapi_token'));
   if (token && token.expires_at < Date.now() + 60000) {
-    tokenClient.requestAccessToken({ prompt: '' });
+    signInWithGoogle();
   }
 }
 
-function createAppDataFolder() {
-  gapi.client.drive.files.list({
-    q: "name='CFT_Data' and mimeType='application/vnd.google-apps.folder' and 'appDataFolder' in parents",
-    spaces: 'appDataFolder'
-  }).then((response) => {
-    if (response.result.files.length === 0) {
-      gapi.client.drive.files.create({
-        resource: {
-          name: 'CFT_Data',
-          mimeType: 'application/vnd.google-apps.folder',
-          parents: ['appDataFolder']
-        }
-      }).then((folder) => {
-        createSubFolders(folder.result.id);
-      });
-    } else {
-      createSubFolders(response.result.files[0].id);
-    }
-  }).catch((error) => {
-    console.error('Folder creation error:', error);
-  });
-}
-
-function createSubFolders(parentId) {
-  const subFolders = ['CaseData', 'Profiles'];
-  subFolders.forEach((name) => {
-    gapi.client.drive.files.list({
-      q: `name='${name}' and mimeType='application/vnd.google-apps.folder' and '${parentId}' in parents`,
-      spaces: 'appDataFolder'
-    }).then((response) => {
-      if (response.result.files.length === 0) {
-        gapi.client.drive.files.create({
-          resource: {
-            name,
-            mimeType: 'application/vnd.google-apps.folder',
-            parents: [parentId]
-          }
-        });
-      }
-    });
-  });
-}
-
-function backupToDrive() {
+function backupToDrive(isAuto = false) {
   if (!navigator.onLine) {
-    offlineQueue.push({ action: 'backupToDrive', data: null });
+    offlineQueue.push({ action: 'backupToDrive', data: { isAuto } });
     localStorage.setItem('offlineQueue', JSON.stringify(offlineQueue));
     syncLocalStorageToIndexedDB();
-    showToast('Backup queued for when online');
+    showToast(isAuto ? 'Automatic backup queued for when online' : 'Backup queued for when online');
     return;
   }
   if (!isGoogleTokenValid()) {
@@ -199,42 +148,48 @@ function backupToDrive() {
     signInWithGoogle();
     return;
   }
-  const timestamp = formatDate(new Date(), 'YYYYMMDD_HHMMSS');
-  const backups = [
-    { name: `CaseData/cft_files_${timestamp}.json`, data: files },
-    { name: `Profiles/cft_profiles_${timestamp}.json`, data: profiles }
-  ];
-  backups.forEach((backup) => {
-    const blob = new Blob([JSON.stringify(backup.data, null, 2)], { type: 'application/json' });
-    gapi.client.drive.files.list({
-      q: `name='${backup.name.split('/')[0]}' and mimeType='application/vnd.google-apps.folder' and 'appDataFolder' in parents`,
-      spaces: 'appDataFolder'
-    }).then((response) => {
-      const parentId = response.result.files[0]?.id || 'appDataFolder';
-      const metadata = {
-        name: backup.name.split('/')[1],
-        mimeType: 'application/json',
-        parents: [parentId]
-      };
-      const form = new FormData();
-      form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
-      form.append('file', blob);
-      gapi.client.request({
-        path: '/upload/drive/v3/files',
-        method: 'POST',
-        params: { uploadType: 'multipart' },
-        body: form
-      }).then(() => {
-        analytics.backupsCreated++;
-        localStorage.setItem('analytics', JSON.stringify(analytics));
-        syncLocalStorageToIndexedDB();
-        showToast(`${backup.name.split('/')[0]} backup uploaded`);
-      }).catch((error) => {
-        console.error('Backup error:', error);
-        showToast(`Failed to upload ${backup.name.split('/')[0]} backup. Please try again.`);
-      });
-    });
+  const data = {
+    files: files.map(f => ({
+      ...f,
+      deliveredToName: f.deliveredToName,
+      deliveredToType: f.deliveredToType
+    })),
+    profiles: profiles.map(p => ({
+      ...p,
+      photo: p.photo || ''
+    })),
+    userProfile: userProfile ? { ...userProfile, pin: null, cnic: maskCNIC(userProfile.cnic) } : null,
+    analytics
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const metadata = {
+    name: `cft_backup_${formatDate(new Date(), 'YYYYMMDD_HHMMSS')}.json`,
+    mimeType: 'application/json',
+    parents: ['appDataFolder']
+  };
+  const form = new FormData();
+  form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+  form.append('file', blob);
+  gapi.client.request({
+    path: '/upload/drive/v3/files',
+    method: 'POST',
+    params: { uploadType: 'multipart' },
+    body: form
+  }).then((response) => {
+    analytics.backupsCreated++;
+    localStorage.setItem('analytics', JSON.stringify(analytics));
+    syncLocalStorageToIndexedDB();
+    showToast(isAuto ? 'Automatic backup uploaded to Google Drive' : 'Backup uploaded to Google Drive');
+  }).catch((error) => {
+    console.error('Backup error:', error);
+    showToast('Failed to upload backup. Please try again.');
   });
+}
+
+function triggerAutoBackup() {
+  if (files.length > 0 || profiles.length > 0) {
+    backupToDrive(true);
+  }
 }
 
 function restoreFromDrive() {
@@ -248,9 +203,9 @@ function restoreFromDrive() {
     return;
   }
   gapi.client.drive.files.list({
-    q: "name contains 'cft_' and ('CaseData' in parents or 'Profiles' in parents)",
     spaces: 'appDataFolder',
-    fields: 'files(id, name, parents)'
+    q: "name contains 'cft_backup_'",
+    fields: 'files(id, name)'
   }).then((response) => {
     const backupFiles = response.result.files;
     const select = document.getElementById('backupFiles');
@@ -261,7 +216,7 @@ function restoreFromDrive() {
       option.textContent = file.name;
       select.appendChild(option);
     });
-    document.getElementById('shareBackupModal').style.display = 'block';
+    document.getElementById('restoreModal').style.display = 'block';
   }).catch((error) => {
     console.error('List files error:', error);
     showToast('Failed to list backups. Please try again.');
@@ -275,86 +230,113 @@ function restoreFromDrive() {
         alt: 'media'
       }).then((response) => {
         const data = JSON.parse(response.body);
-        if (e.target.selectedOptions[0].textContent.includes('cft_files_')) {
-          files = data;
-          localStorage.setItem('files', JSON.stringify(files));
-        } else if (e.target.selectedOptions[0].textContent.includes('cft_profiles_')) {
-          profiles = data;
-          localStorage.setItem('profiles', JSON.stringify(profiles));
-        }
+        files = data.files || [];
+        profiles = data.profiles || [];
+        userProfile = data.userProfile ? { ...data.userProfile, pin: userProfile?.pin || '' } : userProfile;
+        analytics = data.analytics || analytics;
+        localStorage.setItem('files', JSON.stringify(files));
+        localStorage.setItem('profiles', JSON.stringify(profiles));
+        localStorage.setItem('userProfile', JSON.stringify(userProfile));
+        localStorage.setItem('analytics', JSON.stringify(analytics));
         syncLocalStorageToIndexedDB();
         showToast('Data restored successfully from Google Drive');
         updateSavedProfile();
         updateDashboardCards();
-        hideShareBackup();
+        hideRestoreModal();
       }).catch((error) => {
         console.error('Restore error:', error);
         showToast('Failed to restore data. Please try again.');
       });
     }
-  }, { once: true }); // Ensure single listener
+  }, { once: true });
 }
 
-function showTransferData() {
-  document.getElementById('shareBackupModal').style.display = 'block';
-  gapi.client.drive.files.list({
-    q: "name contains 'cft_' and ('CaseData' in parents or 'Profiles' in parents)",
-    spaces: 'appDataFolder',
-    fields: 'files(id, name, parents)'
-  }).then((response) => {
-    const backupFiles = response.result.files;
-    const select = document.getElementById('backupFiles');
-    select.innerHTML = '<option value="">Select a backup</option>';
-    backupFiles.forEach(file => {
-      const option = document.createElement('option');
-      option.value = file.id;
-      option.textContent = file.name;
-      select.appendChild(option);
-    });
-  }).catch((error) => {
-    console.error('List files error:', error);
-    showToast('Failed to list backups. Please try again.');
-  });
+function hideRestoreModal() {
+  document.getElementById('restoreModal').style.display = 'none';
+  document.getElementById('backupFiles').value = '';
 }
 
-function shareBackup() {
-  const fileId = document.getElementById('backupFiles').value;
-  const email = document.getElementById('shareEmail').value;
-  if (!fileId || !email) {
-    showToast('Please select a backup and enter an email');
+function showTransferDataModal() {
+  if (!navigator.onLine) {
+    showToast('No internet connection. Please try again later.');
     return;
   }
-  gapi.client.drive.permissions.create({
-    fileId: fileId,
-    resource: {
-      type: 'user',
-      role: 'reader',
-      emailAddress: email
-    }
-  }).then(() => {
-    gapi.client.drive.files.get({
-      fileId: fileId,
-      fields: 'webViewLink'
-    }).then((response) => {
-      showToast(`Backup shared with ${email}. Link: ${response.result.webViewLink}`);
-      navigator.serviceWorker.ready.then(registration => {
-        registration.showNotification('Backup Shared', {
-          body: `Backup shared with ${email}. They can access it via Google Drive.`,
-          icon: 'icon-192.png'
-        });
-      });
-      hideShareBackup();
-    });
-  }).catch((error) => {
-    console.error('Share error:', error);
-    showToast('Failed to share backup. Please try again.');
-  });
+  if (!isGoogleTokenValid()) {
+    showToast('Please sign in to Google Drive');
+    signInWithGoogle();
+    return;
+  }
+  document.getElementById('transferDataModal').style.display = 'block';
+  document.getElementById('transferEmail').value = '';
 }
 
-function hideShareBackup() {
-  document.getElementById('shareBackupModal').style.display = 'none';
-  document.getElementById('backupFiles').value = '';
-  document.getElementById('shareEmail').value = '';
+function transferData() {
+  if (!navigator.onLine) {
+    showToast('No internet connection. Please try again later.');
+    return;
+  }
+  if (!isGoogleTokenValid()) {
+    showToast('Please sign in to Google Drive');
+    signInWithGoogle();
+    return;
+  }
+  const email = document.getElementById('transferEmail').value;
+  if (!email) {
+    showToast('Please enter an email address');
+    return;
+  }
+  const data = {
+    files: files.map(f => ({
+      ...f,
+      deliveredToName: f.deliveredToName,
+      deliveredToType: f.deliveredToType
+    })),
+    profiles: profiles.map(p => ({
+      ...p,
+      photo: p.photo || ''
+    })),
+    userProfile: userProfile ? { ...userProfile, pin: null, cnic: maskCNIC(userProfile.cnic) } : null,
+    analytics
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const metadata = {
+    name: `cft_transfer_${formatDate(new Date(), 'YYYYMMDD_HHMMSS')}.json`,
+    mimeType: 'application/json',
+    parents: ['appDataFolder']
+  };
+  const form = new FormData();
+  form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+  form.append('file', blob);
+  gapi.client.request({
+    path: '/upload/drive/v3/files',
+    method: 'POST',
+    params: { uploadType: 'multipart' },
+    body: form
+  }).then((response) => {
+    const fileId = response.result.id;
+    gapi.client.drive.permissions.create({
+      fileId: fileId,
+      resource: {
+        type: 'user',
+        role: 'reader',
+        emailAddress: email
+      }
+    }).then(() => {
+      gapi.client.drive.files.get({
+        fileId: fileId,
+        fields: 'webViewLink'
+      }).then((response) => {
+        showToast(`Data shared with ${email}. Link: ${response.result.webViewLink}`);
+        document.getElementById('transferDataModal').style.display = 'none';
+      });
+    }).catch((error) => {
+      console.error('Share error:', error);
+      showToast('Failed to share data. Please try again.');
+    });
+  }).catch((error) => {
+    console.error('Transfer error:', error);
+    showToast('Failed to upload data for transfer. Please try again.');
+  });
 }
 
 function maskCNIC(cnic) {
@@ -366,24 +348,39 @@ function maskCNIC(cnic) {
 
 function processOfflineQueue() {
   if (!navigator.onLine || !isGoogleTokenValid()) return;
-  offlineQueue.forEach(({ action, data }) => {
-    if (action === 'backupToDrive') backupToDrive();
-  });
+  const queue = [...offlineQueue];
   offlineQueue = [];
   localStorage.setItem('offlineQueue', JSON.stringify(offlineQueue));
   syncLocalStorageToIndexedDB();
+  queue.forEach(({ action, data }) => {
+    if (action === 'backupToDrive') {
+      backupToDrive(data?.isAuto || false);
+    }
+  });
 }
 
-function scheduleBackups() {
-  setInterval(() => {
-    if (navigator.onLine && isGoogleTokenValid()) {
-      backupToDrive();
+// PWA Install Prompt
+function handleInstallPrompt(event) {
+  deferredPrompt = event;
+  document.getElementById('installBtn').style.display = 'block';
+}
+
+function installApp() {
+  if (!deferredPrompt) {
+    showToast('Install prompt not available');
+    return;
+  }
+  deferredPrompt.prompt();
+  deferredPrompt.userChoice.then((choiceResult) => {
+    if (choiceResult.outcome === 'accepted') {
+      showToast('App installation started');
+      document.getElementById('installBtn').style.display = 'none';
     }
-  }, 6 * 60 * 60 * 1000); // Every 6 hours
+    deferredPrompt = null;
+  });
 }
 
 window.onload = () => {
-  console.log('app.js loaded successfully');
   initIndexedDB();
   initGoogleDrive();
   if (userProfile) {
@@ -391,12 +388,11 @@ window.onload = () => {
     document.getElementById('adminForm').style.display = 'none';
     document.getElementById('savedProfile').style.display = 'block';
     updateSavedProfile();
-    if (isGoogleTokenValid()) {
-      updateGoogleDriveButtons(true);
-      navigate('dashboard');
-    } else {
+    if (!isGoogleTokenValid()) {
       showToast('Please sign in to Google Drive to continue');
       signInWithGoogle();
+    } else {
+      navigate('dashboard');
     }
   } else {
     navigate('admin');
@@ -407,27 +403,8 @@ window.onload = () => {
   setupPhotoAdjust('userPhoto', 'userPhotoPreview', 'userPhotoAdjust');
   setupPhotoAdjust('profilePhoto', 'photoPreview', 'photoAdjust');
   setInterval(refreshGoogleToken, 60000);
-  scheduleBackups();
-
-  // PWA Install Prompt
-  window.addEventListener('beforeinstallprompt', (e) => {
-    e.preventDefault();
-    deferredPrompt = e;
-    document.getElementById('installBtn').style.display = 'block';
-  });
-
-  document.getElementById('installBtn').addEventListener('click', () => {
-    if (deferredPrompt) {
-      deferredPrompt.prompt();
-      deferredPrompt.userChoice.then((choiceResult) => {
-        if (choiceResult.outcome === 'accepted') {
-          showToast('App installation started');
-        }
-        deferredPrompt = null;
-        document.getElementById('installBtn').style.display = 'none';
-      });
-    }
-  });
+  window.addEventListener('beforeinstallprompt', handleInstallPrompt);
+  document.querySelector('.sidebar-overlay').addEventListener('click', toggleSidebar);
 };
 
 function setupPushNotifications() {
@@ -462,7 +439,7 @@ function navigate(screenId) {
   document.querySelectorAll('.screen').forEach(screen => screen.classList.remove('active'));
   document.getElementById(screenId).classList.add('active');
   document.querySelectorAll('.sidebar button').forEach(btn => btn.classList.remove('active'));
-  document.querySelector(`.sidebar button[onclick="navigate('${screenId}')"]`).classList.add('active');
+  document.querySelector(`.sidebar button[onclick="navigate('${screenId}')"]`)?.classList.add('active');
   if (screenId === 'dashboard') updateDashboardCards();
   if (screenId === 'return') filterPendingFiles();
   if (screenId === 'fileFetcher') renderProfiles();
@@ -491,7 +468,6 @@ document.getElementById('adminForm').addEventListener('submit', (e) => {
   e.preventDefault();
   document.getElementById('loadingIndicator').style.display = 'block';
   try {
-    console.log('Admin form submission started');
     setTimeout(() => {
       const userPhotoInput = document.getElementById('userPhoto');
       let photo = userPhotoInput.adjustedPhoto;
@@ -500,7 +476,6 @@ document.getElementById('adminForm').addEventListener('submit', (e) => {
       }
 
       if (!photo) {
-        console.error('No photo selected');
         showToast('Please upload a profile photo');
         document.getElementById('loadingIndicator').style.display = 'none';
         return;
@@ -517,7 +492,6 @@ document.getElementById('adminForm').addEventListener('submit', (e) => {
           email: document.getElementById('email').value,
           photo: photoData
         };
-        console.log('Saving userProfile:', userProfile);
         localStorage.setItem('userProfile', JSON.stringify(userProfile));
         syncLocalStorageToIndexedDB();
         document.getElementById('setupMessage').style.display = 'none';
@@ -525,24 +499,19 @@ document.getElementById('adminForm').addEventListener('submit', (e) => {
         document.getElementById('savedProfile').style.display = 'block';
         updateSavedProfile();
         showToast('Profile saved successfully! Please sign in to Google Drive.');
-        console.log('Triggering Google Drive sign-in');
         signInWithGoogle();
         document.getElementById('loadingIndicator').style.display = 'none';
         navigate('dashboard');
       };
 
       if (typeof photo === 'string' && photo.startsWith('data:')) {
-        console.log('Using adjusted data URL');
         processPhoto(photo);
       } else {
-        console.log('Reading raw file');
         const reader = new FileReader();
         reader.onload = () => {
-          console.log('Photo read successfully');
           processPhoto(reader.result);
         };
-        reader.onerror = (error) => {
-          console.error('Error reading photo:', error);
+        reader.onerror = () => {
           showToast('Failed to read photo. Please try again.');
           document.getElementById('loadingIndicator').style.display = 'none';
         };
@@ -610,6 +579,12 @@ function setupPhotoAdjust(inputId, previewId, adjustContainerId) {
       return;
     }
 
+    if (file.size > 2 * 1024 * 1024) {
+      showToast('Image too large. Please select an image smaller than 2MB.');
+      input.value = '';
+      return;
+    }
+
     document.getElementById('loadingIndicator').style.display = 'block';
     const reader = new FileReader();
     reader.onload = () => {
@@ -623,13 +598,7 @@ function setupPhotoAdjust(inputId, previewId, adjustContainerId) {
           offsetX = 0;
           offsetY = 0;
           drawImage(orientation);
-          let quality = 0.8;
-          let dataUrl = canvas.toDataURL('image/jpeg', quality);
-          while (dataUrl.length > 100 * 1024 && quality > 0.1) {
-            quality -= 0.1;
-            dataUrl = canvas.toDataURL('image/jpeg', quality);
-          }
-          input.adjustedPhoto = dataUrl;
+          input.adjustedPhoto = canvas.toDataURL('image/jpeg', 0.8);
           document.getElementById('loadingIndicator').style.display = 'none';
         });
       };
@@ -686,13 +655,7 @@ function setupPhotoAdjust(inputId, previewId, adjustContainerId) {
 
   canvas.addEventListener('mouseup', () => {
     isDragging = false;
-    let quality = 0.8;
-    let dataUrl = canvas.toDataURL('image/jpeg', quality);
-    while (dataUrl.length > 100 * 1024 && quality > 0.1) {
-      quality -= 0.1;
-      dataUrl = canvas.toDataURL('image/jpeg', quality);
-    }
-    input.adjustedPhoto = dataUrl;
+    input.adjustedPhoto = canvas.toDataURL('image/jpeg', 0.8);
   });
 
   canvas.addEventListener('mouseleave', () => {
@@ -721,13 +684,7 @@ function setupPhotoAdjust(inputId, previewId, adjustContainerId) {
 
   canvas.addEventListener('touchend', () => {
     isDragging = false;
-    let quality = 0.8;
-    let dataUrl = canvas.toDataURL('image/jpeg', quality);
-    while (dataUrl.length > 100 * 1024 && quality > 0.1) {
-      quality -= 0.1;
-      dataUrl = canvas.toDataURL('image/jpeg', quality);
-    }
-    input.adjustedPhoto = dataUrl;
+    input.adjustedPhoto = canvas.toDataURL('image/jpeg', 0.8);
   });
 }
 
@@ -780,23 +737,21 @@ function hideChangePin() {
 }
 
 function updateDashboardCards() {
-  console.log('Updating dashboard cards');
-  const today = new Date().toLocaleDateString('en-CA');
-  const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toLocaleDateString('en-CA');
+  const today = formatDate(new Date()).split(' ')[0];
+  const tomorrow = formatDate(new Date(Date.now() + 24 * 60 * 60 * 1000)).split(' ')[0];
   const tenDaysAgo = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000);
-  const deliveries = files.filter(f => new Date(f.deliveredAt).toLocaleDateString('en-CA') === today).length;
-  console.log('Files for today:', files.filter(f => new Date(f.deliveredAt).toLocaleDateString('en-CA') === today));
-  const returns = files.filter(f => f.returned && new Date(f.returnedAt).toLocaleDateString('en-CA') === today).length;
+  const deliveries = files.filter(f => formatDate(f.deliveredAt).startsWith(today)).length;
+  const returns = files.filter(f => f.returned && formatDate(f.returnedAt).startsWith(today)).length;
   const pending = files.filter(f => !f.returned).length;
-  const tomorrowHearings = files.filter(f => new Date(f.date).toLocaleDateString('en-CA') === tomorrow).length;
+  const tomorrowHearings = files.filter(f => formatDate(f.date).startsWith(tomorrow)).length;
   const overdue = files.filter(f => !f.returned && new Date(f.deliveredAt) < tenDaysAgo).length;
 
-  document.getElementById('cardDeliveries').innerHTML = `<span class="tooltip">Files delivered today</span><h3>${deliveries}</h3><p>Deliveries Today</p>`;
-  document.getElementById('cardReturns').innerHTML = `<span class="tooltip">Files returned today</span><h3>${returns}</h3><p>Returns Today</p>`;
-  document.getElementById('cardPending').innerHTML = `<span class="tooltip">Files not yet returned</span><h3>${pending}</h3><p>Pending Files</p>`;
-  document.getElementById('cardTomorrow').innerHTML = `<span class="tooltip">Hearings scheduled for tomorrow</span><h3>${tomorrowHearings}</h3><p>Tomorrow Hearings</p>`;
-  document.getElementById('cardOverdue').innerHTML = `<span class="tooltip">Files pending over 10 days</span><h3>${overdue}</h3><p>Overdue Files</p>`;
-  document.getElementById('cardSearchPrev').innerHTML = `<span class="tooltip">Search all previous records</span><h3>Search</h3><p>Previous Records</p>`;
+  document.getElementById('cardDeliveries').innerHTML = `<span class="tooltip">Files delivered today</span><h3>${deliveries}</h3><button>Deliveries Today</button>`;
+  document.getElementById('cardReturns').innerHTML = `<span class="tooltip">Files returned today</span><h3>${returns}</h3><button>Returns Today</button>`;
+  document.getElementById('cardPending').innerHTML = `<span class="tooltip">Files not yet returned</span><h3>${pending}</h3><button>Pending Files</button>`;
+  document.getElementById('cardTomorrow').innerHTML = `<span class="tooltip">Hearings scheduled for tomorrow</span><h3>${tomorrowHearings}</h3><button>Tomorrow Hearings</button>`;
+  document.getElementById('cardOverdue').innerHTML = `<span class="tooltip">Files pending over 10 days</span><h3>${overdue}</h3><button>Overdue Files</button>`;
+  document.getElementById('cardSearchPrev').innerHTML = `<span class="tooltip">Search all previous records</span><h3>Search</h3><button>Previous Records</button>`;
 
   if (chartInstance) {
     chartInstance.destroy();
@@ -826,34 +781,33 @@ function updateDashboardCards() {
     }
   });
 
-  document.getElementById('cardDeliveries').onclick = () => { console.log('Clicked Deliveries'); showDashboardReport('deliveries'); };
-  document.getElementById('cardReturns').onclick = () => { console.log('Clicked Returns'); showDashboardReport('returns'); };
-  document.getElementById('cardPending').onclick = () => { console.log('Clicked Pending'); showDashboardReport('pending'); };
-  document.getElementById('cardTomorrow').onclick = () => { console.log('Clicked Tomorrow'); showDashboardReport('tomorrow'); };
-  document.getElementById('cardOverdue').onclick = () => { console.log('Clicked Overdue'); showDashboardReport('overdue'); };
-  document.getElementById('cardSearchPrev').onclick = () => { console.log('Clicked SearchPrev'); showDashboardReport('searchPrev'); };
+  document.getElementById('cardDeliveries').onclick = () => showDashboardReport('deliveries');
+  document.getElementById('cardReturns').onclick = () => showDashboardReport('returns');
+  document.getElementById('cardPending').onclick = () => showDashboardReport('pending');
+  document.getElementById('cardTomorrow').onclick = () => showDashboardReport('tomorrow');
+  document.getElementById('cardOverdue').onclick = () => showDashboardReport('overdue');
+  document.getElementById('cardSearchPrev').onclick = () => showDashboardReport('searchPrev');
 }
 
 function showDashboardReport(type) {
-  console.log(`Showing report for type: ${type}`);
   document.getElementById('dashboardReportPanel').style.display = 'block';
   document.getElementById('loadingIndicator').style.display = 'block';
   document.getElementById('searchPrevRecords').style.display = type === 'searchPrev' ? 'block' : 'none';
   currentPage = 1;
 
-  const today = new Date().toLocaleDateString('en-CA');
-  const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toLocaleDateString('en-CA');
+  const today = formatDate(new Date()).split(' ')[0];
+  const tomorrow = formatDate(new Date(Date.now() + 24 * 60 * 60 * 1000)).split(' ')[0];
   const tenDaysAgo = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000);
 
   let filteredFiles = files;
   let title = '';
   switch (type) {
     case 'deliveries':
-      filteredFiles = files.filter(f => new Date(f.deliveredAt).toLocaleDateString('en-CA') === today);
+      filteredFiles = files.filter(f => formatDate(f.deliveredAt).startsWith(today));
       title = 'Deliveries Today';
       break;
     case 'returns':
-      filteredFiles = files.filter(f => f.returned && new Date(f.returnedAt).toLocaleDateString('en-CA') === today);
+      filteredFiles = files.filter(f => f.returned && formatDate(f.returnedAt).startsWith(today));
       title = 'Returns Today';
       break;
     case 'pending':
@@ -861,7 +815,7 @@ function showDashboardReport(type) {
       title = 'Pending Files';
       break;
     case 'tomorrow':
-      filteredFiles = files.filter(f => new Date(f.date).toLocaleDateString('en-CA') === tomorrow);
+      filteredFiles = files.filter(f => formatDate(f.date).startsWith(tomorrow));
       title = 'Tomorrow Hearings';
       break;
     case 'overdue':
@@ -872,11 +826,8 @@ function showDashboardReport(type) {
       filteredFiles = files;
       title = 'Search Previous Records';
       break;
-    default:
-      console.error('Invalid report type:', type);
   }
 
-  console.log('Filtered files:', filteredFiles);
   currentReportData = filteredFiles;
   document.getElementById('reportTitle').textContent = title;
   renderReportTable();
@@ -930,7 +881,7 @@ function renderReportTable() {
       profile.advocateCell ? `Advocate Cell: ${profile.advocateCell}` : '',
       profile.designation ? `Designation: ${profile.designation}` : '',
       profile.postedAt ? `Posted At: ${profile.postedAt}` : '',
-      profile.type === 'other' && profile.cnic ? `ID/CNIC: ${maskCNIC(profile.cnic)}` : '',
+      profile.cnic ? `ID/CNIC: ${maskCNIC(profile.cnic)}` : '',
       profile.relation ? `Relation: ${profile.relation}` : ''
     ].filter(Boolean).join(', ');
     row.innerHTML = `
@@ -1017,6 +968,7 @@ document.getElementById('nextPage').onclick = () => {
 function formatDate(date, format = 'YYYY-MM-DD') {
   if (!date) return '';
   const d = new Date(date);
+  d.setHours(d.getHours() + 5);
   const year = d.getFullYear();
   const month = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
@@ -1042,7 +994,7 @@ function showProfileDetails(name, type) {
     ${profile.advocateCell ? `<tr><th>Advocate Cell</th><td><a href="tel:${profile.advocateCell}">${profile.advocateCell}</a></td></tr>` : ''}
     ${profile.designation ? `<tr><th>Designation</th><td>${profile.designation}</td></tr>` : ''}
     ${profile.postedAt ? `<tr><th>Posted At</th><td>${profile.postedAt}</td></tr>` : ''}
-    ${profile.type === 'other' && profile.cnic ? `<tr><th>ID/CNIC</th><td>${maskCNIC(profile.cnic)}</td></tr>` : ''}
+    ${profile.cnic ? `<tr><th>ID/CNIC</th><td>${maskCNIC(profile.cnic)}</td></tr>` : ''}
     ${profile.relation ? `<tr><th>Relation</th><td>${profile.relation}</td></tr>` : ''}
   `;
   if (profile.photo) {
@@ -1129,7 +1081,7 @@ function exportDashboardReport(format) {
         profile.advocateCell ? `Advocate Cell: ${profile.advocateCell}` : '',
         profile.designation ? `Designation: ${profile.designation}` : '',
         profile.postedAt ? `Posted At: ${profile.postedAt}` : '',
-        profile.type === 'other' && profile.cnic ? `ID/CNIC: ${maskCNIC(profile.cnic)}` : '',
+        profile.cnic ? `ID/CNIC: ${maskCNIC(profile.cnic)}` : '',
         profile.relation ? `Relation: ${profile.relation}` : ''
       ].filter(Boolean).join(', ');
       csv += `${index + 1},${f.cmsNo},"${f.title.replace('vs', 'Vs.')}",${f.caseType},"${f.nature}","${criminalDetails}",${f.dateType === 'decision' ? 'Decision Date' : 'Next Hearing Date'}: ${formatDate(f.date)},"${swalDetails}","${f.deliveredToName} (${f.deliveredToType})","${formatDate(f.deliveredAt, 'YYYY-MM-DD HH:mm:ss')}",${f.returned ? `"${formatDate(f.returnedAt, 'YYYY-MM-DD HH:mm:ss')}"` : ''},"${timeSpan}",${f.courtName},${f.clerkName},"${profileDetails}"\n`;
@@ -1151,777 +1103,4 @@ function exportDashboardReport(format) {
       startY: 20,
       theme: 'striped',
       styles: { fontSize: 8 },
-      columnStyles: { 0: { cellWidth: 10 }, 1: { cellWidth: 20 }, 2: { cellWidth: 30 } }
-    });
-    doc.save(`report_${formatDate(new Date(), 'YYYYMMDD_HHMMSS')}.pdf`);
-  }
-}
-
-document.getElementById('fileForm').addEventListener('submit', (e) => {
-  e.preventDefault();
-  document.getElementById('loadingIndicator').style.display = 'block';
-  promptPin((success) => {
-    if (!success) {
-      showToast('PIN verification failed');
-      document.getElementById('loadingIndicator').style.display = 'none';
-      return;
-    }
-    const cmsNo = document.getElementById('cmsNo').value;
-    const existingDelivered = files.find(f => f.cmsNo === cmsNo && !f.returned);
-    if (existingDelivered) {
-      const profile = profiles.find(p => p.name === existingDelivered.deliveredToName && p.type === existingDelivered.deliveredToType);
-      showToast(`File ${cmsNo} is already delivered to ${existingDelivered.deliveredToName} (${existingDelivered.deliveredToType}) and not yet returned.`);
-      document.getElementById('loadingIndicator').style.display = 'none';
-      return;
-    }
-    setTimeout(() => {
-      const deliveredToName = document.getElementById('deliveredTo').value;
-      const deliveredToType = document.getElementById('deliveredType').value;
-      const profileExists = profiles.find(p => p.name === deliveredToName && p.type === deliveredToType);
-      if (!profileExists) {
-        showToast('Profile does not exist. Please add it in the File Fetcher section.');
-        document.getElementById('loadingIndicator').style.display = 'none';
-        navigate('fileFetcher');
-        showProfileForm();
-        return;
-      }
-      const fileData = {
-        cmsNo: document.getElementById('cmsNo').value,
-        title: `${document.getElementById('petitioner').value} vs ${document.getElementById('respondent').value}`,
-        caseType: document.getElementById('caseType').value,
-        nature: document.getElementById('nature').value,
-        firNo: document.getElementById('firNo').value,
-        firYear: document.getElementById('firYear').value,
-        firUs: document.getElementById('firUs').value,
-        policeStation: document.getElementById('policeStation').value,
-        dateType: document.getElementById('dateType').value,
-        date: document.getElementById('date').value,
-        deliveredToName: deliveredToName,
-        deliveredToType: deliveredToType,
-        swalFormNo: document.getElementById('copyAgency').checked ? document.getElementById('swalFormNo').value : '',
-        swalDate: document.getElementById('copyAgency').checked ? document.getElementById('swalDate').value : '',
-        deliveredAt: new Date().toISOString(),
-        courtName: userProfile.courtName,
-        clerkName: userProfile.clerkName,
-        returned: false
-      };
-      files.push(fileData);
-      analytics.filesEntered++;
-      localStorage.setItem('files', JSON.stringify(files));
-      localStorage.setItem('analytics', JSON.stringify(analytics));
-      syncLocalStorageToIndexedDB();
-      document.getElementById('fileForm').reset();
-      document.getElementById('criminalFields').style.display = 'none';
-      document.getElementById('copyAgencyFields').style.display = 'none';
-      document.getElementById('copyAgency').checked = false;
-      const caseFields = ['petitioner', 'respondent', 'caseType', 'nature', 'firNo', 'firYear', 'firUs', 'policeStation'];
-      const editableFields = ['dateType', 'date', 'deliveredTo', 'deliveredType', 'swalFormNo', 'swalDate', 'copyAgency'];
-      caseFields.concat(editableFields).forEach(field => {
-        document.getElementById(field).disabled = false;
-      });
-      document.getElementById('copyAgency').disabled = false;
-      showToast('File saved and delivered successfully');
-      document.getElementById('loadingIndicator').style.display = 'none';
-      updateDashboardCards();
-    }, 500);
-  });
-});
-
-function autoFillCMS() {
-  const cmsNo = document.getElementById('cmsNo').value;
-  const existing = files.find(f => f.cmsNo === cmsNo);
-  const caseFields = ['petitioner', 'respondent', 'caseType', 'nature', 'firNo', 'firYear', 'firUs', 'policeStation'];
-  const editableFields = ['dateType', 'date', 'deliveredTo', 'deliveredType', 'swalFormNo', 'swalDate', 'copyAgency'];
-  if (existing) {
-    document.getElementById('petitioner').value = existing.title.split(' vs ')[0];
-    document.getElementById('respondent').value = existing.title.split(' vs ')[1];
-    document.getElementById('caseType').value = existing.caseType;
-    document.getElementById('nature').value = existing.nature;
-    document.getElementById('firNo').value = existing.firNo || '';
-    document.getElementById('firYear').value = existing.firYear || '';
-    document.getElementById('firUs').value = existing.firUs || '';
-    document.getElementById('policeStation').value = existing.policeStation || '';
-    toggleCriminalFields();
-    caseFields.forEach(field => {
-      document.getElementById(field).disabled = true;
-    });
-    editableFields.forEach(field => {
-      document.getElementById(field).disabled = false;
-    });
-    document.getElementById('copyAgency').checked = false;
-    document.getElementById('deliveredTo').value = '';
-    document.getElementById('deliveredType').value = '';
-    document.getElementById('swalFormNo').value = '';
-    document.getElementById('swalDate').value = '';
-    toggleCopyAgency();
-  } else {
-    caseFields.concat(editableFields).forEach(field => {
-      document.getElementById(field).disabled = false;
-    });
-    document.getElementById('copyAgency').disabled = false;
-  }
-}
-
-function toggleCriminalFields() {
-  document.getElementById('criminalFields').style.display = document.getElementById('caseType').value === 'criminal' ? 'block' : 'none';
-}
-
-function toggleCopyAgency() {
-  document.getElementById('copyAgencyFields').style.display = document.getElementById('copyAgency').checked ? 'block' : 'none';
-}
-
-function suggestProfiles(input, inputId) {
-  const suggestions = document.getElementById(inputId === 'deliveredTo' ? 'suggestions' : 'searchSuggestions');
-  suggestions.innerHTML = '';
-  if (!input) return;
-  const fuse = new Fuse(profiles, {
-    keys: ['name', 'cellNo', 'chamberNo'],
-    threshold: 0.3
-  });
-  const results = fuse.search(input).slice(0, 5);
-  results.forEach(result => {
-    const li = document.createElement('li');
-    const img = document.createElement('img');
-    img.src = result.item.photo || 'icon-192.png';
-    img.style.width = '40px';
-    img.style.height = '40px';
-    img.style.borderRadius = '50%';
-    img.style.border = '1px solid #ccc';
-    li.appendChild(img);
-    const text = document.createElement('span');
-    text.textContent = `${result.item.name} (${result.item.type})`;
-    li.appendChild(text);
-    li.onclick = () => {
-      document.getElementById(inputId).value = result.item.name;
-      if (inputId === 'deliveredTo') {
-        document.getElementById('deliveredType').value = result.item.type;
-      }
-      suggestions.innerHTML = '';
-    };
-    suggestions.appendChild(li);
-  });
-}
-
-function filterPendingFiles() {
-  const cms = document.getElementById('returnCms').value;
-  const title = document.getElementById('returnTitle').value.toLowerCase();
-  const tbody = document.getElementById('pendingFilesTable').querySelector('tbody');
-  tbody.innerHTML = '';
-  const filteredFiles = files.filter(f => !f.returned && (!cms || f.cmsNo.toString().includes(cms)) && (!title || f.title.toLowerCase().includes(title)));
-  filteredFiles.forEach(f => {
-    const row = document.createElement('tr');
-    row.innerHTML = `
-      <td><input type="checkbox" class="select-file" data-cms="${f.cmsNo}"></td>
-      <td>${f.cmsNo}</td>
-      <td>${f.title.replace('vs', 'Vs.')}</td>
-      <td>${f.caseType}</td>
-      <td><a href="#" onclick="showProfileDetails('${f.deliveredToName}', '${f.deliveredToType}')">${f.deliveredToName} (${f.deliveredToType})</a></td>
-      <td><button onclick="returnFile('${f.cmsNo}')">Return</button></td>
-    `;
-    tbody.appendChild(row);
-  });
-}
-
-function returnFile(cmsNo) {
-  promptPin((success) => {
-    if (success) {
-      const file = files.find(f => f.cmsNo === cmsNo && !f.returned);
-      if (file) {
-        file.returned = true;
-        file.returnedAt = new Date().toISOString();
-        localStorage.setItem('files', JSON.stringify(files));
-        syncLocalStorageToIndexedDB();
-        showToast(`File ${cmsNo} returned successfully`);
-        filterPendingFiles();
-        updateDashboardCards();
-      }
-    }
-  });
-}
-
-function bulkReturnFiles() {
-  const selected = document.querySelectorAll('.select-file:checked');
-  if (selected.length === 0) {
-    showToast('Please select at least one file to return');
-    return;
-  }
-  promptPin((success) => {
-    if (success) {
-      selected.forEach(checkbox => {
-        const cmsNo = checkbox.dataset.cms;
-        const file = files.find(f => f.cmsNo === cmsNo && !f.returned);
-        if (file) {
-          file.returned = true;
-          file.returnedAt = new Date().toISOString();
-        }
-      });
-      localStorage.setItem('files', JSON.stringify(files));
-      syncLocalStorageToIndexedDB();
-      showToast(`${selected.length} file(s) returned successfully`);
-      filterPendingFiles();
-      updateDashboardCards();
-    }
-  });
-}
-
-function showProfileForm() {
-  document.getElementById('profileForm').style.display = 'block';
-  document.getElementById('profileSearchSection').style.display = 'none';
-  document.getElementById('profileList').style.display = 'none';
-  document.getElementById('profileType').value = '';
-  document.getElementById('profileFields').innerHTML = '';
-  document.getElementById('profilePhoto').value = '';
-  document.getElementById('photoAdjust').style.display = 'none';
-}
-
-function showProfileSearch() {
-  document.getElementById('profileForm').style.display = 'none';
-  document.getElementById('profileSearchSection').style.display = 'block';
-  document.getElementById('profileList').style.display = 'block';
-  renderProfiles();
-}
-
-function toggleProfileFields() {
-  const type = document.getElementById('profileType').value;
-  const fields = document.getElementById('profileFields');
-  fields.innerHTML = `
-    <label>Name: <span class="required">*</span><input type="text" id="profileName" required /></label>
-    <label>Cell No: <span class="required">*</span><input type="text" id="cellNo" required /></label>
-  `;
-  if (type === 'munshi') {
-    fields.innerHTML += `
-      <label>Chamber No: <span class="required">*</span><input type="text" id="chamberNo" required /></label>
-      <label>Advocate Name: <span class="required">*</span><input type="text" id="advocateName" required /></label>
-      <label>Advocate Cell: <input type="text" id="advocateCell" /></label>
-    `;
-  } else if (type === 'advocate') {
-    fields.innerHTML += `
-      <label>Chamber No: <span class="required">*</span><input type="text" id="chamberNo" required /></label>
-    `;
-  } else if (type === 'colleague') {
-    fields.innerHTML += `
-      <label>Designation: <input type="text" id="designation" /></label>
-      <label>Posted At: <input type="text" id="postedAt" /></label>
-    `;
-  } else if (type === 'other') {
-    fields.innerHTML += `
-      <label>ID/CNIC: <input type="text" id="cnic" /></label>
-      <label>Relation: <input type="text" id="relation" /></label>
-    `;
-  }
-  document.getElementById('photoRequired').style.display = type === 'advocate' ? 'none' : 'inline';
-  document.getElementById('profilePhoto').required = type !== 'advocate';
-}
-
-// Profile Form Submission
-document.getElementById('profileForm').addEventListener('submit', (e) => {
-  e.preventDefault();
-  document.getElementById('loadingIndicator').style.display = 'block';
-  try {
-    const profileType = document.getElementById('profileType').value;
-    const photoInput = document.getElementById('profilePhoto');
-    let photo = photoInput.adjustedPhoto;
-    if (!photo && photoInput.files && photoInput.files[0]) {
-      photo = photoInput.files[0];
-    }
-
-    if (!photo && profileType !== 'advocate') {
-      showToast('Please upload a profile photo');
-      document.getElementById('loadingIndicator').style.display = 'none';
-      return;
-    }
-
-    const processPhoto = (photoData) => {
-      const profile = {
-        type: document.getElementById('profileType').value,
-        name: document.getElementById('profileName').value,
-        cellNo: document.getElementById('cellNo').value,
-        chamberNo: document.getElementById('chamberNo') ? document.getElementById('chamberNo').value : '',
-        advocateName: document.getElementById('advocateName') ? document.getElementById('advocateName').value : '',
-        advocateCell: document.getElementById('advocateCell') ? document.getElementById('advocateCell').value : '',
-        designation: document.getElementById('designation') ? document.getElementById('designation').value : '',
-        postedAt: document.getElementById('postedAt') ? document.getElementById('postedAt').value : '',
-        cnic: document.getElementById('cnic') ? document.getElementById('cnic').value : '',
-        relation: document.getElementById('relation') ? document.getElementById('relation').value : '',
-        photo: photoData || ''
-      };
-
-      const existingIndex = profiles.findIndex(p => p.name === profile.name && p.type === profile.type);
-      if (existingIndex >= 0) {
-        profiles[existingIndex] = profile;
-      } else {
-        profiles.push(profile);
-      }
-
-      localStorage.setItem('profiles', JSON.stringify(profiles));
-      syncLocalStorageToIndexedDB();
-      document.getElementById('profileForm').reset();
-      document.getElementById('profileFields').innerHTML = '';
-      document.getElementById('photoAdjust').style.display = 'none';
-      showToast('Profile saved successfully');
-      document.getElementById('loadingIndicator').style.display = 'none';
-      showProfileSearch();
-    };
-
-    if (photo && typeof photo === 'string' && photo.startsWith('data:')) {
-      console.log('Using adjusted data URL');
-      processPhoto(photo);
-    } else if (photo) {
-      console.log('Reading raw file');
-      const reader = new FileReader();
-      reader.onload = () => {
-        console.log('Photo read successfully');
-        processPhoto(reader.result);
-      };
-      reader.onerror = () => {
-        console.error('Error reading photo');
-        showToast('Failed to read photo. Please try again.');
-        document.getElementById('loadingIndicator').style.display = 'none';
-      };
-      reader.readAsDataURL(photo);
-    } else {
-      console.log('No photo provided (Advocate profile)');
-      processPhoto('');
-    }
-  } catch (error) {
-    console.error('Profile form error:', error);
-    showToast('Failed to save profile. Please try again.');
-    document.getElementById('loadingIndicator').style.display = 'none';
-  }
-});
-
-function renderProfiles() {
-  const typeFilter = document.getElementById('profileFilterType').value;
-  const search = document.getElementById('profileSearch').value.toLowerCase();
-  const tbody = document.getElementById('profileTable').querySelector('tbody');
-  tbody.innerHTML = '';
-  let filteredProfiles = profiles;
-  if (typeFilter) {
-    filteredProfiles = profiles.filter(p => p.type === typeFilter);
-  }
-  if (search) {
-    const fuse = new Fuse(filteredProfiles, {
-      keys: ['name', 'cellNo', 'chamberNo', 'advocateName', 'designation'],
-      threshold: 0.3
-    });
-    filteredProfiles = fuse.search(search).map(result => result.item);
-  }
-  filteredProfiles.forEach(p => {
-    const delivered = files.filter(f => f.deliveredToName === p.name && f.deliveredToType === p.type).length;
-    const pending = files.filter(f => f.deliveredToName === p.name && f.deliveredToType === p.type && !f.returned).length;
-    const row = document.createElement('tr');
-    row.innerHTML = `
-      <td><img src="${p.photo || 'icon-192.png'}" style="width:50px;height:50px;border-radius:50%;border:1px solid #ccc;"></td>
-      <td>${p.name}</td>
-      <td>${p.type}</td>
-      <td>${p.cellNo}</td>
-      <td>${p.chamberNo || ''}</td>
-      <td>${delivered}</td>
-      <td>${pending}</td>
-      <td>
-        <button onclick="editProfile('${p.name}', '${p.type}')">Edit</button>
-        <button onclick="deleteProfile('${p.name}', '${p.type}')">Delete</button>
-      </td>
-    `;
-    tbody.appendChild(row);
-  });
-}
-
-function editProfile(name, type) {
-  const profile = profiles.find(p => p.name === name && p.type === type);
-  if (!profile) return;
-  document.getElementById('profileForm').style.display = 'block';
-  document.getElementById('profileSearchSection').style.display = 'none';
-  document.getElementById('profileList').style.display = 'none';
-  document.getElementById('profileType').value = profile.type;
-  toggleProfileFields();
-  document.getElementById('profileName').value = profile.name;
-  document.getElementById('cellNo').value = profile.cellNo;
-  if (document.getElementById('chamberNo')) document.getElementById('chamberNo').value = profile.chamberNo || '';
-  if (document.getElementById('advocateName')) document.getElementById('advocateName').value = profile.advocateName || '';
-  if (document.getElementById('advocateCell')) document.getElementById('advocateCell').value = profile.advocateCell || '';
-  if (document.getElementById('designation')) document.getElementById('designation').value = profile.designation || '';
-  if (document.getElementById('postedAt')) document.getElementById('postedAt').value = profile.postedAt || '';
-  if (document.getElementById('cnic')) document.getElementById('cnic').value = profile.cnic || '';
-  if (document.getElementById('relation')) document.getElementById('relation').value = profile.relation || '';
-}
-
-function deleteProfile(name, type) {
-  promptPin((success) => {
-    if (success) {
-      profiles = profiles.filter(p => p.name !== name || p.type !== type);
-      localStorage.setItem('profiles', JSON.stringify(profiles));
-      syncLocalStorageToIndexedDB();
-      showToast('Profile deleted successfully');
-      renderProfiles();
-    }
-  });
-}
-
-function triggerImport() {
-  document.getElementById('profileImport').click();
-}
-
-function importProfiles() {
-  const file = document.getElementById('profileImport').files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = () => {
-    try {
-      const importedProfiles = JSON.parse(reader.result);
-      if (!Array.isArray(importedProfiles)) throw new Error('Invalid profile data');
-      profiles = [...profiles, ...importedProfiles];
-      localStorage.setItem('profiles', JSON.stringify(profiles));
-      syncLocalStorageToIndexedDB();
-      showToast('Profiles imported successfully');
-      showProfileSearch();
-    } catch (error) {
-      showToast('Failed to import profiles. Invalid file format.');
-    }
-  };
-  reader.readAsText(file);
-}
-
-function exportProfiles() {
-  const blob = new Blob([JSON.stringify(profiles, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `profiles_${formatDate(new Date(), 'YYYYMMDD_HHMMSS')}.json`;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-function backupData() {
-  const data = {
-    files,
-    profiles,
-    userProfile: { ...userProfile, pin: null, cnic: maskCNIC(userProfile.cnic) },
-    analytics
-  };
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href =url;
-  a.download = `backup_${formatDate(new Date(), 'YYYYMMDD_HHMMSS')}.json`;
-  a.click();
-  URL.revokeObjectURL(url);
-  analytics.backupsCreated++;
-  localStorage.setItem('analytics', JSON.stringify(analytics));
-  syncLocalStorageToIndexedDB();
-  showToast('Backup created successfully');
-}
-
-function triggerRestore() {
-  document.getElementById('dataRestore').click();
-}
-
-function restoreData() {
-  const file = document.getElementById('dataRestore').files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = () => {
-    try {
-      const data = JSON.parse(reader.result);
-      if (data.files) files = data.files;
-      if (data.profiles) profiles = data.profiles;
-      if (data.userProfile) {
-        userProfile = { ...userProfile, ...data.userProfile, pin: userProfile.pin };
-        localStorage.setItem('userProfile', JSON.stringify(userProfile));
-      }
-      if (data.analytics) {
-        analytics = { ...analytics, ...data.analytics };
-        localStorage.setItem('analytics', JSON.stringify(analytics));
-      }
-      localStorage.setItem('files', JSON.stringify(files));
-      localStorage.setItem('profiles', JSON.stringify(profiles));
-      syncLocalStorageToIndexedDB();
-      showToast('Data restored successfully');
-      updateSavedProfile();
-      updateDashboardCards();
-      navigate('dashboard');
-    } catch (error) {
-      console.error('Restore error:', error);
-      showToast('Failed to restore data. Invalid file format.');
-    }
-  };
-  reader.readAsText(file);
-}
-
-function resetApp() {
-  promptPin((success) => {
-    if (success) {
-      files = [];
-      profiles = [];
-      userProfile = null;
-      offlineQueue = [];
-      analytics = { filesEntered: 0, searchesPerformed: 0, backupsCreated: 0 };
-      localStorage.clear();
-      const transaction = db.transaction(['data'], 'readwrite');
-      const store = transaction.objectStore('data');
-      store.clear();
-      showToast('App reset successfully');
-      navigate('admin');
-      document.getElementById('setupMessage').style.display = 'block';
-      document.getElementById('adminForm').style.display = 'block';
-      document.getElementById('savedProfile').style.display = 'none';
-      updateGoogleDriveButtons(false);
-    }
-  });
-}
-
-function showToast(message) {
-  const toast = document.getElementById('toast');
-  toast.textContent = message;
-  toast.classList.add('show');
-  setTimeout(() => {
-    toast.classList.remove('show');
-  }, 3000);
-}
-
-// Analytics Dashboard
-function showAnalytics() {
-  navigate('analytics');
-  const ctx = document.getElementById('analyticsChart').getContext('2d');
-  if (chartInstance) {
-    chartInstance.destroy();
-    chartInstance = null;
-  }
-  chartInstance = new Chart(ctx, {
-    type: 'bar',
-    data: {
-      labels: ['Files Entered', 'Searches Performed', 'Backups Created'],
-      datasets: [{
-        label: 'Analytics',
-        data: [analytics.filesEntered, analytics.searchesPerformed, analytics.backupsCreated],
-        backgroundColor: ['#0288d1', '#4caf50', '#d32f2f']
-      }]
-    },
-    options: {
-      scales: {
-        y: {
-          beginAtZero: true,
-          stepSize: 1,
-          ticks: { precision: 0 }
-        }
-      },
-      plugins: { legend: { display: false } }
-    }
-  });
-
-  document.getElementById('analyticsFiles').textContent = analytics.filesEntered;
-  document.getElementById('analyticsSearches').textContent = analytics.searchesPerformed;
-  document.getElementById('analyticsBackups').textContent = analytics.backupsCreated;
-}
-
-// Service Worker Registration
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').then(registration => {
-      console.log('Service Worker registered:', registration);
-    }).catch(error => {
-      console.error('Service Worker registration failed:', error);
-    });
-  });
-}
-
-// Handle Online/Offline Status
-window.addEventListener('online', () => {
-  showToast('You are now online');
-  if (isGoogleTokenValid()) {
-    processOfflineQueue();
-  }
-});
-
-window.addEventListener('offline', () => {
-  showToast('You are now offline. Some features may be limited.');
-});
-
-// Keyboard Shortcuts
-document.addEventListener('keydown', (e) => {
-  if (e.ctrlKey && e.key === 's') {
-    e.preventDefault();
-    navigate('dashboard');
-  } else if (e.ctrlKey && e.key === 'f') {
-    e.preventDefault();
-    navigate('file');
-  } else if (e.ctrlKey && e.key === 'r') {
-    e.preventDefault();
-    navigate('return');
-  } else if (e.ctrlKey && e.key === 'p') {
-    e.preventDefault();
-    navigate('fileFetcher');
-  } else if (e.ctrlKey && e.key === 'a') {
-    e.preventDefault();
-    navigate('analytics');
-  }
-});
-
-// Form Validation
-function validateInput(input, type) {
-  if (type === 'phone') {
-    const phoneRegex = /^\d{10,15}$/;
-    if (!phoneRegex.test(input.value)) {
-      input.setCustomValidity('Please enter a valid phone number (10-15 digits)');
-    } else {
-      input.setCustomValidity('');
-    }
-  } else if (type === 'cnic') {
-    const cnicRegex = /^\d{5}-\d{7}-\d{1}$/;
-    if (input.value && !cnicRegex.test(input.value)) {
-      input.setCustomValidity('Please enter a valid CNIC (e.g., 12345-1234567-1)');
-    } else {
-      input.setCustomValidity('');
-    }
-  } else if (type === 'email') {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (input.value && !emailRegex.test(input.value)) {
-      input.setCustomValidity('Please enter a valid email address');
-    } else {
-      input.setCustomValidity('');
-    }
-  }
-}
-
-// Attach validation to inputs
-document.getElementById('mobile').addEventListener('input', () => validateInput(document.getElementById('mobile'), 'phone'));
-document.getElementById('cnic').addEventListener('input', () => validateInput(document.getElementById('cnic'), 'cnic'));
-document.getElementById('email').addEventListener('input', () => validateInput(document.getElementById('email'), 'email'));
-document.getElementById('cellNo').addEventListener('input', () => validateInput(document.getElementById('cellNo'), 'phone'));
-if (document.getElementById('advocateCell')) {
-  document.getElementById('advocateCell').addEventListener('input', () => validateInput(document.getElementById('advocateCell'), 'phone'));
-}
-
-// Periodic Data Sync
-setInterval(() => {
-  if (navigator.onLine && isGoogleTokenValid()) {
-    syncLocalStorageToIndexedDB();
-  }
-}, 300000); // Every 5 minutes
-
-// Accessibility Enhancements
-document.querySelectorAll('input, button, a').forEach(el => {
-  el.setAttribute('tabindex', '0');
-  el.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter' && el.tagName !== 'INPUT') {
-      el.click();
-    }
-  });
-});
-
-// Prevent accidental navigation
-window.addEventListener('beforeunload', (e) => {
-  if (files.length > 0 || profiles.length > 0) {
-    e.preventDefault();
-    e.returnValue = 'You have unsaved data. Are you sure you want to leave?';
-  }
-});
-
-// Dynamic Theme Support
-function applyTheme(theme) {
-  document.body.className = theme;
-  localStorage.setItem('theme', theme);
-}
-
-document.getElementById('themeToggle').addEventListener('click', () => {
-  const currentTheme = localStorage.getItem('theme') || 'light';
-  const newTheme = currentTheme === 'light' ? 'dark' : 'light';
-  applyTheme(newTheme);
-});
-
-// Apply saved theme on load
-const savedTheme = localStorage.getItem('theme') || 'light';
-applyTheme(savedTheme);
-
-// Error Boundary
-window.addEventListener('error', (event) => {
-  console.error('Global error:', event.error);
-  showToast('An unexpected error occurred. Please try again.');
-});
-
-// Chart.js cleanup on navigation
-window.addEventListener('popstate', () => {
-  if (chartInstance) {
-    chartInstance.destroy();
-    chartInstance = null;
-  }
-});
-
-// Handle visibility change
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && isGoogleTokenValid()) {
-    refreshGoogleToken();
-    syncLocalStorageToIndexedDB();
-  }
-});
-
-// Voice Input Support
-function enableVoiceInput(inputId) {
-  const input = document.getElementById(inputId);
-  if ('webkitSpeechRecognition' in window) {
-    const recognition = new webkitSpeechRecognition();
-    recognition.lang = 'en-US';
-    recognition.interimResults = false;
-    recognition.onresult = (event) => {
-      input.value = event.results[0][0].transcript;
-      input.dispatchEvent(new Event('input'));
-    };
-    recognition.onerror = () => showToast('Voice input failed. Please try again.');
-    recognition.start();
-  } else {
-    showToast('Voice input not supported in this browser.');
-  }
-}
-
-// Add voice input buttons
-['clerkName', 'judgeName', 'courtName', 'profileName'].forEach(id => {
-  const input = document.getElementById(id);
-  if (input) {
-    const button = document.createElement('button');
-    button.textContent = '🎤';
-    button.type = 'button';
-    button.style.marginLeft = '5px';
-    button.onclick = () => enableVoiceInput(id);
-    input.parentNode.appendChild(button);
-  }
-});
-
-// Lazy load images
-document.querySelectorAll('img').forEach(img => {
-  img.setAttribute('loading', 'lazy');
-});
-
-// Compress localStorage data
-function compressData(data) {
-  return pako.gzip(JSON.stringify(data), { to: 'string' });
-}
-
-function decompressData(compressed) {
-  return JSON.parse(pako.ungzip(compressed, { to: 'string' }));
-}
-
-// Override localStorage methods to use compression
-const originalSetItem = localStorage.setItem;
-localStorage.setItem = function(key, value) {
-  if (['files', 'profiles', 'analytics'].includes(key)) {
-    originalSetItem.call(this, key, compressData(value));
-  } else {
-    originalSetItem.call(this, key, value);
-  }
-};
-
-const originalGetItem = localStorage.getItem;
-localStorage.getItem = function(key) {
-  const value = originalGetItem.call(this, key);
-  if (['files', 'profiles', 'analytics'].includes(key) && value) {
-    try {
-      return decompressData(value);
-    } catch (e) {
-      return value;
-    }
-  }
-  return value;
-};
-
-// End of script
-console.log('Court File Tracker initialized');
+      column
