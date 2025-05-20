@@ -9,10 +9,11 @@ const itemsPerPage = 10;
 let analytics = JSON.parse(localStorage.getItem('analytics')) || {
   filesEntered: 0,
   searchesPerformed: 0,
-  backupsCreated: 0
+  backupsCreated: 0,
+  lastBackup: null
 };
 let chartInstance = null;
-let deferredPrompt = null; // For PWA install prompt
+let deferredPrompt = null;
 
 // IndexedDB Setup
 const dbName = 'CourtFileTrackerDB';
@@ -67,8 +68,8 @@ function syncIndexedDBToLocalStorage() {
 }
 
 // Google Drive API Configuration
-const CLIENT_ID = 'YOUR_CLIENT_ID'; // Replace with your actual Client ID
-const API_KEY = 'YOUR_API_KEY'; // Replace with your actual API Key
+const CLIENT_ID = '1022877727253-vlif6k2sstl4gn98e8svsh8mhd3j0gl3.apps.googleusercontent.com';
+const API_KEY = 'AIzaSyCmYFpMXEtPdfSg4-K7lgdqNc-njgqONmQ';
 const SCOPES = 'https://www.googleapis.com/auth/drive.file';
 let tokenClient;
 
@@ -89,7 +90,6 @@ function initGoogleDrive() {
             }));
             document.getElementById('backupToDrive').style.display = 'inline-block';
             document.getElementById('restoreFromDrive').style.display = 'inline-block';
-            document.getElementById('triggerAutoBackup').style.display = 'inline-block';
             document.getElementById('showTransferDataModal').style.display = 'inline-block';
             showToast('Signed in to Google Drive');
             syncLocalStorageToIndexedDB();
@@ -100,8 +100,6 @@ function initGoogleDrive() {
           }
         }
       });
-      // Trigger automatic backup every 24 hours
-      setInterval(triggerAutoBackup, 24 * 60 * 60 * 1000);
     }).catch((error) => {
       console.error('Google API init error:', error);
       showToast('Failed to initialize Google Drive. Please try again.');
@@ -119,6 +117,7 @@ function signInWithGoogle() {
     initGoogleDrive();
     return;
   }
+  console.log('Triggering Google Drive sign-in');
   tokenClient.requestAccessToken();
 }
 
@@ -140,11 +139,11 @@ function backupToDrive(isAuto = false) {
     offlineQueue.push({ action: 'backupToDrive', data: { isAuto } });
     localStorage.setItem('offlineQueue', JSON.stringify(offlineQueue));
     syncLocalStorageToIndexedDB();
-    showToast(isAuto ? 'Automatic backup queued for when online' : 'Backup queued for when online');
+    showToast('Backup queued for when online');
     return;
   }
   if (!isGoogleTokenValid()) {
-    showToast('Please sign in to Google Drive');
+    if (!isAuto) showToast('Please sign in to Google Drive');
     signInWithGoogle();
     return;
   }
@@ -161,6 +160,7 @@ function backupToDrive(isAuto = false) {
     userProfile: userProfile ? { ...userProfile, pin: null, cnic: maskCNIC(userProfile.cnic) } : null,
     analytics
   };
+  console.log('Backup data:', data);
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   const metadata = {
     name: `cft_backup_${formatDate(new Date(), 'YYYYMMDD_HHMMSS')}.json`,
@@ -176,20 +176,43 @@ function backupToDrive(isAuto = false) {
     params: { uploadType: 'multipart' },
     body: form
   }).then((response) => {
+    console.log('Backup response:', response);
     analytics.backupsCreated++;
+    analytics.lastBackup = new Date().toISOString();
     localStorage.setItem('analytics', JSON.stringify(analytics));
     syncLocalStorageToIndexedDB();
-    showToast(isAuto ? 'Automatic backup uploaded to Google Drive' : 'Backup uploaded to Google Drive');
+    if (!isAuto) showToast('Backup uploaded to Google Drive');
   }).catch((error) => {
     console.error('Backup error:', error);
-    showToast('Failed to upload backup. Please try again.');
+    if (!isAuto) showToast('Failed to upload backup. Please try again.');
   });
 }
 
 function triggerAutoBackup() {
-  if (files.length > 0 || profiles.length > 0) {
-    backupToDrive(true);
+  if (!isGoogleTokenValid()) {
+    showToast('Please sign in to Google Drive to trigger a backup');
+    signInWithGoogle();
+    return;
   }
+  backupToDrive(true);
+  showToast('Automatic backup triggered');
+}
+
+function setupAutoBackup() {
+  const now = new Date();
+  const midnight = new Date(now);
+  midnight.setHours(24, 0, 0, 0);
+  const timeToMidnight = midnight - now;
+  setTimeout(() => {
+    if (navigator.onLine && isGoogleTokenValid()) {
+      backupToDrive(true);
+    }
+    setInterval(() => {
+      if (navigator.onLine && isGoogleTokenValid()) {
+        backupToDrive(true);
+      }
+    }, 24 * 60 * 60 * 1000);
+  }, timeToMidnight);
 }
 
 function restoreFromDrive() {
@@ -216,13 +239,15 @@ function restoreFromDrive() {
       option.textContent = file.name;
       select.appendChild(option);
     });
-    document.getElementById('restoreModal').style.display = 'block';
+    document.getElementById('shareBackupModal').style.display = 'block';
   }).catch((error) => {
     console.error('List files error:', error);
     showToast('Failed to list backups. Please try again.');
   });
 
-  document.getElementById('backupFiles').addEventListener('change', (e) => {
+  const select = document.getElementById('backupFiles');
+  select.onchange = null;
+  select.addEventListener('change', (e) => {
     const fileId = e.target.value;
     if (fileId) {
       gapi.client.drive.files.get({
@@ -242,18 +267,13 @@ function restoreFromDrive() {
         showToast('Data restored successfully from Google Drive');
         updateSavedProfile();
         updateDashboardCards();
-        hideRestoreModal();
+        hideShareBackup();
       }).catch((error) => {
         console.error('Restore error:', error);
         showToast('Failed to restore data. Please try again.');
       });
     }
-  }, { once: true });
-}
-
-function hideRestoreModal() {
-  document.getElementById('restoreModal').style.display = 'none';
-  document.getElementById('backupFiles').value = '';
+  });
 }
 
 function showTransferDataModal() {
@@ -266,77 +286,93 @@ function showTransferDataModal() {
     signInWithGoogle();
     return;
   }
-  document.getElementById('transferDataModal').style.display = 'block';
-  document.getElementById('transferEmail').value = '';
+  gapi.client.drive.files.list({
+    spaces: 'appDataFolder',
+    q: "name contains 'cft_backup_'",
+    fields: 'files(id, name)'
+  }).then((response) => {
+    const backupFiles = response.result.files;
+    const select = document.getElementById('transferBackupFiles');
+    select.innerHTML = '<option value="">Select a backup</option>';
+    backupFiles.forEach(file => {
+      const option = document.createElement('option');
+      option.value = file.id;
+      option.textContent = file.name;
+      select.appendChild(option);
+    });
+    document.getElementById('transferDataModal').style.display = 'block';
+  }).catch((error) => {
+    console.error('List files error:', error);
+    showToast('Failed to list backups. Please try again.');
+  });
 }
 
 function transferData() {
-  if (!navigator.onLine) {
-    showToast('No internet connection. Please try again later.');
-    return;
-  }
-  if (!isGoogleTokenValid()) {
-    showToast('Please sign in to Google Drive');
-    signInWithGoogle();
-    return;
-  }
+  const fileId = document.getElementById('transferBackupFiles').value;
   const email = document.getElementById('transferEmail').value;
-  if (!email) {
-    showToast('Please enter an email address');
+  if (!fileId || !email) {
+    showToast('Please select a backup and enter an email');
     return;
   }
-  const data = {
-    files: files.map(f => ({
-      ...f,
-      deliveredToName: f.deliveredToName,
-      deliveredToType: f.deliveredToType
-    })),
-    profiles: profiles.map(p => ({
-      ...p,
-      photo: p.photo || ''
-    })),
-    userProfile: userProfile ? { ...userProfile, pin: null, cnic: maskCNIC(userProfile.cnic) } : null,
-    analytics
-  };
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-  const metadata = {
-    name: `cft_transfer_${formatDate(new Date(), 'YYYYMMDD_HHMMSS')}.json`,
-    mimeType: 'application/json',
-    parents: ['appDataFolder']
-  };
-  const form = new FormData();
-  form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
-  form.append('file', blob);
-  gapi.client.request({
-    path: '/upload/drive/v3/files',
-    method: 'POST',
-    params: { uploadType: 'multipart' },
-    body: form
-  }).then((response) => {
-    const fileId = response.result.id;
-    gapi.client.drive.permissions.create({
+  gapi.client.drive.permissions.create({
+    fileId: fileId,
+    resource: {
+      type: 'user',
+      role: 'reader',
+      emailAddress: email
+    }
+  }).then(() => {
+    gapi.client.drive.files.get({
       fileId: fileId,
-      resource: {
-        type: 'user',
-        role: 'reader',
-        emailAddress: email
-      }
-    }).then(() => {
-      gapi.client.drive.files.get({
-        fileId: fileId,
-        fields: 'webViewLink'
-      }).then((response) => {
-        showToast(`Data shared with ${email}. Link: ${response.result.webViewLink}`);
-        document.getElementById('transferDataModal').style.display = 'none';
-      });
-    }).catch((error) => {
-      console.error('Share error:', error);
-      showToast('Failed to share data. Please try again.');
+      fields: 'webViewLink'
+    }).then((response) => {
+      showToast(`Backup shared with ${email}. Link: ${response.result.webViewLink}`);
+      hideTransferDataModal();
     });
   }).catch((error) => {
-    console.error('Transfer error:', error);
-    showToast('Failed to upload data for transfer. Please try again.');
+    console.error('Share error:', error);
+    showToast('Failed to share backup. Please try again.');
   });
+}
+
+function hideTransferDataModal() {
+  document.getElementById('transferDataModal').style.display = 'none';
+  document.getElementById('transferBackupFiles').value = '';
+  document.getElementById('transferEmail').value = '';
+}
+
+function shareBackup() {
+  const fileId = document.getElementById('backupFiles').value;
+  const email = document.getElementById('shareEmail').value;
+  if (!fileId || !email) {
+    showToast('Please select a backup and enter an email');
+    return;
+  }
+  gapi.client.drive.permissions.create({
+    fileId: fileId,
+    resource: {
+      type: 'user',
+      role: 'reader',
+      emailAddress: email
+    }
+  }).then(() => {
+    gapi.client.drive.files.get({
+      fileId: fileId,
+      fields: 'webViewLink'
+    }).then((response) => {
+      showToast(`Backup shared with ${email}. Link: ${response.result.webViewLink}`);
+      hideShareBackup();
+    });
+  }).catch((error) => {
+    console.error('Share error:', error);
+    showToast('Failed to share backup. Please try again.');
+  });
+}
+
+function hideShareBackup() {
+  document.getElementById('shareBackupModal').style.display = 'none';
+  document.getElementById('backupFiles').value = '';
+  document.getElementById('shareEmail').value = '';
 }
 
 function maskCNIC(cnic) {
@@ -348,41 +384,47 @@ function maskCNIC(cnic) {
 
 function processOfflineQueue() {
   if (!navigator.onLine || !isGoogleTokenValid()) return;
-  const queue = [...offlineQueue];
+  offlineQueue.forEach(({ action, data }) => {
+    if (action === 'backupToDrive') backupToDrive(data.isAuto);
+  });
   offlineQueue = [];
   localStorage.setItem('offlineQueue', JSON.stringify(offlineQueue));
   syncLocalStorageToIndexedDB();
-  queue.forEach(({ action, data }) => {
-    if (action === 'backupToDrive') {
-      backupToDrive(data?.isAuto || false);
-    }
+}
+
+function setupInstallButton() {
+  const installBtn = document.getElementById('installBtn');
+  if (!installBtn) return;
+  installBtn.style.display = 'none';
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredPrompt = e;
+    installBtn.style.display = 'block';
+    installBtn.addEventListener('click', () => {
+      if (deferredPrompt) {
+        deferredPrompt.prompt();
+        deferredPrompt.userChoice.then((choiceResult) => {
+          if (choiceResult.outcome === 'accepted') {
+            showToast('App installed successfully');
+          }
+          deferredPrompt = null;
+          installBtn.style.display = 'none';
+        });
+      }
+    });
   });
-}
-
-// PWA Install Prompt
-function handleInstallPrompt(event) {
-  deferredPrompt = event;
-  document.getElementById('installBtn').style.display = 'block';
-}
-
-function installApp() {
-  if (!deferredPrompt) {
-    showToast('Install prompt not available');
-    return;
-  }
-  deferredPrompt.prompt();
-  deferredPrompt.userChoice.then((choiceResult) => {
-    if (choiceResult.outcome === 'accepted') {
-      showToast('App installation started');
-      document.getElementById('installBtn').style.display = 'none';
-    }
-    deferredPrompt = null;
+  window.addEventListener('appinstalled', () => {
+    showToast('App installed successfully');
+    installBtn.style.display = 'none';
   });
 }
 
 window.onload = () => {
+  console.log('app.js loaded successfully');
   initIndexedDB();
   initGoogleDrive();
+  setupInstallButton();
+  setupAutoBackup();
   if (userProfile) {
     document.getElementById('setupMessage').style.display = 'none';
     document.getElementById('adminForm').style.display = 'none';
@@ -403,7 +445,6 @@ window.onload = () => {
   setupPhotoAdjust('userPhoto', 'userPhotoPreview', 'userPhotoAdjust');
   setupPhotoAdjust('profilePhoto', 'photoPreview', 'photoAdjust');
   setInterval(refreshGoogleToken, 60000);
-  window.addEventListener('beforeinstallprompt', handleInstallPrompt);
   document.querySelector('.sidebar-overlay').addEventListener('click', toggleSidebar);
 };
 
@@ -439,7 +480,7 @@ function navigate(screenId) {
   document.querySelectorAll('.screen').forEach(screen => screen.classList.remove('active'));
   document.getElementById(screenId).classList.add('active');
   document.querySelectorAll('.sidebar button').forEach(btn => btn.classList.remove('active'));
-  document.querySelector(`.sidebar button[onclick="navigate('${screenId}')"]`)?.classList.add('active');
+  document.querySelector(`.sidebar button[onclick="navigate('${screenId}')"]`).classList.add('active');
   if (screenId === 'dashboard') updateDashboardCards();
   if (screenId === 'return') filterPendingFiles();
   if (screenId === 'fileFetcher') renderProfiles();
@@ -468,6 +509,7 @@ document.getElementById('adminForm').addEventListener('submit', (e) => {
   e.preventDefault();
   document.getElementById('loadingIndicator').style.display = 'block';
   try {
+    console.log('Admin form submission started');
     setTimeout(() => {
       const userPhotoInput = document.getElementById('userPhoto');
       let photo = userPhotoInput.adjustedPhoto;
@@ -476,6 +518,7 @@ document.getElementById('adminForm').addEventListener('submit', (e) => {
       }
 
       if (!photo) {
+        console.error('No photo selected');
         showToast('Please upload a profile photo');
         document.getElementById('loadingIndicator').style.display = 'none';
         return;
@@ -492,6 +535,7 @@ document.getElementById('adminForm').addEventListener('submit', (e) => {
           email: document.getElementById('email').value,
           photo: photoData
         };
+        console.log('Saving userProfile:', userProfile);
         localStorage.setItem('userProfile', JSON.stringify(userProfile));
         syncLocalStorageToIndexedDB();
         document.getElementById('setupMessage').style.display = 'none';
@@ -499,19 +543,24 @@ document.getElementById('adminForm').addEventListener('submit', (e) => {
         document.getElementById('savedProfile').style.display = 'block';
         updateSavedProfile();
         showToast('Profile saved successfully! Please sign in to Google Drive.');
+        console.log('Triggering Google Drive sign-in');
         signInWithGoogle();
         document.getElementById('loadingIndicator').style.display = 'none';
         navigate('dashboard');
       };
 
       if (typeof photo === 'string' && photo.startsWith('data:')) {
+        console.log('Using adjusted data URL');
         processPhoto(photo);
       } else {
+        console.log('Reading raw file');
         const reader = new FileReader();
         reader.onload = () => {
+          console.log('Photo read successfully');
           processPhoto(reader.result);
         };
-        reader.onerror = () => {
+        reader.onerror = (error) => {
+          console.error('Error reading photo:', error);
           showToast('Failed to read photo. Please try again.');
           document.getElementById('loadingIndicator').style.display = 'none';
         };
@@ -597,7 +646,7 @@ function setupPhotoAdjust(inputId, previewId, adjustContainerId) {
           preview.style.display = 'block';
           offsetX = 0;
           offsetY = 0;
-          drawImage(orientation);
+          compressAndDrawImage(orientation);
           input.adjustedPhoto = canvas.toDataURL('image/jpeg', 0.8);
           document.getElementById('loadingIndicator').style.display = 'none';
         });
@@ -610,7 +659,7 @@ function setupPhotoAdjust(inputId, previewId, adjustContainerId) {
     reader.readAsDataURL(file);
   });
 
-  function drawImage(orientation) {
+  function compressAndDrawImage(orientation) {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     let imgWidth = img.width;
     let imgHeight = img.height;
@@ -618,24 +667,31 @@ function setupPhotoAdjust(inputId, previewId, adjustContainerId) {
     imgWidth *= scaleFactor;
     imgHeight *= scaleFactor;
 
-    ctx.save();
-    ctx.translate(canvas.width / 2, canvas.height / 2);
-    if (orientation && orientation !== 1) {
+    // Compress image
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = canvas.width;
+    tempCanvas.height = canvas.height;
+    const tempCtx = tempCanvas.getContext('2d');
+    tempCtx.save();
+    tempCtx.translate(canvas.width / 2, canvas.height / 2);
+    if (orientation !== 1) {
       switch (orientation) {
         case 6:
-          ctx.rotate(Math.PI / 2);
+          tempCtx.rotate(Math.PI / 2);
           break;
         case 3:
-          ctx.rotate(Math.PI);
+          tempCtx.rotate(Math.PI);
           break;
         case 8:
-          ctx.rotate(-Math.PI / 2);
+          tempCtx.rotate(-Math.PI / 2);
           break;
       }
     }
-    ctx.translate(-canvas.width / 2, -canvas.height / 2);
-    ctx.drawImage(img, offsetX, offsetY, imgWidth, imgHeight);
-    ctx.restore();
+    tempCtx.translate(-canvas.width / 2, -canvas.height / 2);
+    tempCtx.drawImage(img, offsetX, offsetY, imgWidth, imgHeight);
+    tempCtx.restore();
+
+    ctx.drawImage(tempCanvas, 0, 0, canvas.width, canvas.height);
   }
 
   canvas.addEventListener('mousedown', (e) => {
@@ -649,7 +705,7 @@ function setupPhotoAdjust(inputId, previewId, adjustContainerId) {
     if (isDragging) {
       offsetX = e.offsetX - startX;
       offsetY = e.offsetY - startY;
-      drawImage(1);
+      compressAndDrawImage(1);
     }
   });
 
@@ -678,7 +734,7 @@ function setupPhotoAdjust(inputId, previewId, adjustContainerId) {
       const rect = canvas.getBoundingClientRect();
       offsetX = touch.clientX - rect.left - startX;
       offsetY = touch.clientY - rect.top - startY;
-      drawImage(1);
+      compressAndDrawImage(1);
     }
   });
 
@@ -737,6 +793,7 @@ function hideChangePin() {
 }
 
 function updateDashboardCards() {
+  console.log('Updating dashboard cards');
   const today = formatDate(new Date()).split(' ')[0];
   const tomorrow = formatDate(new Date(Date.now() + 24 * 60 * 60 * 1000)).split(' ')[0];
   const tenDaysAgo = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000);
@@ -746,12 +803,12 @@ function updateDashboardCards() {
   const tomorrowHearings = files.filter(f => formatDate(f.date).startsWith(tomorrow)).length;
   const overdue = files.filter(f => !f.returned && new Date(f.deliveredAt) < tenDaysAgo).length;
 
-  document.getElementById('cardDeliveries').innerHTML = `<span class="tooltip">Files delivered today</span><h3>${deliveries}</h3><button>Deliveries Today</button>`;
-  document.getElementById('cardReturns').innerHTML = `<span class="tooltip">Files returned today</span><h3>${returns}</h3><button>Returns Today</button>`;
-  document.getElementById('cardPending').innerHTML = `<span class="tooltip">Files not yet returned</span><h3>${pending}</h3><button>Pending Files</button>`;
-  document.getElementById('cardTomorrow').innerHTML = `<span class="tooltip">Hearings scheduled for tomorrow</span><h3>${tomorrowHearings}</h3><button>Tomorrow Hearings</button>`;
-  document.getElementById('cardOverdue').innerHTML = `<span class="tooltip">Files pending over 10 days</span><h3>${overdue}</h3><button>Overdue Files</button>`;
-  document.getElementById('cardSearchPrev').innerHTML = `<span class="tooltip">Search all previous records</span><h3>Search</h3><button>Previous Records</button>`;
+  document.getElementById('cardDeliveries').innerHTML = `<span class="tooltip">Files delivered today</span><h3>${deliveries}</h3><p>Deliveries Today</p>`;
+  document.getElementById('cardReturns').innerHTML = `<span class="tooltip">Files returned today</span><h3>${returns}</h3><p>Returns Today</p>`;
+  document.getElementById('cardPending').innerHTML = `<span class="tooltip">Files not yet returned</span><h3>${pending}</h3><p>Pending Files</p>`;
+  document.getElementById('cardTomorrow').innerHTML = `<span class="tooltip">Hearings scheduled for tomorrow</span><h3>${tomorrowHearings}</h3><p>Tomorrow Hearings</p>`;
+  document.getElementById('cardOverdue').innerHTML = `<span class="tooltip">Files pending over 10 days</span><h3>${overdue}</h3><p>Overdue Files</p>`;
+  document.getElementById('cardSearchPrev').innerHTML = `<span class="tooltip">Search all previous records</span><h3>Search</h3><p>Previous Records</p>`;
 
   if (chartInstance) {
     chartInstance.destroy();
@@ -773,8 +830,7 @@ function updateDashboardCards() {
       scales: {
         y: {
           beginAtZero: true,
-          stepSize: 1,
-          ticks: { precision: 0 }
+          ticks: { stepSize: 1, precision: 0 }
         }
       },
       plugins: { legend: { display: false } }
@@ -790,6 +846,7 @@ function updateDashboardCards() {
 }
 
 function showDashboardReport(type) {
+  console.log(`Showing report for type: ${type}`);
   document.getElementById('dashboardReportPanel').style.display = 'block';
   document.getElementById('loadingIndicator').style.display = 'block';
   document.getElementById('searchPrevRecords').style.display = type === 'searchPrev' ? 'block' : 'none';
@@ -826,8 +883,11 @@ function showDashboardReport(type) {
       filteredFiles = files;
       title = 'Search Previous Records';
       break;
+    default:
+      console.error('Invalid report type:', type);
   }
 
+  console.log('Filtered files:', filteredFiles);
   currentReportData = filteredFiles;
   document.getElementById('reportTitle').textContent = title;
   renderReportTable();
@@ -1103,4 +1163,563 @@ function exportDashboardReport(format) {
       startY: 20,
       theme: 'striped',
       styles: { fontSize: 8 },
-      column
+      columnStyles: { 0: { cellWidth: 10 }, 1: { cellWidth: 20 }, 2: { cellWidth: 30 } }
+    });
+    doc.save(`report_${formatDate(new Date(), 'YYYYMMDD_HHMMSS')}.pdf`);
+  }
+}
+
+document.getElementById('fileForm').addEventListener('submit', (e) => {
+  e.preventDefault();
+  document.getElementById('loadingIndicator').style.display = 'block';
+  promptPin((success) => {
+    if (!success) {
+      showToast('PIN verification failed');
+      document.getElementById('loadingIndicator').style.display = 'none';
+      return;
+    }
+    setTimeout(() => {
+      const deliveredToName = document.getElementById('deliveredTo').value;
+      const deliveredToType = document.getElementById('deliveredType').value;
+      const profileExists = profiles.find(p => p.name === deliveredToName && p.type === deliveredToType);
+      if (!profileExists) {
+        showToast('Profile does not exist. Please add it in the File Fetcher section.');
+        document.getElementById('loadingIndicator').style.display = 'none';
+        navigate('fileFetcher');
+        showProfileForm();
+        return;
+      }
+      const fileData = {
+        cmsNo: document.getElementById('cmsNo').value,
+        title: `${document.getElementById('petitioner').value} vs ${document.getElementById('respondent').value}`,
+        caseType: document.getElementById('caseType').value,
+        nature: document.getElementById('nature').value,
+        firNo: document.getElementById('firNo').value,
+        firYear: document.getElementById('firYear').value,
+        firUs: document.getElementById('firUs').value,
+        policeStation: document.getElementById('policeStation').value,
+        dateType: document.getElementById('dateType').value,
+        date: document.getElementById('date').value,
+        deliveredToName: deliveredToName,
+        deliveredToType: deliveredToType,
+        swalFormNo: document.getElementById('copyAgency').checked ? document.getElementById('swalFormNo').value : '',
+        swalDate: document.getElementById('copyAgency').checked ? document.getElementById('swalDate').value : '',
+        deliveredAt: new Date().toISOString(),
+        courtName: userProfile.courtName,
+        clerkName: userProfile.clerkName,
+        returned: false
+      };
+      files.push(fileData);
+      analytics.filesEntered++;
+      localStorage.setItem('files', JSON.stringify(files));
+      localStorage.setItem('analytics', JSON.stringify(analytics));
+      syncLocalStorageToIndexedDB();
+      document.getElementById('fileForm').reset();
+      document.getElementById('criminalFields').style.display = 'none';
+      document.getElementById('copyAgencyFields').style.display = 'none';
+      document.getElementById('copyAgency').checked = false;
+      ['petitioner', 'respondent', 'caseType', 'nature', 'firNo', 'firYear', 'firUs', 'policeStation', 'date', 'deliveredTo', 'deliveredType', 'swalFormNo', 'swalDate', 'dateType'].forEach(field => {
+        document.getElementById(field).disabled = false;
+      });
+      document.getElementById('copyAgency').disabled = false;
+      showToast('File saved and delivered successfully');
+      document.getElementById('loadingIndicator').style.display = 'none';
+      updateDashboardCards();
+    }, 500);
+  });
+});
+
+function autoFillCMS() {
+  const cmsNo = document.getElementById('cmsNo').value;
+  const existing = files.find(f => f.cmsNo === cmsNo);
+  const fields = ['petitioner', 'respondent', 'caseType', 'nature', 'firNo', 'firYear', 'firUs', 'policeStation', 'date', 'deliveredTo', 'deliveredType', 'swalFormNo', 'swalDate'];
+  if (existing) {
+    document.getElementById('petitioner').value = existing.title.split(' vs ')[0];
+    document.getElementById('respondent').value = existing.title.split(' vs ')[1];
+    document.getElementById('caseType').value = existing.caseType;
+    document.getElementById('nature').value = existing.nature;
+    document.getElementById('firNo').value = existing.firNo || '';
+    document.getElementById('firYear').value = existing.firYear || '';
+    document.getElementById('firUs').value = existing.firUs || '';
+    document.getElementById('policeStation').value = existing.policeStation || '';
+    document.getElementById('date').value = existing.date;
+    document.getElementById('deliveredTo').value = existing.deliveredToName;
+    document.getElementById('deliveredType').value = existing.deliveredToType;
+    document.getElementById('swalFormNo').value = existing.swalFormNo || '';
+    document.getElementById('swalDate').value = existing.swalDate || '';
+    document.getElementById('copyAgency').checked = !!existing.swalFormNo;
+    toggleCopyAgency();
+    toggleCriminalFields();
+    fields.forEach(field => {
+      document.getElementById(field).disabled = true;
+    });
+    document.getElementById('copyAgency').disabled = true;
+  } else {
+    fields.forEach(field => {
+      document.getElementById(field).disabled = false;
+    });
+    document.getElementById('copyAgency').disabled = false;
+  }
+  document.getElementById('dateType').disabled = false;
+}
+
+function toggleCriminalFields() {
+  document.getElementById('criminalFields').style.display = document.getElementById('caseType').value === 'criminal' ? 'block' : 'none';
+}
+
+function toggleCopyAgency() {
+  document.getElementById('copyAgencyFields').style.display = document.getElementById('copyAgency').checked ? 'block' : 'none';
+}
+
+function suggestProfiles(input, inputId) {
+  const suggestions = document.getElementById(inputId === 'deliveredTo' ? 'suggestions' : 'searchSuggestions');
+  suggestions.innerHTML = '';
+  if (!input) return;
+  const fuse = new Fuse(profiles, {
+    keys: ['name', 'cellNo', 'chamberNo'],
+    threshold: 0.3
+  });
+  const results = fuse.search(input).slice(0, 5);
+  results.forEach(result => {
+    const li = document.createElement('li');
+    const img = document.createElement('img');
+    img.src = result.item.photo || 'icon-192.png';
+    img.style.width = '40px';
+    img.style.height = '40px';
+    img.style.borderRadius = '50%';
+    img.style.border = '1px solid #ccc';
+    li.appendChild(img);
+    const text = document.createElement('span');
+    text.textContent = `${result.item.name} (${result.item.type})`;
+    li.appendChild(text);
+    li.onclick = () => {
+      document.getElementById(inputId).value = result.item.name;
+      if (inputId === 'deliveredTo') {
+        document.getElementById('deliveredType').value = result.item.type;
+      }
+      suggestions.innerHTML = '';
+    };
+    suggestions.appendChild(li);
+  });
+}
+
+function filterPendingFiles() {
+  const cms = document.getElementById('returnCms').value;
+  const title = document.getElementById('returnTitle').value.toLowerCase();
+  const tbody = document.getElementById('pendingFilesTable').querySelector('tbody');
+  tbody.innerHTML = '';
+  const filteredFiles = files.filter(f => !f.returned && (!cms || f.cmsNo.toString().includes(cms)) && (!title || f.title.toLowerCase().includes(title)));
+  filteredFiles.forEach(f => {
+    const row = document.createElement('tr');
+    row.innerHTML = `
+      <td><input type="checkbox" class="select-file" data-cms="${f.cmsNo}"></td>
+      <td>${f.cmsNo}</td>
+      <td>${f.title.replace('vs', 'Vs.')}</td>
+      <td>${f.caseType}</td>
+      <td>${f.deliveredToName} (${f.deliveredToType})</td>
+      <td><button onclick="returnFile('${f.cmsNo}')">Return</button></td>
+    `;
+    tbody.appendChild(row);
+  });
+}
+
+function returnFile(cmsNo) {
+  promptPin((success) => {
+    if (success) {
+      const file = files.find(f => f.cmsNo === cmsNo && !f.returned);
+      if (file) {
+        file.returned = true;
+        file.returnedAt = new Date().toISOString();
+        localStorage.setItem('files', JSON.stringify(files));
+        syncLocalStorageToIndexedDB();
+        showToast(`File ${cmsNo} returned successfully`);
+        filterPendingFiles();
+        updateDashboardCards();
+      }
+    }
+  });
+}
+
+function bulkReturnFiles() {
+  const selected = document.querySelectorAll('.select-file:checked');
+  if (selected.length === 0) {
+    showToast('Please select at least one file to return');
+    return;
+  }
+  promptPin((success) => {
+    if (success) {
+      selected.forEach(checkbox => {
+        const cmsNo = checkbox.dataset.cms;
+        const file = files.find(f => f.cmsNo === cmsNo && !f.returned);
+        if (file) {
+          file.returned = true;
+          file.returnedAt = new Date().toISOString();
+        }
+      });
+      localStorage.setItem('files', JSON.stringify(files));
+      syncLocalStorageToIndexedDB();
+      showToast(`${selected.length} file(s) returned successfully`);
+      filterPendingFiles();
+      updateDashboardCards();
+    }
+  });
+}
+
+function showProfileForm() {
+  document.getElementById('profileForm').style.display = 'block';
+  document.getElementById('profileSearchSection').style.display = 'none';
+  document.getElementById('profileList').style.display = 'none';
+  document.getElementById('profileType').value = '';
+  document.getElementById('profileFields').innerHTML = '';
+  document.getElementById('profilePhoto').value = '';
+  document.getElementById('photoAdjust').style.display = 'none';
+}
+
+function showProfileSearch() {
+  document.getElementById('profileForm').style.display = 'none';
+  document.getElementById('profileSearchSection').style.display = 'block';
+  document.getElementById('profileList').style.display = 'block';
+  renderProfiles();
+}
+
+function toggleProfileFields() {
+  const type = document.getElementById('profileType').value;
+  const fields = document.getElementById('profileFields');
+  fields.innerHTML = `
+    <label>Name: <span class="required">*</span><input type="text" id="profileName" required /></label>
+    <label>Cell No: <span class="required">*</span><input type="text" id="cellNo" required /></label>
+  `;
+  if (type === 'munshi') {
+    fields.innerHTML += `
+      <label>Chamber No: <span class="required">*</span><input type="text" id="chamberNo" required /></label>
+      <label>Advocate Name: <span class="required">*</span><input type="text" id="advocateName" required /></label>
+      <label>Advocate Cell: <input type="text" id="advocateCell" /></label>
+    `;
+  } else if (type === 'advocate') {
+    fields.innerHTML += `
+      <label>Chamber No: <span class="required">*</span><input type="text" id="chamberNo" required /></label>
+    `;
+  } else if (type === 'colleague') {
+    fields.innerHTML += `
+      <label>Designation: <input type="text" id="designation" /></label>
+      <label>Posted At: <input type="text" id="postedAt" /></label>
+    `;
+  } else if (type === 'other') {
+    fields.innerHTML += `
+      <label>ID/CNIC: <input type="text" id="cnic" /></label>
+      <label>Relation: <input type="text" id="relation" /></label>
+    `;
+  }
+  document.getElementById('photoRequired').style.display = type === 'advocate' ? 'none' : 'inline';
+  document.getElementById('profilePhoto').required = type !== 'advocate';
+}
+
+// Profile Form Submission
+document.getElementById('profileForm').addEventListener('submit', (e) => {
+  e.preventDefault();
+  document.getElementById('loadingIndicator').style.display = 'block';
+  try {
+    const profileType = document.getElementById('profileType').value;
+    const photoInput = document.getElementById('profilePhoto');
+    let photo = photoInput.adjustedPhoto;
+    if (!photo && photoInput.files && photoInput.files[0]) {
+      photo = photoInput.files[0];
+    }
+
+    if (!photo && profileType !== 'advocate') {
+      showToast('Please upload a profile photo');
+      document.getElementById('loadingIndicator').style.display = 'none';
+      return;
+    }
+
+    const processPhoto = (photoData) => {
+      const profile = {
+        type: document.getElementById('profileType').value,
+        name: document.getElementById('profileName').value,
+        cellNo: document.getElementById('cellNo').value,
+        chamberNo: document.getElementById('chamberNo') ? document.getElementById('chamberNo').value : '',
+        advocateName: document.getElementById('advocateName') ? document.getElementById('advocateName').value : '',
+        advocateCell: document.getElementById('advocateCell') ? document.getElementById('advocateCell').value : '',
+        designation: document.getElementById('designation') ? document.getElementById('designation').value : '',
+        postedAt: document.getElementById('postedAt') ? document.getElementById('postedAt').value : '',
+        cnic: document.getElementById('cnic') ? document.getElementById('cnic').value : '',
+        relation: document.getElementById('relation') ? document.getElementById('relation').value : '',
+        photo: photoData || ''
+      };
+
+      const existingIndex = profiles.findIndex(p => p.name === profile.name && p.type === profile.type);
+      if (existingIndex >= 0) {
+        profiles[existingIndex] = profile;
+      } else {
+        profiles.push(profile);
+      }
+
+      localStorage.setItem('profiles', JSON.stringify(profiles));
+      syncLocalStorageToIndexedDB();
+      document.getElementById('profileForm').reset();
+      document.getElementById('profileFields').innerHTML = '';
+      document.getElementById('photoAdjust').style.display = 'none';
+      showToast('Profile saved successfully');
+      document.getElementById('loadingIndicator').style.display = 'none';
+      showProfileSearch();
+    };
+
+    if (photo && typeof photo === 'string' && photo.startsWith('data:')) {
+      console.log('Using adjusted data URL');
+      processPhoto(photo);
+    } else if (photo) {
+      console.log('Reading raw file');
+      const reader = new FileReader();
+      reader.onload = () => {
+        console.log('Photo read successfully');
+        processPhoto(reader.result);
+      };
+      reader.onerror = () => {
+        console.error('Error reading photo');
+        showToast('Failed to read photo. Please try again.');
+        document.getElementById('loadingIndicator').style.display = 'none';
+      };
+      reader.readAsDataURL(photo);
+    } else {
+      console.log('No photo provided (Advocate profile)');
+      processPhoto('');
+    }
+  } catch (error) {
+    console.error('Profile form error:', error);
+    showToast('Failed to save profile. Please try again.');
+    document.getElementById('loadingIndicator').style.display = 'none';
+  }
+});
+
+function renderProfiles() {
+  const typeFilter = document.getElementById('profileFilterType').value;
+  const search = document.getElementById('profileSearch').value.toLowerCase();
+  const tbody = document.getElementById('profileTable').querySelector('tbody');
+  tbody.innerHTML = '';
+  let filteredProfiles = profiles;
+  if (typeFilter) {
+    filteredProfiles = profiles.filter(p => p.type === typeFilter);
+  }
+  if (search) {
+    const fuse = new Fuse(filteredProfiles, {
+      keys: ['name', 'cellNo', 'chamberNo', 'advocateName', 'designation'],
+      threshold: 0.3
+    });
+    filteredProfiles = fuse.search(search).map(result => result.item);
+  }
+  filteredProfiles.forEach(p => {
+    const delivered = files.filter(f => f.deliveredToName === p.name && f.deliveredToType === p.type).length;
+    const pending = files.filter(f => f.deliveredToName === p.name && f.deliveredToType === p.type && !f.returned).length;
+    const row = document.createElement('tr');
+    row.innerHTML = `
+      <td><img src="${p.photo || 'icon-192.png'}" style="width:50px;height:50px;border-radius:50%;border:1px solid #ccc;"></td>
+      <td>${p.name}</td>
+      <td>${p.type}</td>
+      <td>${p.cellNo}</td>
+      <td>${p.chamberNo || ''}</td>
+      <td>${delivered}</td>
+      <td>${pending}</td>
+      <td>
+        <button onclick="editProfile('${p.name}', '${p.type}')">Edit</button>
+        <button onclick="deleteProfile('${p.name}', '${p.type}')">Delete</button>
+      </td>
+    `;
+    tbody.appendChild(row);
+  });
+}
+
+function editProfile(name, type) {
+  const profile = profiles.find(p => p.name === name && p.type === type);
+  if (!profile) return;
+  document.getElementById('profileForm').style.display = 'block';
+  document.getElementById('profileSearchSection').style.display = 'none';
+  document.getElementById('profileList').style.display = 'none';
+  document.getElementById('profileType').value = profile.type;
+  toggleProfileFields();
+  document.getElementById('profileName').value = profile.name;
+  document.getElementById('cellNo').value = profile.cellNo;
+  if (document.getElementById('chamberNo')) document.getElementById('chamberNo').value = profile.chamberNo || '';
+  if (document.getElementById('advocateName')) document.getElementById('advocateName').value = profile.advocateName || '';
+  if (document.getElementById('advocateCell')) document.getElementById('advocateCell').value = profile
+  .advocateCell || '';
+  if (document.getElementById('designation')) document.getElementById('designation').value = profile.designation || '';
+  if (document.getElementById('postedAt')) document.getElementById('postedAt').value = profile.postedAt || '';
+  if (document.getElementById('cnic')) document.getElementById('cnic').value = profile.cnic || '';
+  if (document.getElementById('relation')) document.getElementById('relation').value = profile.relation || '';
+  if (profile.photo) {
+    document.getElementById('photoPreview').src = profile.photo;
+    document.getElementById('photoPreview').style.display = 'block';
+    document.getElementById('photoAdjust').style.display = 'block';
+    document.getElementById('profilePhoto').adjustedPhoto = profile.photo;
+  }
+}
+
+function deleteProfile(name, type) {
+  promptPin((success) => {
+    if (success) {
+      const deliveredFiles = files.filter(f => f.deliveredToName === name && f.deliveredToType === type);
+      if (deliveredFiles.length > 0) {
+        showToast('Cannot delete profile with associated files.');
+        return;
+      }
+      profiles = profiles.filter(p => !(p.name === name && p.type === type));
+      localStorage.setItem('profiles', JSON.stringify(profiles));
+      syncLocalStorageToIndexedDB();
+      showToast('Profile deleted successfully');
+      renderProfiles();
+      updateDashboardCards();
+    }
+  });
+}
+
+function showToast(message) {
+  const toast = document.getElementById('toast');
+  toast.textContent = message;
+  toast.classList.add('show');
+  setTimeout(() => {
+    toast.classList.remove('show');
+  }, 3000);
+}
+
+// Event Listeners for Dynamic Fields
+document.getElementById('caseType').addEventListener('change', toggleCriminalFields);
+document.getElementById('copyAgency').addEventListener('change', toggleCopyAgency);
+document.getElementById('cmsNo').addEventListener('input', autoFillCMS);
+document.getElementById('deliveredTo').addEventListener('input', (e) => suggestProfiles(e.target.value, 'deliveredTo'));
+document.getElementById('profileType').addEventListener('change', toggleProfileFields);
+document.getElementById('profileSearch').addEventListener('input', (e) => suggestProfiles(e.target.value, 'profileSearch'));
+document.getElementById('profileSearch').addEventListener('input', renderProfiles);
+document.getElementById('profileFilterType').addEventListener('change', renderProfiles);
+document.getElementById('returnCms').addEventListener('input', filterPendingFiles);
+document.getElementById('returnTitle').addEventListener('input', filterPendingFiles);
+document.getElementById('searchTitle').addEventListener('input', performDashboardSearch);
+document.getElementById('searchCms').addEventListener('input', performDashboardSearch);
+document.getElementById('searchFileTaker').addEventListener('input', performDashboardSearch);
+document.getElementById('searchFirNo').addEventListener('input', performDashboardSearch);
+document.getElementById('searchFirYear').addEventListener('input', performDashboardSearch);
+document.getElementById('searchPoliceStation').addEventListener('input', performDashboardSearch);
+
+// Modal Close Handlers
+document.getElementById('disclaimerModal').addEventListener('click', (e) => closeModalIfOutside(e, 'disclaimerModal'));
+document.getElementById('pinModal').addEventListener('click', (e) => closeModalIfOutside(e, 'pinModal'));
+document.getElementById('changePinModal').addEventListener('click', (e) => closeModalIfOutside(e, 'changePinModal'));
+document.getElementById('profileModal').addEventListener('click', (e) => closeModalIfOutside(e, 'profileModal'));
+document.getElementById('shareBackupModal').addEventListener('click', (e) => closeModalIfOutside(e, 'shareBackupModal'));
+document.getElementById('transferDataModal').addEventListener('click', (e) => closeModalIfOutside(e, 'transferDataModal'));
+
+// Button Click Handlers
+document.getElementById('backupToDrive').addEventListener('click', () => backupToDrive());
+document.getElementById('restoreFromDrive').addEventListener('click', restoreFromDrive);
+document.getElementById('showTransferDataModal').addEventListener('click', showTransferDataModal);
+document.getElementById('transferDataBtn').addEventListener('click', transferData);
+document.getElementById('shareBackupBtn').addEventListener('click', shareBackup);
+document.getElementById('changePinBtn').addEventListener('click', showChangePin);
+document.getElementById('savePinBtn').addEventListener('click', changePin);
+document.getElementById('bulkReturnBtn').addEventListener('click', bulkReturnFiles);
+document.getElementById('printReportBtn').addEventListener('click', printDashboardReport);
+document.getElementById('exportCsvBtn').addEventListener('click', () => exportDashboardReport('csv'));
+document.getElementById('exportPdfBtn').addEventListener('click', () => exportDashboardReport('pdf'));
+document.getElementById('showProfileFormBtn').addEventListener('click', showProfileForm);
+document.getElementById('showProfileSearchBtn').addEventListener('click', showProfileSearch);
+
+// Service Worker Registration
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').then(registration => {
+      console.log('Service Worker registered:', registration);
+    }).catch(error => {
+      console.error('Service Worker registration failed:', error);
+    });
+  });
+}
+
+// Handle Online/Offline Events
+window.addEventListener('online', () => {
+  showToast('You are now online');
+  processOfflineQueue();
+  if (isGoogleTokenValid()) {
+    backupToDrive(true);
+  }
+});
+
+window.addEventListener('offline', () => {
+  showToast('You are now offline. Some features may be limited.');
+});
+
+// Keyboard Shortcuts
+document.addEventListener('keydown', (e) => {
+  if (e.ctrlKey && e.key === 's') {
+    e.preventDefault();
+    navigate('dashboard');
+  } else if (e.ctrlKey && e.key === 'f') {
+    e.preventDefault();
+    navigate('file');
+  } else if (e.ctrlKey && e.key === 'r') {
+    e.preventDefault();
+    navigate('return');
+  } else if (e.ctrlKey && e.key === 'p') {
+    e.preventDefault();
+    navigate('fileFetcher');
+  } else if (e.ctrlKey && e.key === 'b') {
+    e.preventDefault();
+    backupToDrive();
+  }
+});
+
+// Analytics Tracking
+function trackAnalytics(event, data) {
+  analytics[event] = (analytics[event] || 0) + 1;
+  analytics.lastEvent = { event, data, timestamp: new Date().toISOString() };
+  localStorage.setItem('analytics', JSON.stringify(analytics));
+  syncLocalStorageToIndexedDB();
+}
+
+// Periodic Data Validation
+setInterval(() => {
+  files.forEach(f => {
+    if (!f.deliveredAt || isNaN(new Date(f.deliveredAt).getTime())) {
+      console.warn('Invalid deliveredAt date for file:', f);
+      f.deliveredAt = new Date().toISOString();
+    }
+    if (f.returned && (!f.returnedAt || isNaN(new Date(f.returnedAt).getTime()))) {
+      console.warn('Invalid returnedAt date for file:', f);
+      f.returnedAt = f.deliveredAt;
+    }
+  });
+  localStorage.setItem('files', JSON.stringify(files));
+  syncLocalStorageToIndexedDB();
+}, 60000);
+
+// Export Analytics Report
+function exportAnalyticsReport() {
+  const data = {
+    filesEntered: analytics.filesEntered,
+    searchesPerformed: analytics.searchesPerformed,
+    backupsCreated: analytics.backupsCreated,
+    lastBackup: analytics.lastBackup,
+    lastEvent: analytics.lastEvent
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `analytics_${formatDate(new Date(), 'YYYYMMDD_HHMMSS')}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast('Analytics report exported successfully');
+}
+
+// Button for Analytics Export
+document.getElementById('exportAnalyticsBtn')?.addEventListener('click', exportAnalyticsReport);
+
+// Handle Window Resize for Responsive Design
+window.addEventListener('resize', () => {
+  if (window.innerWidth > 768 && document.getElementById('sidebar').classList.contains('active')) {
+    document.getElementById('sidebar').classList.remove('active');
+    document.querySelector('.sidebar-overlay').classList.remove('active');
+  }
+});
+
+// Initialize Application
+console.log('Court File Tracker initialized');
+trackAnalytics('appStarted', { version: '1.0.0' });
