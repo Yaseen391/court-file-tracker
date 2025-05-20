@@ -32,11 +32,6 @@ h1, h2, h3 {
   display: none;
 }
 
-#menuBtn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
 .top-title {
   display: flex;
   flex-direction: column;
@@ -137,14 +132,9 @@ h1, h2, h3 {
   transition: background-color 0.2s, transform 0.2s;
 }
 
-.sidebar button:hover:not(:disabled) {
+.sidebar button:hover {
   background-color: #00509e;
   transform: scale(1.05);
-}
-
-.sidebar button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
 }
 
 .sidebar button.active {
@@ -158,15 +148,13 @@ h1, h2, h3 {
   top: 60px;
   left: 0;
   width: 100%;
-  height: calc(100vh - 60px);
-  background: rgba(0, 0, 0, 0.5);
+  height: calc(100% - 60px);
+  background: rgba(0, 0, 0, 0.3);
   z-index: 100;
-  pointer-events: none;
 }
 
 .sidebar.active + .sidebar-overlay {
   display: block;
-  pointer-events: auto;
 }
 
 /* Main Content */
@@ -256,14 +244,9 @@ button[type="submit"], button {
   transition: background-color 0.2s, transform 0.2s;
 }
 
-button:hover:not(:disabled) {
+button:hover {
   background-color: #00509e;
   transform: scale(1.05);
-}
-
-button:disabled {
-  background-color: #ccc;
-  cursor: not-allowed;
 }
 
 /* Input Container for Delivered To */
@@ -333,6 +316,13 @@ button:disabled {
   text-align: center;
 }
 
+#userPhotoAdjust canvas, #photoAdjust canvas {
+  cursor: move;
+  touch-action: none;
+  display: block;
+  margin: 0 auto;
+}
+
 /* Dashboard and Fetcher Grids */
 .dashboard-grid, .fetcher-grid {
   display: grid;
@@ -364,7 +354,7 @@ button:disabled {
   border: none;
   padding: 0;
   color: inherit;
-  font-weight: bold; /* Ensure bold text */
+  font-weight: bold; /* Bold button text */
   font-size: 16px;
   cursor: pointer;
   width: 100%;
@@ -555,30 +545,6 @@ input[type="checkbox"] {
   margin: 5px;
 }
 
-/* Transfer Data Modal */
-#transferDataModal .modal-content {
-  max-width: 400px;
-  padding: 20px;
-}
-
-#transferDataModal label {
-  font-weight: bold;
-  margin-top: 12px;
-}
-
-#transferDataModal input {
-  width: 100%;
-  padding: 8px;
-  margin-top: 6px;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-}
-
-#transferDataModal button {
-  margin-top: 15px;
-  padding: 10px 15px;
-}
-
 /* Tooltip */
 .tooltip {
   position: relative;
@@ -709,6 +675,11 @@ input[type="checkbox"] {
   font-size: 14px;
 }
 
+/* Cropper Styles */
+.cropper-container {
+  margin: 10px 0;
+}
+
 /* Responsive Design */
 @media (max-width: 768px) {
   .sidebar {
@@ -764,11 +735,6 @@ input[type="checkbox"] {
 
   .table-container {
     max-height: 300px;
-  }
-
-  .modal-content {
-    max-width: 90%;
-    margin: 50px auto;
   }
 }
 
