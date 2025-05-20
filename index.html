@@ -28,13 +28,13 @@
     <aside id="sidebar" class="sidebar">
       <div class="sidebar-overlay" onclick="toggleSidebar()"></div>
       <img src="icon-192.png" alt="CFT Logo" class="sidebar-logo" />
+      <button id="installBtn" style="display:none;" onclick="installPWA()"><span>📱</span> Install App</button>
       <button onclick="navigate('dashboard')"><span>🏠</span> Dashboard</button>
       <button onclick="navigate('newFile')"><span>📂</span> New Entry</button>
       <button onclick="navigate('return')"><span>↩️</span> Return File</button>
       <button onclick="navigate('fileFetcher')"><span>👤</span> File Fetcher</button>
       <button onclick="navigate('admin')"><span>🛡️</span> Admin</button>
       <button onclick="navigate('developersDisclaimer')"><span>ℹ️</span> Developers Disclaimer</button>
-<button id="installBtn" style="display:none;" onclick="installPWA()">Install App</button> 
     </aside>
 
     <!-- Main Screens -->
@@ -320,9 +320,9 @@
           <button onclick="backupData()">Backup to Local</button>
           <button onclick="triggerRestore()">Restore from Local</button>
           <button onclick="signInWithGoogle()">Sign in with Google</button>
-          <button id="backupToDrive" style="display:none;" onclick="backupToDrive()">Backup to Google Drive</button>
-          <button id="restoreFromDrive" style="display:none;" onclick="restoreFromDrive()">Restore from Google Drive</button>
-          <button id="shareBackup" style="display:none;" onclick="showShareBackup()">Share Backup</button>
+          <button onclick="triggerAutoBackup()">Manual Backup to Google Drive</button>
+          <button onclick="restoreFromDrive()">Restore from Google Drive</button>
+          <button onclick="showTransferDataModal()">Transfer Data to New Clerk</button>
         </div>
         <input type="file" id="dataRestore" accept=".json" style="display:none;" onchange="restoreData()" />
         <form id="adminForm" style="display:block;">
@@ -354,7 +354,7 @@
           <p>Developer: [Your Name]</p>
           <p>Contact: [Your Email or Placeholder]</p>
           <p>Version: 1.0.0</p>
-          <p>Last Updated: May 15, 2025</p>
+          <p>Last Updated: May 20, 2025</p>
         </div>
       </section>
 
@@ -403,18 +403,15 @@
         </div>
       </div>
 
-      <!-- Share Backup Modal -->
-      <div id="shareBackupModal" class="modal" onclick="closeModalIfOutside(event, 'shareBackupModal')">
+      <!-- Transfer Data Modal -->
+      <div id="transferDataModal" class="modal" onclick="closeModalIfOutside(event, 'transferDataModal')">
         <div class="modal-content">
-          <h3>Share Backup</h3>
-          <label>Select Backup:
-            <select id="backupFiles" required></select>
-          </label>
+          <h3>Transfer Data to New Clerk</h3>
           <label>Recipient Email:
-            <input type="email" id="shareEmail" placeholder="recipient@example.com" required />
+            <input type="email" id="transferEmail" placeholder="newclerk@example.com" required />
           </label>
-          <button onclick="shareBackup()">Share</button>
-          <button onclick="hideShareBackup()">Cancel</button>
+          <button onclick="transferData()">Transfer</button>
+          <button onclick="document.getElementById('transferDataModal').style.display='none';">Cancel</button>
         </div>
       </div>
 
