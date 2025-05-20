@@ -11,6 +11,7 @@ let analytics = JSON.parse(localStorage.getItem('analytics')) || {
   searchesPerformed: 0,
   backupsCreated: 0
 };
+let chartInstance = null;
 let deferredPrompt = null; // For PWA install prompt
 let lastBackupTimestamp = localStorage.getItem('lastBackupTimestamp') || 0;
 
@@ -242,7 +243,7 @@ async function restoreFromDrive() {
     for (const year of years.result.files) {
       const months = await gapi.client.drive.files.list({
         q: `'${year.id}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
-        fields: 'files(id, name)'
+        fields: 'files(id,independent: true,
       });
       for (const month of months.result.files) {
         const backups = await gapi.client.drive.files.list({
@@ -309,7 +310,7 @@ function deduplicateByProfile(profiles) {
   }).reverse();
 }
 
-async function showTransferDataModal() {
+function showTransferDataModal() {
   document.getElementById('transferDataModal').style.display = 'block';
 }
 
@@ -354,6 +355,30 @@ function maskCNIC(cnic) {
   return `${parts[0].slice(0, 2)}***-${parts[1].slice(0, 3)}****-${parts[2]}`;
 }
 
+// PWA Install Prompt
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredPrompt = e;
+  document.getElementById('installBtn').style.display = 'block';
+  console.log('PWA install prompt captured');
+});
+
+function installPWA() {
+  if (deferredPrompt) {
+    deferredPrompt.prompt();
+    deferredPrompt.userChoice.then((choiceResult) => {
+      if (choiceResult.outcome === 'accepted') {
+        console.log('User accepted the install prompt');
+        showToast('App installed successfully!');
+      } else {
+        console.log('User dismissed the install prompt');
+      }
+      deferredPrompt = null;
+      document.getElementById('installBtn').style.display = 'none';
+    });
+  }
+}
+
 window.onload = () => {
   console.log('app.js loaded successfully');
   initIndexedDB();
@@ -379,31 +404,13 @@ window.onload = () => {
   setupPhotoAdjust('userPhoto', 'userPhotoPreview', 'userPhotoAdjust');
   setupPhotoAdjust('profilePhoto', 'photoPreview', 'photoAdjust');
   setInterval(refreshGoogleToken, 60000);
-
-  // PWA Install Prompt
-  window.addEventListener('beforeinstallprompt', (e) => {
-    e.preventDefault();
-    deferredPrompt = e;
-    document.getElementById('installBtn').style.display = 'block';
-    console.log('PWA install prompt captured');
+  document.querySelector('.sidebar-overlay').addEventListener('click', () => {
+    if (window.innerWidth <= 768) {
+      document.getElementById('sidebar').classList.remove('active');
+      document.querySelector('.sidebar-overlay').classList.remove('active');
+    }
   });
 };
-
-function installPWA() {
-  if (deferredPrompt) {
-    deferredPrompt.prompt();
-    deferredPrompt.userChoice.then((choiceResult) => {
-      if (choiceResult.outcome === 'accepted') {
-        console.log('User accepted the install prompt');
-        showToast('App installed successfully!');
-      } else {
-        console.log('User dismissed the install prompt');
-      }
-      deferredPrompt = null;
-      document.getElementById('installBtn').style.display = 'none';
-    });
-  }
-}
 
 function setupPushNotifications() {
   if ('Notification' in window && navigator.serviceWorker) {
@@ -454,13 +461,6 @@ function toggleSidebar() {
   overlay.classList.toggle('active');
 }
 
-document.querySelector('.sidebar-overlay').addEventListener('click', () => {
-  if (window.innerWidth <= 768) {
-    document.getElementById('sidebar').classList.remove('active');
-    document.querySelector('.sidebar-overlay').classList.remove('active');
-  }
-});
-
 function closeModalIfOutside(event, modalId) {
   const modalContent = document.querySelector(`#${modalId} .modal-content`);
   if (!modalContent.contains(event.target)) {
@@ -468,6 +468,7 @@ function closeModalIfOutside(event, modalId) {
   }
 }
 
+// Admin Form Submission
 document.getElementById('adminForm').addEventListener('submit', (e) => {
   e.preventDefault();
   document.getElementById('loadingIndicator').style.display = 'block';
@@ -496,9 +497,7 @@ document.getElementById('adminForm').addEventListener('submit', (e) => {
           cnic: document.getElementById('cnic').value,
           pin: document.getElementById('pin').value,
           email: document.getElementById('email').value,
-          photo: photoData,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
+          photo: photoData
         };
         console.log('Saving userProfile:', userProfile);
         localStorage.setItem('userProfile', JSON.stringify(userProfile));
@@ -508,6 +507,7 @@ document.getElementById('adminForm').addEventListener('submit', (e) => {
         document.getElementById('savedProfile').style.display = 'block';
         updateSavedProfile();
         showToast('Profile saved successfully! Please sign in to Google Drive.');
+        console.log('Triggering Google Drive sign-in');
         signInWithGoogle();
         document.getElementById('loadingIndicator').style.display = 'none';
         navigate('dashboard');
@@ -567,6 +567,7 @@ function editUserProfile() {
   document.getElementById('saveProfileBtn').disabled = false;
 }
 
+// Photo Adjust Setup
 function setupPhotoAdjust(inputId, previewId, adjustContainerId) {
   const input = document.getElementById(inputId);
   const preview = document.getElementById(previewId);
@@ -748,7 +749,6 @@ function changePin() {
   const newPin = document.getElementById('resetPin').value;
   if (resetCnic === userProfile.cnic || resetCnic === userProfile.email) {
     userProfile.pin = newPin;
-    userProfile.updatedAt = new Date().toISOString();
     localStorage.setItem('userProfile', JSON.stringify(userProfile));
     syncLocalStorageToIndexedDB();
     showToast('PIN changed successfully');
@@ -779,6 +779,34 @@ function updateDashboardCards() {
   document.getElementById('cardTomorrow').innerHTML = `<span class="tooltip">Hearings scheduled for tomorrow</span><h3>${tomorrowHearings}</h3><p>Tomorrow Hearings</p>`;
   document.getElementById('cardOverdue').innerHTML = `<span class="tooltip">Files pending over 10 days</span><h3>${overdue}</h3><p>Overdue Files</p>`;
   document.getElementById('cardSearchPrev').innerHTML = `<span class="tooltip">Search all previous records</span><h3>Search</h3><p>Previous Records</p>`;
+
+  if (chartInstance) {
+    chartInstance.destroy();
+    chartInstance = null;
+  }
+
+  const ctx = document.getElementById('statsChart').getContext('2d');
+  chartInstance = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: ['Deliveries', 'Returns', 'Pending', 'Tomorrow', 'Overdue'],
+      datasets: [{
+        label: 'File Stats',
+        data: [deliveries, returns, pending, tomorrowHearings, overdue],
+        backgroundColor: ['#0288d1', '#4caf50', '#d32f2f', '#fb8c00', '#7b1fa2']
+      }]
+    },
+    options: {
+      scales: {
+        y: {
+          beginAtZero: true,
+          stepSize: 1,
+          ticks: { precision: 0 }
+        }
+      },
+      plugins: { legend: { display: false } }
+    }
+  });
 
   document.getElementById('cardDeliveries').onclick = () => { console.log('Clicked Deliveries'); showDashboardReport('deliveries'); };
   document.getElementById('cardReturns').onclick = () => { console.log('Clicked Returns'); showDashboardReport('returns'); };
@@ -1381,6 +1409,7 @@ function toggleProfileFields() {
   document.getElementById('profilePhoto').required = type !== 'advocate';
 }
 
+// Profile Form Submission
 document.getElementById('profileForm').addEventListener('submit', (e) => {
   e.preventDefault();
   document.getElementById('loadingIndicator').style.display = 'block';
@@ -1530,251 +1559,228 @@ function deleteProfile(name, type) {
 function triggerImport() {
   document.getElementById('profileImport').click();
 }
-
 function importProfiles() {
-  const file = document.getElementById('profileImport').files[0];
-  if (!file) return;
+  const fileInput = document.getElementById('profileImport');
+  const file = fileInput.files[0];
+  if (!file) {
+    showToast('Please select a CSV file to import');
+    return;
+  }
+  document.getElementById('loadingIndicator').style.display = 'block';
   const reader = new FileReader();
-  reader.onload = () => {
+  reader.onload = (e) => {
     try {
-      const importedProfiles = JSON.parse(reader.result);
-      if (!Array.isArray(importedProfiles)) throw new Error('Invalid profile data');
-      profiles = [...profiles, ...importedProfiles];
+      const csv = e.target.result;
+      const lines = csv.split('\n').filter(line => line.trim());
+      if (lines.length < 2) {
+        showToast('CSV file is empty or invalid');
+        document.getElementById('loadingIndicator').style.display = 'none';
+        return;
+      }
+      const headers = lines[0].split(',').map(h => h.trim());
+      const requiredHeaders = ['type', 'name', 'cellNo'];
+      const missingHeaders = requiredHeaders.filter(h => !headers.includes(h));
+      if (missingHeaders.length > 0) {
+        showToast(`Missing required headers: ${missingHeaders.join(', ')}`);
+        document.getElementById('loadingIndicator').style.display = 'none';
+        return;
+      }
+      const validTypes = ['munshi', 'advocate', 'colleague', 'other'];
+      let importedCount = 0;
+      for (let i = 1; i < lines.length; i++) {
+        const values = lines[i].split(',').map(v => v.trim());
+        if (values.length < headers.length) continue;
+        const profile = {};
+        headers.forEach((header, index) => {
+          profile[header] = values[index] || '';
+        });
+        if (!validTypes.includes(profile.type)) {
+          showToast(`Invalid profile type for ${profile.name}: ${profile.type}`);
+          continue;
+        }
+        if (!profile.name || !profile.cellNo) {
+          showToast(`Missing name or cellNo for profile at line ${i + 1}`);
+          continue;
+        }
+        const existingIndex = profiles.findIndex(p => p.name === profile.name && p.type === profile.type);
+        profile.createdAt = new Date().toISOString();
+        profile.updatedAt = new Date().toISOString();
+        profile.photo = profile.photo || '';
+        if (existingIndex >= 0) {
+          profiles[existingIndex] = profile;
+        } else {
+          profiles.push(profile);
+        }
+        importedCount++;
+      }
       localStorage.setItem('profiles', JSON.stringify(profiles));
       syncLocalStorageToIndexedDB();
-      showToast('Profiles imported successfully');
-      showProfileSearch();
+      showToast(`${importedCount} profile(s) imported successfully`);
+      renderProfiles();
+      fileInput.value = '';
+      document.getElementById('loadingIndicator').style.display = 'none';
     } catch (error) {
-      showToast('Failed to import profiles. Invalid file format.');
+      console.error('Import error:', error);
+      showToast('Failed to import profiles. Please check the CSV format.');
+      document.getElementById('loadingIndicator').style.display = 'none';
     }
+  };
+  reader.onerror = () => {
+    showToast('Error reading CSV file');
+    document.getElementById('loadingIndicator').style.display = 'none';
   };
   reader.readAsText(file);
 }
 
 function exportProfiles() {
-  const blob = new Blob([JSON.stringify(profiles, null, 2)], { type: 'application/json' });
+  let csv = 'type,name,cellNo,chamberNo,advocateName,advocateCell,designation,postedAt,cnic,relation\n';
+  profiles.forEach(p => {
+    csv += `${p.type},${p.name},${p.cellNo},${p.chamberNo || ''},${p.advocateName || ''},${p.advocateCell || ''},${p.designation || ''},${p.postedAt || ''},${p.cnic ? maskCNIC(p.cnic) : ''},${p.relation || ''}\n`;
+  });
+  const blob = new Blob([csv], { type: 'text/csv' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `profiles_${formatDate(new Date(), 'YYYYMMDD_HHMMSS')}.json`;
+  a.download = `profiles_${formatDate(new Date(), 'YYYYMMDD_HHMMSS')}.csv`;
   a.click();
   URL.revokeObjectURL(url);
+  showToast('Profiles exported successfully');
 }
 
-function backupData() {
-  const data = {
-    files,
-    profiles,
-    userProfile: { ...userProfile, pin: null, cnic: maskCNIC(userProfile.cnic) },
-    analytics
-  };
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `cft_backup_${formatDate(new Date(), 'YYYYMMDD_HHMMSS')}.json`;
-  a.click();
-  URL.revokeObjectURL(url);
-  analytics.backupsCreated++;
+// Utility Functions
+function showToast(message) {
+  const toast = document.createElement('div');
+  toast.className = 'toast';
+  toast.textContent = message;
+  document.body.appendChild(toast);
+  setTimeout(() => {
+    toast.classList.add('show');
+    setTimeout(() => {
+      toast.classList.remove('show');
+      setTimeout(() => toast.remove(), 300);
+    }, 3000);
+  }, 100);
+}
+
+function syncOfflineQueue() {
+  if (!navigator.onLine || !isGoogleTokenValid()) return;
+  const queue = [...offlineQueue];
+  offlineQueue = [];
+  localStorage.setItem('offlineQueue', JSON.stringify(offlineQueue));
+  syncLocalStorageToIndexedDB();
+  queue.forEach(item => {
+    if (item.action === 'autoBackup') {
+      triggerAutoBackup();
+    }
+  });
+}
+
+window.addEventListener('online', syncOfflineQueue);
+
+// Handle Back Button
+window.addEventListener('popstate', () => {
+  const screenId = location.hash.replace('#', '') || 'dashboard';
+  navigate(screenId);
+});
+
+// Service Worker Registration
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js').then(reg => {
+    console.log('Service Worker registered:', reg);
+  }).catch(err => {
+    console.error('Service Worker registration failed:', err);
+  });
+}
+
+// Analytics Tracking
+function trackAnalyticsEvent(eventName) {
+  analytics[eventName] = (analytics[eventName] || 0) + 1;
   localStorage.setItem('analytics', JSON.stringify(analytics));
   syncLocalStorageToIndexedDB();
 }
 
-function triggerRestore() {
-  document.getElementById('dataRestore').click();
-}
-
-function restoreData() {
-  const file = document.getElementById('dataRestore').files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = () => {
-    try {
-      const data = JSON.parse(reader.result);
-    if (!data.files || !data.profiles || !data.userProfile) {
-        throw new Error('Invalid backup data');
-      }
-      files = data.files;
-      profiles = data.profiles;
-      userProfile = { ...data.userProfile, pin: userProfile.pin || '' }; // Preserve existing PIN
-      analytics = data.analytics || analytics;
-      localStorage.setItem('files', JSON.stringify(files));
-      localStorage.setItem('profiles', JSON.stringify(profiles));
-      localStorage.setItem('userProfile', JSON.stringify(userProfile));
-      localStorage.setItem('analytics', JSON.stringify(analytics));
-      syncLocalStorageToIndexedDB();
-      showToast('Data restored successfully');
-      updateSavedProfile();
-      updateDashboardCards();
-      navigate('dashboard');
-    } catch (error) {
-      console.error('Restore error:', error);
-      showToast('Failed to restore data. Invalid file format.');
-    }
-  };
-  reader.onerror = () => {
-    showToast('Error reading backup file');
-  };
-  reader.readAsText(file);
-}
-
-function showToast(message) {
-  const toast = document.getElementById('toast');
-  toast.textContent = message;
-  toast.classList.add('show');
-  setTimeout(() => {
-    toast.classList.remove('show');
-  }, 3000);
-}
-
-// Service Worker for Offline Support
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/service-worker.js')
-      .then(registration => {
-        console.log('Service Worker registered:', registration);
-      })
-      .catch(error => {
-        console.error('Service Worker registration failed:', error);
-      });
-  });
-
-  // Sync offline queue when back online
-  window.addEventListener('online', () => {
-    if (offlineQueue.length > 0) {
-      offlineQueue.forEach(action => {
-        if (action.action === 'autoBackup') {
-          triggerAutoBackup();
-        }
-      });
-      offlineQueue = [];
-      localStorage.setItem('offlineQueue', JSON.stringify(offlineQueue));
-      syncLocalStorageToIndexedDB();
-      showToast('Offline actions synced');
-    }
-  });
-}
-
-// Analytics Chart
-function showAnalyticsChart() {
-  const chartData = {
-    labels: ['Files Entered', 'Searches Performed', 'Backups Created'],
-    datasets: [{
-      label: 'Analytics',
-      data: [analytics.filesEntered, analytics.searchesPerformed, analytics.backupsCreated],
-      backgroundColor: ['#4caf50', '#2196f3', '#ff9800'],
-      borderColor: ['#388e3c', '#1976d2', '#f57c00'],
-      borderWidth: 1
-    }]
-  };
-
-  ```chartjs
-  {
-    type: 'bar',
-    data: {
-      labels: ['Files Entered', 'Searches Performed', 'Backups Created'],
-      datasets: [{
-        label: 'Analytics',
-        data: [${analytics.filesEntered}, ${analytics.searchesPerformed}, ${analytics.backupsCreated}],
-        backgroundColor: ['#4caf50', '#2196f3', '#ff9800'],
-        borderColor: ['#388e3c', '#1976d2', '#f57c00'],
-        borderWidth: 1
-      }]
-    },
-    options: {
-      scales: {
-        y: {
-          beginAtZero: true,
-          ticks: { stepSize: 1 }
-        }
-      },
-      plugins: {
-        legend: { display: false },
-        title: {
-          display: true,
-          text: 'Application Analytics'
-        }
-      }
-    }
+// Handle Deep Linking
+function handleDeepLinks() {
+  const hash = window.location.hash.replace('#', '');
+  if (hash && userProfile) {
+    navigate(hash);
   }
-  // Keyboard Shortcuts
-document.addEventListener('keydown', (e) => {
-  if (e.ctrlKey && e.key === 's') {
-    e.preventDefault();
-    navigate('dashboard');
-  } else if (e.ctrlKey && e.key === 'f') {
-    e.preventDefault();
-    navigate('fileForm');
-  } else if (e.ctrlKey && e.key === 'r') {
-    e.preventDefault();
-    navigate('return');
-  } else if (e.ctrlKey && e.key === 'p') {
-    e.preventDefault();
-    navigate('fileFetcher');
-  }
-});
-
-// Security: Prevent XSS by sanitizing inputs
-function sanitizeInput(input) {
-  const div = document.createElement('div');
-  div.textContent = input;
-  return div.innerHTML;
 }
 
-// Apply sanitization to all inputs
-document.querySelectorAll('input[type="text"]').forEach(input => {
-  input.addEventListener('input', () => {
-    input.value = sanitizeInput(input.value);
-  });
-});
+// Initialize Deep Links on Load
+handleDeepLinks();
 
-// Logout Functionality
-function logout() {
-  promptPin((success) => {
-    if (success) {
-      localStorage.removeItem('userProfile');
-      localStorage.removeItem('gapi_token');
-      userProfile = null;
-      files = [];
-      profiles = [];
-      analytics = { filesEntered: 0, searchesPerformed: 0, backupsCreated: 0 };
-      localStorage.setItem('files', JSON.stringify(files));
-      localStorage.setItem('profiles', JSON.stringify(profiles));
-      localStorage.setItem('analytics', JSON.stringify(analytics));
-      localStorage.removeItem('lastBackupTimestamp');
-      syncLocalStorageToIndexedDB();
-      showToast('Logged out successfully');
-      navigate('admin');
-      document.getElementById('setupMessage').style.display = 'block';
-      document.getElementById('adminForm').style.display = 'block';
-      document.getElementById('savedProfile').style.display = 'none';
-    }
-  });
-}
-
-// Periodic Data Consistency Check
+// Periodic Data Sync
 setInterval(() => {
-  syncIndexedDBToLocalStorage();
-  if (files.length !== JSON.parse(localStorage.getItem('files') || '[]').length) {
-    console.warn('Data inconsistency detected in files');
-    files = JSON.parse(localStorage.getItem('files')) || [];
+  if (navigator.onLine && isGoogleTokenValid()) {
+    syncLocalStorageToIndexedDB();
+    triggerAutoBackup();
   }
-  if (profiles.length !== JSON.parse(localStorage.getItem('profiles') || '[]').length) {
-    console.warn('Data inconsistency detected in profiles');
-    profiles = JSON.parse(localStorage.getItem('profiles')) || [];
-  }
-}, 300000); // Every 5 minutes
+}, 3600000); // Every hour
 
-// Error Boundary
-window.addEventListener('error', (event) => {
-  console.error('Global error:', event.error);
-  showToast('An unexpected error occurred. Please try again.');
+// Handle Visibility Change for Background Sync
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && navigator.onLine && isGoogleTokenValid()) {
+    syncLocalStorageToIndexedDB();
+    syncOfflineQueue();
+  }
 });
 
-// Prevent accidental navigation away
-window.addEventListener('beforeunload', (e) => {
-  if (files.some(f => !f.returned) || document.getElementById('fileForm').dirty) {
-    e.preventDefault();
-    e.returnValue = 'You have unsaved changes. Are you sure you want to leave?';
-  }
-});
+// Prevent Form Resubmission on Refresh
+if (window.history.replaceState) {
+  window.history.replaceState(null, null, window.location.href);
+}
+
+// Handle Uncaught Errors
+window.onerror = (msg, url, lineNo, columnNo, error) => {
+  console.error('Uncaught error:', msg, url, lineNo, columnNo, error);
+  showToast('An error occurred. Please try again or contact support.');
+  document.getElementById('loadingIndicator').style.display = 'none';
+};
+
+// Handle Unhandled Promise Rejections
+window.onunhandledrejection = (event) => {
+  console.error('Unhandled promise rejection:', event.reason);
+  showToast('An error occurred. Please try again or contact support.');
+  document.getElementById('loadingIndicator').style.display = 'none';
+};
+
+// Expose Functions for HTML Event Handlers
+window.navigate = navigate;
+window.toggleSidebar = toggleSidebar;
+window.closeModalIfOutside = closeModalIfOutside;
+window.installPWA = installPWA;
+window.signInWithGoogle = signInWithGoogle;
+window.triggerAutoBackup = triggerAutoBackup;
+window.restoreFromDrive = restoreFromDrive;
+window.showTransferDataModal = showTransferDataModal;
+window.transferData = transferData;
+window.showDisclaimerModal = showDisclaimerModal;
+window.submitPin = window.submitPin || (() => {});
+window.showChangePin = showChangePin;
+window.changePin = changePin;
+window.hideChangePin = hideChangePin;
+window.editUserProfile = editUserProfile;
+window.showProfileDetails = showProfileDetails;
+window.closeProfileModal = closeProfileModal;
+window.performDashboardSearch = performDashboardSearch;
+window.printDashboardReport = printDashboardReport;
+window.exportDashboardReport = exportDashboardReport;
+window.autoFillCMS = autoFillCMS;
+window.toggleCriminalFields = toggleCriminalFields;
+window.toggleCopyAgency = toggleCopyAgency;
+window.suggestProfiles = suggestProfiles;
+window.filterPendingFiles = filterPendingFiles;
+window.returnFile = returnFile;
+window.bulkReturnFiles = bulkReturnFiles;
+window.showProfileForm = showProfileForm;
+window.showProfileSearch = showProfileSearch;
+window.toggleProfileFields = toggleProfileFields;
+window.editProfile = editProfile;
+window.deleteProfile = deleteProfile;
+window.triggerImport = triggerImport;
+window.importProfiles = importProfiles;
+window.exportProfiles = exportProfiles;
+
+// Log Application Start
+console.log('Court File Tracker initialized successfully');
