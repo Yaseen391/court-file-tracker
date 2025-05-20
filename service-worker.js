@@ -1,5 +1,5 @@
 // Service Worker for Court File Tracker
-const CACHE_NAME = 'cft-cache-v2'; // Updated cache name to force re-cache
+const CACHE_NAME = 'cft-cache-v3'; // Updated cache name to force re-cache
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -9,15 +9,14 @@ const STATIC_ASSETS = [
   '/icon-512.png',
   '/icon-192-maskable.png',
   '/icon-512-maskable.png',
-  '/manifest.json', // Added manifest
-  '/offline.html', // Added offline page
-  'https://cdnjs.cloudflare.com/ajax/libs/croppie/2.6.5/croppie.min.css',
-  'https://cdnjs.cloudflare.com/ajax/libs/croppie/2.6.5/croppie.min.js',
-  'https://cdn.jsdelivr.net/npm/chart.js',
+  '/manifest.json',
+  '/offline.html',
   'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
-  'https://cdn.jsdelivr.net/npm/fuse.js@6.6.2/dist/fuse.min.js',
-  'https://accounts.google.com/gsi/client', // Added Google API client
-  'https://apis.google.com/js/api.js' // Added Google API script
+  'https://cdnjs.cloudflare.com/ajax/libs/fuse.js/6.6.2/fuse.min.js',
+  'https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js',
+  'https://cdn.jsdelivr.net/npm/exif-js',
+  'https://accounts.google.com/gsi/client',
+  'https://apis.google.com/js/api.js'
 ];
 
 // Install Event: Cache static assets
@@ -76,7 +75,7 @@ self.addEventListener('fetch', (event) => {
         return response;
       }
       return fetch(event.request).then((networkResponse) => {
-        // Cache new resources
+        // Cache new resources for GET requests (exclude APIs)
         if (event.request.method === 'GET' && !url.pathname.startsWith('/api')) {
           return caches.open(CACHE_NAME).then((cache) => {
             cache.put(event.request, networkResponse.clone());
