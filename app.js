@@ -13,6 +13,17 @@ let analytics = JSON.parse(localStorage.getItem('analytics')) || {
 };
 let chartInstance = null;
 let deferredPrompt; // Added for PWA install prompt
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('service-worker.js')
+      .then(registration => {
+        console.log('ServiceWorker registered: ', registration);
+      })
+      .catch(error => {
+        console.log('ServiceWorker registration failed: ', error);
+      });
+  });
+}
 
 // IndexedDB Setup
 const dbName = 'CourtFileTrackerDB';
