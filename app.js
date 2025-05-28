@@ -11,12 +11,12 @@ let analytics = JSON.parse(localStorage.getItem('analytics')) || {
   backupsCreated: 0
 };
 let chartInstance = null;
-let deferredPrompt = null; // Ensure single declaration
-let backupFolderHandle = null;
+let deferredPrompt;
+let backupFolderHandle = null; // Store folder handle for backups
 
 // IndexedDB Setup
 const dbName = 'CourtFileTrackerDB';
-const dbVersion = 2;
+const dbVersion = 2; // Updated version for new folder store
 let db;
 
 function initIndexedDB() {
@@ -27,13 +27,13 @@ function initIndexedDB() {
       db.createObjectStore('data', { keyPath: 'key' });
     }
     if (!db.objectStoreNames.contains('folder')) {
-      db.createObjectStore('folder', { keyPath: 'id' });
+      db.createObjectStore('folder', { keyPath: 'id' }); // New store for folder handle
     }
   };
   request.onsuccess = (event) => {
     db = event.target.result;
     syncLocalStorageToIndexedDB();
-    loadBackupFolder();
+    loadBackupFolder(); // Load stored folder handle
   };
   request.onerror = () => console.error('IndexedDB error');
 }
@@ -77,15 +77,23 @@ async function loadBackupFolder() {
   request.onsuccess = async () => {
     if (request.result && request.result.handle) {
       try {
-        backupFolderHandle = request.result.handle;
-        // Check permission without requesting (avoids SecurityError)
-        const permission = await backupFolderHandle.queryPermission({ mode: 'readwrite' });
-        if (permission !== 'granted') {
-          backupFolderHandle = null; // Clear handle if permission is not granted
+        // Verify folder permission
+        const permission = await request.result.handle.queryPermission({ mode: 'readwrite' });
+        if (permission === 'granted') {
+          backupFolderHandle = request.result.handle;
+        } else {
+          // Request permission
+          if (await request.result.handle.requestPermission({ mode: 'readwrite' }) === 'granted') {
+            backupFolderHandle = request.result.handle;
+          } else {
+            showToast('Permission to access backup folder denied');
+            backupFolderHandle = null;
+          }
         }
       } catch (error) {
         console.error('Error loading backup folder:', error);
-        // Suppress toast on page load to avoid spamming
+        showToast('Failed to load backup folder');
+        backupFolderHandle = null;
       }
     }
   };
@@ -116,25 +124,30 @@ async function selectBackupFolder() {
 
 function scheduleDailyBackup() {
   const now = new Date();
-  const nextHour = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours() + 1, 0, 0);
-  const timeUntilNextHour = nextHour.getTime() - now.getTime();
+  const midnight = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate() + 1,
+    0, 0, 0
+  );
+  const timeUntilMidnight = midnight.getTime() - now.getTime();
 
   setTimeout(() => {
     performDailyBackup();
-    setInterval(performDailyBackup, 3600000); // Every hour
-  }, timeUntilNextHour);
+    setInterval(performDailyBackup, 24 * 60 * 60 * 1000); // Every 24 hours
+  }, timeUntilMidnight);
 }
 
 async function performDailyBackup() {
   if (!backupFolderHandle) {
-    console.log('No backup folder selected, skipping backup');
+    showToast('No backup folder selected. Please select a folder.');
     return;
   }
   try {
     const today = new Date().toLocaleDateString('en-CA');
     const dailyFiles = files.filter(f => new Date(f.deliveredAt).toLocaleDateString('en-CA') === today);
     const data = { files: dailyFiles, profiles, analytics };
-    const timestamp = formatDate(new Date(), 'YYYYMMDD_HHmmss');
+    const timestamp = formatDate(new Date(), 'YYYYMMDD');
     const fileName = `backup_${timestamp}.json`;
     const fileHandle = await backupFolderHandle.getFileHandle(fileName, { create: true });
     const writable = await fileHandle.createWritable();
@@ -143,10 +156,10 @@ async function performDailyBackup() {
     analytics.backupsCreated++;
     localStorage.setItem('analytics', JSON.stringify(analytics));
     syncLocalStorageToIndexedDB();
-    showToast(`Hourly backup created: ${fileName}`);
+    showToast(`Daily backup created: ${fileName}`);
   } catch (error) {
-    console.error('Hourly backup error:', error);
-    showToast('Failed to create hourly backup');
+    console.error('Daily backup error:', error);
+    showToast('Failed to create daily backup');
   }
 }
 
@@ -176,41 +189,32 @@ window.onload = () => {
   setupPhotoAdjust('profilePhoto', 'photoPreview', 'photoAdjust');
   scheduleDailyBackup();
 
-  // Sidebar overlay listeners
+  // Add touch event listener for sidebar overlay
   const overlay = document.querySelector('.sidebar-overlay');
-  if (overlay) {
-    overlay.addEventListener('click', toggleSidebar);
-    overlay.addEventListener('touchstart', (e) => {
-      e.preventDefault();
-      toggleSidebar();
-    });
-  }
+  overlay.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    toggleSidebar();
+  });
 
   // PWA Install Prompt
   window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();
     deferredPrompt = e;
-    const installBtn = document.getElementById('installBtn');
-    if (installBtn) {
-      installBtn.style.display = 'block';
-    }
+    document.getElementById('installBtn').style.display = 'block';
   });
 
-  const installBtn = document.getElementById('installBtn');
-  if (installBtn) {
-    installBtn.addEventListener('click', () => {
-      if (deferredPrompt) {
-        deferredPrompt.prompt();
-        deferredPrompt.userChoice.then((choiceResult) => {
-          if (choiceResult.outcome === 'accepted') {
-            showToast('App installation started');
-          }
-          deferredPrompt = null;
-          installBtn.style.display = 'none';
-        });
-      }
-    });
-  }
+  document.getElementById('installBtn').addEventListener('click', () => {
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      deferredPrompt.userChoice.then((choiceResult) => {
+        if (choiceResult.outcome === 'accepted') {
+          showToast('App installation started');
+        }
+        deferredPrompt = null;
+        document.getElementById('installBtn').style.display = 'none';
+      });
+    }
+  });
 };
 
 function setupPushNotifications() {
@@ -238,36 +242,28 @@ function checkOverdueFiles() {
 
 function navigate(screenId) {
   document.querySelectorAll('.screen').forEach(screen => screen.classList.remove('active'));
-  const screen = document.getElementById(screenId);
-  if (screen) {
-    screen.classList.add('active');
-  }
+  document.getElementById(screenId).classList.add('active');
   document.querySelectorAll('.sidebar button').forEach(btn => btn.classList.remove('active'));
-  const navBtn = document.querySelector(`.sidebar button[onclick="navigate('${screenId}')"]`);
-  if (navBtn) {
-    navBtn.classList.add('active');
-  }
+  document.querySelector(`.sidebar button[onclick="navigate('${screenId}')"]`).classList.add('active');
   if (screenId === 'dashboard') updateDashboardCards();
   if (screenId === 'return') filterPendingFiles();
   if (screenId === 'fileFetcher') renderProfiles();
   if (window.innerWidth <= 768) {
-    toggleSidebar(false); // Close sidebar on mobile
+    document.getElementById('sidebar').classList.remove('active');
+    document.querySelector('.sidebar-overlay').classList.remove('active');
   }
 }
 
-function toggleSidebar(open = null) {
+function toggleSidebar() {
   const sidebar = document.getElementById('sidebar');
   const overlay = document.querySelector('.sidebar-overlay');
-  if (sidebar && overlay) {
-    const shouldOpen = open !== null ? open : !sidebar.classList.contains('active');
-    sidebar.classList.toggle('active', shouldOpen);
-    overlay.classList.toggle('active', shouldOpen);
-  }
+  sidebar.classList.toggle('active');
+  overlay.classList.toggle('active');
 }
 
 function closeModalIfOutside(event, modalId) {
   const modalContent = document.querySelector(`#${modalId} .modal-content`);
-  if (modalContent && !modalContent.contains(event.target)) {
+  if (!modalContent.contains(event.target)) {
     document.getElementById(modalId).style.display = 'none';
   }
 }
@@ -341,7 +337,6 @@ document.getElementById('adminForm').addEventListener('submit', (e) => {
 });
 
 function updateSavedProfile() {
-  if (!userProfile) return;
   document.getElementById('savedClerkName').textContent = userProfile.clerkName;
   document.getElementById('savedJudgeName').textContent = userProfile.judgeName;
   document.getElementById('savedCourtName').textContent = userProfile.courtName;
@@ -406,10 +401,11 @@ function setupPhotoAdjust(inputId, previewId, adjustContainerId) {
           preview.src = reader.result;
           preview.style.display = 'block';
           offsetX = 0;
+          offsetY = 0;
           drawImage(orientation);
           let quality = 0.8;
           let dataUrl = canvas.toDataURL('image/jpeg', quality);
-          while (dataUrl.length > 100 * 24 && quality > 0.1) {
+          while (dataUrl.length > 100 * 1024 && quality > 0.1) {
             quality -= 0.1;
             dataUrl = canvas.toDataURL('image/jpeg', quality);
           }
@@ -516,45 +512,33 @@ function setupPhotoAdjust(inputId, previewId, adjustContainerId) {
 }
 
 function toggleSaveButton() {
-  const saveBtn = document.getElementById('saveProfileBtn');
-  if (saveBtn) {
-    saveBtn.disabled = !document.getElementById('agreeTerms').checked;
-  }
+  document.getElementById('saveProfileBtn').disabled = !document.getElementById('agreeTerms').checked;
 }
 
 function showDisclaimerModal() {
-  const modal = document.getElementById('disclaimerModal');
-  if (modal) {
-    modal.style.display = 'block';
-  }
+  document.getElementById('disclaimerModal').style.display = 'block';
 }
 
 function promptPin(callback) {
-  const modal = document.getElementById('pinModal');
-  if (modal) {
-    modal.style.display = 'block';
-    document.getElementById('pinInput').value = '';
-    document.getElementById('pinInput').focus();
-    window.submitPin = () => {
-      const pin = document.getElementById('pinInput').value;
-      modal.style.display = 'none';
-      if (pin === userProfile.pin) {
-        callback(true);
-      } else {
-        showToast('Incorrect PIN');
-        callback(false);
-      }
-    };
-  }
+  document.getElementById('pinModal').style.display = 'block';
+  document.getElementById('pinInput').value = '';
+  document.getElementById('pinInput').focus();
+  window.submitPin = () => {
+    const pin = document.getElementById('pinInput').value;
+    document.getElementById('pinModal').style.display = 'none';
+    if (pin === userProfile.pin) {
+      callback(true);
+    } else {
+      showToast('Incorrect PIN');
+      callback(false);
+    }
+  };
 }
 
 function showChangePin() {
-  const modal = document.getElementById('changePinModal');
-  if (modal) {
-    modal.style.display = 'block';
-    document.getElementById('resetCnic').value = '';
-    document.getElementById('resetPin').value = '';
-  }
+  document.getElementById('changePinModal').style.display = 'block';
+  document.getElementById('resetCnic').value = '';
+  document.getElementById('resetPin').value = '';
 }
 
 function changePin() {
@@ -572,10 +556,7 @@ function changePin() {
 }
 
 function hideChangePin() {
-  const modal = document.getElementById('changePinModal');
-  if (modal) {
-    modal.style.display = 'none';
-  }
+  document.getElementById('changePinModal').style.display = 'none';
 }
 
 function updateDashboardCards() {
@@ -590,19 +571,12 @@ function updateDashboardCards() {
   const tomorrowHearings = files.filter(f => new Date(f.date).toLocaleDateString('en-CA') === tomorrow).length;
   const overdue = files.filter(f => !f.returned && new Date(f.deliveredAt) < tenDaysAgo).length;
 
-  const cardDeliveries = document.getElementById('cardDeliveries');
-  const cardReturns = document.getElementById('cardReturns');
-  const cardPending = document.getElementById('cardPending');
-  const cardTomorrow = document.getElementById('cardTomorrow');
-  const cardOverdue = document.getElementById('cardOverdue');
-  const cardSearchPrev = document.getElementById('cardSearchPrev');
-
-  if (cardDeliveries) cardDeliveries.innerHTML = `<span class="tooltip">Files delivered today</span><h3>${deliveries}</h3><p>Deliveries Today</p>`;
-  if (cardReturns) cardReturns.innerHTML = `<span class="tooltip">Files returned today</span><h3>${returns}</h3><p>Returns Today</p>`;
-  if (cardPending) cardPending.innerHTML = `<span class="tooltip">Files not yet returned</span><h3>${pending}</h3><p>Pending Files</p>`;
-  if (cardTomorrow) cardTomorrow.innerHTML = `<span class="tooltip">Hearings scheduled for tomorrow</span><h3>${tomorrowHearings}</h3><p>Tomorrow Hearings</p>`;
-  if (cardOverdue) cardOverdue.innerHTML = `<span class="tooltip">Files pending over 10 days</span><h3>${overdue}</h3><p>Overdue Files</p>`;
-  if (cardSearchPrev) cardSearchPrev.innerHTML = `<span class="tooltip">Search all previous records</span><h3>Search</h3><p>Previous Records</p>`;
+  document.getElementById('cardDeliveries').innerHTML = `<span class="tooltip">Files delivered today</span><h3>${deliveries}</h3><p>Deliveries Today</p>`;
+  document.getElementById('cardReturns').innerHTML = `<span class="tooltip">Files returned today</span><h3>${returns}</h3><p>Returns Today</p>`;
+  document.getElementById('cardPending').innerHTML = `<span class="tooltip">Files not yet returned</span><h3>${pending}</h3><p>Pending Files</p>`;
+  document.getElementById('cardTomorrow').innerHTML = `<span class="tooltip">Hearings scheduled for tomorrow</span><h3>${tomorrowHearings}</h3><p>Tomorrow Hearings</p>`;
+  document.getElementById('cardOverdue').innerHTML = `<span class="tooltip">Files pending over 10 days</span><h3>${overdue}</h3><p>Overdue Files</p>`;
+  document.getElementById('cardSearchPrev').innerHTML = `<span class="tooltip">Search all previous records</span><h3>Search</h3><p>Previous Records</p>`;
 
   if (chartInstance) {
     chartInstance.destroy();
@@ -632,30 +606,24 @@ function updateDashboardCards() {
     }
   });
 
-  if (cardDeliveries) cardDeliveries.onclick = () => showDashboardReport('deliveries');
-  if (cardReturns) cardReturns.onclick = () => showDashboardReport('returns');
-  if (cardPending) cardPending.onclick = () => showDashboardReport('pending');
-  if (cardTomorrow) cardTomorrow.onclick = () => showDashboardReport('tomorrow');
-  if (cardOverdue) cardOverdue.onclick = () => showDashboardReport('overdue');
-  if (cardSearchPrev) cardSearchPrev.onclick = () => showDashboardReport('searchPrev');
+  document.getElementById('cardDeliveries').onclick = () => { console.log('Clicked Deliveries'); showDashboardReport('deliveries'); };
+  document.getElementById('cardReturns').onclick = () => { console.log('Clicked Returns'); showDashboardReport('returns'); };
+  document.getElementById('cardPending').onclick = () => { console.log('Clicked Pending'); showDashboardReport('pending'); };
+  document.getElementById('cardTomorrow').onclick = () => { console.log('Clicked Tomorrow'); showDashboardReport('tomorrow'); };
+  document.getElementById('cardOverdue').onclick = () => { console.log('Clicked Overdue'); showDashboardReport('overdue'); };
+  document.getElementById('cardSearchPrev').onclick = () => { console.log('Clicked SearchPrev'); showDashboardReport('searchPrev'); };
 }
 
 function showDashboardReport(type) {
   console.log(`Showing report for type: ${type}`);
-  const panel = document.getElementById('dashboardReportPanel');
-  if (panel) {
-    panel.style.display = 'block';
-  }
+  document.getElementById('dashboardReportPanel').style.display = 'block';
   document.getElementById('loadingIndicator').style.display = 'block';
-  const searchPrevRecords = document.getElementById('searchPrevRecords');
-  if (searchPrevRecords) {
-    searchPrevRecords.style.display = type === 'searchPrev' ? 'block' : 'none';
-  }
+  document.getElementById('searchPrevRecords').style.display = type === 'searchPrev' ? 'block' : 'none';
   currentPage = 1;
 
   const today = new Date().toLocaleDateString('en-CA');
   const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toLocaleDateString('en-CA');
-  const tenDaysAgo = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000);
+  const tenDaysAgo = new Date(Date.now() - 10 * 24 * 60 * 1000);
 
   let filteredFiles = files;
   let title = '';
@@ -702,9 +670,7 @@ let sortColumn = null;
 let sortDirection = 1;
 
 function renderReportTable() {
-  const table = document.getElementById('dashboardReportTable');
-  if (!table) return;
-  const tbody = table.querySelector('tbody');
+  const tbody = document.getElementById('dashboardReportTable').querySelector('tbody');
   tbody.innerHTML = '';
 
   let sortedData = [...currentReportData];
@@ -809,14 +775,9 @@ document.getElementById('dashboardReportTable').querySelectorAll('th').forEach((
 });
 
 function updatePagination(totalItems) {
-  const pageInfo = document.getElementById('pageInfo');
-  if (pageInfo) {
-    pageInfo.textContent = `Page ${currentPage} of ${Math.ceil(totalItems / itemsPerPage)}`;
-  }
-  const prevPage = document.getElementById('prevPage');
-  const nextPage = document.getElementById('nextPage');
-  if (prevPage) prevPage.disabled = currentPage === 1;
-  if (nextPage) nextPage.disabled = currentPage === Math.ceil(totalItems / itemsPerPage);
+  document.getElementById('pageInfo').textContent = `Page ${currentPage} of ${Math.ceil(totalItems / itemsPerPage)}`;
+  document.getElementById('prevPage').disabled = currentPage === 1;
+  document.getElementById('nextPage').disabled = currentPage === Math.ceil(totalItems / itemsPerPage);
 }
 
 document.getElementById('prevPage').onclick = () => {
@@ -845,7 +806,7 @@ function formatDate(date, format = 'YYYY-MM-DD') {
   if (format === 'YYYYMMDD') {
     return `${year}${month}${day}`;
   }
-  if (format === 'YYYYMMDD_HHmmss') {
+  if (format === 'YYYYMMDD_HHMMSS') {
     return `${year}${month}${day}_${hours}${minutes}${seconds}`;
   }
   if (format === 'YYYY-MM-DD HH:mm:ss') {
@@ -856,8 +817,6 @@ function formatDate(date, format = 'YYYY-MM-DD') {
 
 function showProfileDetails(name, type) {
   const profile = profiles.find(p => p.name === name && p.type === type) || {};
-  const modal = document.getElementById('profileModal');
-  if (!modal) return;
   document.getElementById('profileModalTitle').textContent = `${name} (${type})`;
   const table = document.getElementById('profileModalTable');
   table.innerHTML = `
@@ -880,14 +839,11 @@ function showProfileDetails(name, type) {
     document.getElementById('profileModalPhoto').style.display = 'none';
     document.getElementById('profileModalPhotoZoom').style.display = 'none';
   }
-  modal.style.display = 'block';
+  document.getElementById('profileModal').style.display = 'block';
 }
 
 function closeProfileModal() {
-  const modal = document.getElementById('profileModal');
-  if (modal) {
-    modal.style.display = 'none';
-  }
+  document.getElementById('profileModal').style.display = 'none';
 }
 
 function performDashboardSearch() {
@@ -968,7 +924,7 @@ function exportDashboardReport(format) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `report_${formatDate(new Date(), 'YYYYMMDD_HHmmss')}.csv`;
+    a.download = `report_${formatDate(new Date(), 'YYYYMMDD_HHMMSS')}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   } else if (format === 'pdf') {
@@ -983,7 +939,7 @@ function exportDashboardReport(format) {
       styles: { fontSize: 8 },
       columnStyles: { 0: { cellWidth: 10 }, 1: { cellWidth: 20 }, 2: { cellWidth: 30 } }
     });
-    doc.save(`report_${formatDate(new Date(), 'YYYYMMDD_HHmmss')}.pdf`);
+    doc.save(`report_${formatDate(new Date(), 'YYYYMMDD_HHMMSS')}.pdf`);
   }
 }
 
@@ -1093,22 +1049,15 @@ function autoFillCMS() {
 }
 
 function toggleCriminalFields() {
-  const criminalFields = document.getElementById('criminalFields');
-  if (criminalFields) {
-    criminalFields.style.display = document.getElementById('caseType').value === 'criminal' ? 'block' : 'none';
-  }
+  document.getElementById('criminalFields').style.display = document.getElementById('caseType').value === 'criminal' ? 'block' : 'none';
 }
 
 function toggleCopyAgency() {
-  const copyAgencyFields = document.getElementById('copyAgencyFields');
-  if (copyAgencyFields) {
-    copyAgencyFields.style.display = document.getElementById('copyAgency').checked ? 'block' : 'none';
-  }
+  document.getElementById('copyAgencyFields').style.display = document.getElementById('copyAgency').checked ? 'block' : 'none';
 }
 
 function suggestProfiles(input, inputId) {
   const suggestions = document.getElementById(inputId === 'deliveredTo' ? 'suggestions' : 'searchSuggestions');
-  if (!suggestions) return;
   suggestions.innerHTML = '';
   if (!input) return;
   const fuse = new Fuse(profiles, {
@@ -1142,9 +1091,7 @@ function suggestProfiles(input, inputId) {
 function filterPendingFiles() {
   const cms = document.getElementById('returnCms').value;
   const title = document.getElementById('returnTitle').value.toLowerCase();
-  const table = document.getElementById('pendingFilesTable');
-  if (!table) return;
-  const tbody = table.querySelector('tbody');
+  const tbody = document.getElementById('pendingFilesTable').querySelector('tbody');
   tbody.innerHTML = '';
   const filteredFiles = files.filter(f => !f.returned && (!cms || f.cmsNo.toString().includes(cms)) && (!title || f.title.toLowerCase().includes(title)));
   filteredFiles.forEach(f => {
@@ -1204,36 +1151,25 @@ function bulkReturnFiles() {
 }
 
 function showProfileForm() {
-  const profileForm = document.getElementById('profileForm');
-  const profileSearchSection = document.getElementById('profileSearchSection');
-  const profileList = document.getElementById('profileList');
-  if (profileForm) profileForm.style.display = 'block';
-  if (profileSearchSection) profileSearchSection.style.display = 'none';
-  if (profileList) profileList.style.display = 'none';
-  const profileType = document.getElementById('profileType');
-  if (profileType) profileType.value = '';
-  const profileFields = document.getElementById('profileFields');
-  if (profileFields) profileFields.innerHTML = '';
-  const profilePhoto = document.getElementById('profilePhoto');
-  if (profilePhoto) profilePhoto.value = '';
-  const photoAdjust = document.getElementById('photoAdjust');
-  if (photoAdjust) photoAdjust.style.display = 'none';
+  document.getElementById('profileForm').style.display = 'block';
+  document.getElementById('profileSearchSection').style.display = 'none';
+  document.getElementById('profileList').style.display = 'none';
+  document.getElementById('profileType').value = '';
+  document.getElementById('profileFields').innerHTML = '';
+  document.getElementById('profilePhoto').value = '';
+  document.getElementById('photoAdjust').style.display = 'none';
 }
 
 function showProfileSearch() {
-  const profileForm = document.getElementById('profileForm');
-  const profileSearchSection = document.getElementById('profileSearchSection');
-  const profileList = document.getElementById('profileList');
-  if (profileForm) profileForm.style.display = 'none';
-  if (profileSearchSection) profileSearchSection.style.display = 'block';
-  if (profileList) profileList.style.display = 'block';
+  document.getElementById('profileForm').style.display = 'none';
+  document.getElementById('profileSearchSection').style.display = 'block';
+  document.getElementById('profileList').style.display = 'block';
   renderProfiles();
 }
 
 function toggleProfileFields() {
   const type = document.getElementById('profileType').value;
   const fields = document.getElementById('profileFields');
-  if (!fields) return;
   fields.innerHTML = `
     <label>Name: <span class="required">*</span><input type="text" id="profileName" required /></label>
     <label>Cell No: <span class="required">*</span><input type="text" id="cellNo" required /></label>
@@ -1259,14 +1195,8 @@ function toggleProfileFields() {
       <label>Relation: <input type="text" id="relation" /></label>
     `;
   }
-  const photoRequired = document.getElementById('photoRequired');
-  const profilePhoto = document.getElementById('profilePhoto');
-  if (photoRequired) {
-    photoRequired.style.display = type === 'none' ? 'inline' : '';
-}
-if if (profilePhoto) {
-    profilePhoto.required = type !== 'advocate';
-}
+  document.getElementById('photoRequired').style.display = type === 'advocate' ? 'none' : 'inline';
+  document.getElementById('profilePhoto').required = type !== 'advocate';
 }
 
 // Profile Form Submission
@@ -1289,7 +1219,7 @@ document.getElementById('profileForm').addEventListener('submit', (e) => {
 
     const processPhoto = (photoData) => {
       const profile = {
-        type: profileType,
+        type: document.getElementById('profileType').value,
         name: document.getElementById('profileName').value,
         cellNo: document.getElementById('cellNo').value,
         chamberNo: document.getElementById('chamberNo') ? document.getElementById('chamberNo').value : '',
@@ -1334,7 +1264,7 @@ document.getElementById('profileForm').addEventListener('submit', (e) => {
         showToast('Failed to read photo. Please try again.');
         document.getElementById('loadingIndicator').style.display = 'none';
       };
-      reader.readAsDataURL(file);
+      reader.readAsDataURL(photo);
     } else {
       console.log('No photo provided (Advocate profile)');
       processPhoto('');
@@ -1349,9 +1279,7 @@ document.getElementById('profileForm').addEventListener('submit', (e) => {
 function renderProfiles() {
   const typeFilter = document.getElementById('profileFilterType').value;
   const search = document.getElementById('profileSearch').value.toLowerCase();
-  const table = document.getElementById('profileTable');
-  if (!table) return;
-  const tbody = table.querySelector('tbody');
+  const tbody = document.getElementById('profileTable').querySelector('tbody');
   tbody.innerHTML = '';
   let filteredProfiles = profiles;
   if (typeFilter) {
@@ -1362,82 +1290,81 @@ function renderProfiles() {
       keys: ['name', 'cellNo', 'chamberNo', 'advocateName', 'designation'],
       threshold: 0.3
     });
-    filteredProfiles = filteredProfiles.search(search).map(result => result.item));
-    }
-
-  filteredFiles.forEach(p => {
-    const delivered = document.filter(f => f.deliveredToName === p.name && p.name === p.type && p.deliveredToType).length;
-    const pending = document.filter(f => f.deliveredToName === p.name && p.name === f.deliveredToType && !p.returned && f.returned).length;
+    filteredProfiles = fuse.search(search).map(result => result.item);
+  }
+  filteredProfiles.forEach(p => {
+    const delivered = files.filter(f => f.deliveredToName === p.name && f.deliveredToType === p.type).length;
+    const pending = files.filter(f => f.deliveredToName === p.name && f.deliveredToType === p.type && !f.returned).length;
     const row = document.createElement('tr');
-    row.innerHTML = = `
-        <td><img src="${p.photo || 'icon-192.png'}" style="width:50px;height:50px;border-radius:50%;border:1px solid #ccc;"></td>
-      <td>${td>${p.name}</td>
-      <td>${td>${p.type}</td>
-      <td>${td>${p.cell}</td>
-      <td>${tdNo || p.chamber || ''}</td></td>
+    row.innerHTML = `
+      <td><img src="${p.photo || 'icon-192.png'}" style="width:50px;height:50px;border-radius:50%;border:1px solid #ccc;"></td>
+      <td>${p.name}</td>
+      <td>${p.type}</td>
+      <td>${p.cellNo}</td>
+      <td>${p.chamberNo || ''}</td>
       <td>${delivered}</td>
       <td>${pending}</td>
-      `;
+      <td>
+        <button onclick="editProfile('${p.name}', '${p.type}')">Edit</button>
+        <button onclick="deleteProfile('${p.name}', '${p.type}')">Delete</button>
+      </td>
+    `;
     tbody.appendChild(row);
   });
 }
 
-function editProfile(name, type, type) {
-  const profile = profiles.find(p => p.name === p.name && p.type === type && type);
+function editProfile(name, type) {
+  const profile = profiles.find(p => p.name === name && p.type === type);
   if (!profile) return;
   document.getElementById('profileForm').style.display = 'block';
   document.getElementById('profileSearchSection').style.display = 'none';
   document.getElementById('profileList').style.display = 'none';
-  list';
-  document.getElementById('profileType').value = profile.type; = profileType;
+  document.getElementById('profileType').value = profile.type;
   toggleProfileFields();
   document.getElementById('profileName').value = profile.name;
   document.getElementById('cellNo').value = profile.cellNo;
-  if (document.getElementById('chamberNo')) document.getElementById('chamberNo').value = profile.chamberNo || '' || '';
-  if (document.getElementById('advocateName')) document.getElementById('advocateName').value = profile.advocateName || '' || '' || '';
-  if (document.getElementById('advocateCell')) document.getElementById('advocateCell').value = profile.advocateCellNo || '' || '';
-  if (document.getElementById('designation')) document.getElementById('designation').value = profile.designation || '' || '' || '';
-  if (document.getElementById('postedAt').value) document.getElementById('postedAt').value = profile.postedAt || '';
-  if (document.getElementById('cnic').value = profile.cnic || '' || '';
-  if (document.getElementById('relation').value = profile.document.getElementById('relation').value || '';
+  if (document.getElementById('chamberNo')) document.getElementById('chamberNo').value = profile.chamberNo || '';
+  if (document.getElementById('advocateName')) document.getElementById('advocateName').value = profile.advocateName || '';
+  if (document.getElementById('advocateCell')) document.getElementById('advocateCell').value = profile.advocateCell || '';
+  if (document.getElementById('designation')) document.getElementById('designation').value = profile.designation || '';
+  if (document.getElementById('postedAt')) document.getElementById('postedAt').value = profile.postedAt || '';
+  if (document.getElementById('cnic')) document.getElementById('cnic').value = profile.cnic || '';
+  if (document.getElementById('relation')) document.getElementById('relation').value = profile.relation || '';
 }
 
-function deleteProfile(name, profile) {
+function deleteProfile(name, type) {
   promptPin((success) => {
     if (success) {
-      profiles = profiles.filter(p => p.name !== p.name || p.name !== p.type || p.type);
+      profiles = profiles.filter(p => p.name !== name || p.type !== type);
       localStorage.setItem('profiles', JSON.stringify(profiles));
       syncLocalStorageToIndexedDB();
       showToast('Profile deleted successfully');
       renderProfiles();
-    });
-  }
+    }
+  });
 }
 
 function triggerImport() {
-  const profileImport = document.getElementById('profileImport');
-  if (profileImport) profileImport.click();
+  document.getElementById('profileImport').click();
 }
 
 function importProfiles() {
-  const file = document.getElementById('profileImport').files[0]).files;
-[0];
+  const file = document.getElementById('profileImport').files[0];
   if (!file) return;
   const reader = new FileReader();
   reader.onload = () => {
     try {
-      const importedData = JSON.parse(reader.result);
-      if (!Array.isArray(importedData)) throw new Error('Invalid profile data');
-      profiles = [...profiles, ...importedData];
+      const importedProfiles = JSON.parse(reader.result);
+      if (!Array.isArray(importedProfiles)) throw new Error('Invalid profile data');
+      profiles = [...profiles, ...importedProfiles];
       localStorage.setItem('profiles', JSON.stringify(profiles));
       syncLocalStorageToIndexedDB();
       showToast('Profiles imported successfully');
       showProfileSearch();
     } catch (error) {
-      console.error('Import error:', error);
       showToast('Failed to import profiles. Invalid file format.');
     }
-  });
+  };
   reader.readAsText(file);
 }
 
@@ -1446,41 +1373,33 @@ function exportProfiles() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `profiles_${formatDate(new Date(), 'YYYY-MM-DD')}.json`;
+  a.download = `profiles_${formatDate(new Date(), 'YYYYMMDD_HHMMSS')}.json`;
   a.click();
   URL.revokeObjectURL(url);
 }
 
 function backupData() {
-  try {
-    const data = {
-      files,
-      profiles,
-      userProfile: { ...userProfile, pin: null, cnic: maskCNIC(userProfile.cnic) },
-      analytics
-    };
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `backup_${formatDate(new Date(), 'YYYYMMDD_HH')}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    analytics.backupsCreated++;
-    localStorage.setItem('analytics', JSON.stringify(analytics));
-    syncLocalStorageToIndexedDB();
-    showToast('Backup created successfully');
-  } catch (error) {
-    console.error('Backup error:', error);
-    showToast('Failed to create backup');
-  }
+  const data = {
+    files,
+    profiles,
+    userProfile: { ...userProfile, pin: null, cnic: maskCNIC(userProfile.cnic) },
+    analytics
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `backup_${formatDate(new Date(), 'YYYYMMDD_HHMMSS')}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+  analytics.backupsCreated++;
+  localStorage.setItem('analytics', JSON.stringify(analytics));
+  syncLocalStorageToIndexedDB();
+  showToast('Backup created successfully');
 }
 
 function triggerRestore() {
-  const dataRestore = document.getElementById('dataRestore');
-  if (dataRestore) {
-    dataRestore.click();
-  }
+  document.getElementById('dataRestore').click();
 }
 
 function restoreData() {
@@ -1489,69 +1408,28 @@ function restoreData() {
   const reader = new FileReader();
   reader.onload = () => {
     try {
-      const importedData = JSON.parse(reader.result);
-      
-      // Merge files
-      if (importedData.files) {
-        importedData.files.forEach(importedFile => {
-          const existingFileIndex = files.findIndex(f => f.file === importedFile.file);
-          if (existingFileIndex >= 0) {
-            // Update existing file
-            files[existingFileIndex] = { ...files[existingFileIndex], ...importedFile };
-          } else {
-            // Add new file
-            files.push(importedFile);
-          }
-        });
+      const data = JSON.parse(reader.result);
+      if (data.files) files = data.files;
+      if (data.profiles) profiles = data.profiles;
+      if (data.userProfile) {
+        userProfile = { ...userProfile, ...data.userProfile, pin: userProfile.pin };
+        localStorage.setItem('userProfile', JSON.stringify(userProfile));
       }
-
-      // Merge profiles
-      if (importedData.profiles) {
-          importedData.profiles.forEach(importedProfile => {
-          const existingProfileIndex = profiles.findIndex(p => p.name === importedProfile.name && p.type === importedProfile.type);
-          if (existingProfileIndex >= 0) {
-            // Update existing profile
-            profiles[existingProfileIndex] = { ...profiles[existingProfileIndex], ...importedProfile };
-          } else {
-            // Add new profile
-            profiles.push(importedProfile);
-          }
-        });
+      if (data.analytics) {
+        analytics = { ...analytics, ...data.analytics };
+        localStorage.setItem('analytics', JSON.stringify(analytics));
       }
-
-      // Merge analytics
-      if (importedData.analytics) {
-        analytics.filesEntered += importedData.analytics.filesEntered || 0;
-        analytics.searchesPerformed += importedData.analytics.searchesPerformed || 0;
-        analytics.backupsCreated += importedData.analytics.backupsCreated || 0;
-      }
-
-      // Update userProfile (preserve pin)
-      if (importedData.userProfile) {
-        userProfile = {
-          ...userProfile,
-          ...importedData.userProfile,
-          pin: userProfile.pin // Preserve existing PIN
-        };
-      }
-
-      // Save merged data
       localStorage.setItem('files', JSON.stringify(files));
       localStorage.setItem('profiles', JSON.stringify(profiles));
-      localStorage.setItem('userProfile', JSON.stringify(userProfile));
-      localStorage.setItem('analytics', JSON.stringify(analytics));
       syncLocalStorageToIndexedDB();
       showToast('Data restored successfully');
+      updateSavedProfile();
       updateDashboardCards();
-      document.getElementById('dataRestore').value = '';
+      navigate('dashboard');
     } catch (error) {
       console.error('Restore error:', error);
       showToast('Failed to restore data. Invalid file format.');
     }
-  };
-  reader.onerror = () => {
-    showToast('Error reading restore file');
-    console.error('File reading error');
   };
   reader.readAsText(file);
 }
@@ -1559,28 +1437,147 @@ function restoreData() {
 function resetApp() {
   promptPin((success) => {
     if (success) {
-      localStorage.clear();
-      indexedDB.deleteDatabase('CourtFileTrackerDB');
       files = [];
       profiles = [];
       userProfile = null;
-      analytics = { filesEntered: 0, searchesPerformed: 0, backupsCreated: 0 };
       backupFolderHandle = null;
-      document.getElementById('adminForm').style.display = 'block';
-      document.getElementById('savedProfile').style.display = 'none';
-      document.getElementById('setupMessage').style.display = 'block';
+      analytics = { filesEntered: 0, searchesPerformed: 0, backupsCreated: 0 };
+      localStorage.clear();
+      const transaction = db.transaction(['data', 'folder'], 'readwrite');
+      transaction.objectStore('data').clear();
+      transaction.objectStore('folder').clear();
       showToast('App reset successfully');
       navigate('admin');
-      updateDashboardCards();
+      document.getElementById('setupMessage').style.display = 'block';
+      document.getElementById('adminForm').style.display = 'block';
+      document.getElementById('savedProfile').style.display = 'none';
     }
   });
 }
 
-// Theme Application
+function showAnalytics() {
+  navigate('analytics');
+  const ctx = document.getElementById('analyticsChart').getContext('2d');
+  if (chartInstance) {
+    chartInstance.destroy();
+    chartInstance = null;
+  }
+  chartInstance = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: ['Files Delivered', 'Searches Performed', 'Backups Created'],
+      datasets: [{
+        label: 'Analytics',
+        data: [analytics.filesEntered, analytics.searchesPerformed, analytics.backupsCreated],
+        backgroundColor: ['#0288d1', '#4caf50', '#d32f2f']
+      }]
+    },
+    options: {
+      scales: {
+        y: {
+          beginAtZero: true,
+          stepSize: 1,
+          ticks: { precision: 0 }
+        }
+      },
+      plugins: { legend: { display: false } }
+    }
+  });
+
+  document.getElementById('analyticsFiles').textContent = analytics.filesEntered;
+  document.getElementById('analyticsSearches').textContent = analytics.searchesPerformed;
+  document.getElementById('analyticsBackups').textContent = analytics.backupsCreated;
+}
+
+// Handle Online/Offline Status
+window.addEventListener('online', () => {
+  showToast('You are now online');
+});
+
+window.addEventListener('offline', () => {
+  showToast('You are now offline. Some features may be limited.');
+});
+
+// Keyboard Shortcuts
+document.addEventListener('keydown', (e) => {
+  if (e.ctrlKey && e.key === 's') {
+    e.preventDefault();
+    navigate('dashboard');
+  } else if (e.ctrlKey && e.key === 'f') {
+    e.preventDefault();
+    navigate('file');
+  } else if (e.ctrlKey && e.key === 'r') {
+    e.preventDefault();
+    navigate('return');
+  } else if (e.ctrlKey && e.key === 'p') {
+    e.preventDefault();
+    navigate('fileFetcher');
+  } else if (e.ctrlKey && e.key === 'a') {
+    e.preventDefault();
+    navigate('analytics');
+  }
+});
+
+// Form Validation
+function validateInput(input, type) {
+  if (type === 'phone') {
+    const phoneRegex = /^\d{10,15}$/;
+    if (!phoneRegex.test(input.value)) {
+      input.setCustomValidity('Please enter a valid phone number (10-15 digits)');
+    } else {
+      input.setCustomValidity('');
+    }
+  } else if (type === 'cnic') {
+    const cnicRegex = /^\d{5}-\d{7}-\d{1}$/;
+    if (input.value && !cnicRegex.test(input.value)) {
+      input.setCustomValidity('Please enter a valid CNIC (e.g., 12345-1234567-1)');
+    } else {
+      input.setCustomValidity('');
+    }
+  } else if (type === 'email') {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (input.value && !emailRegex.test(input.value)) {
+      input.setCustomValidity('Please enter a valid email address');
+    } else {
+      input.setCustomValidity('');
+    }
+  }
+}
+
+// Attach validation to inputs
+document.getElementById('mobile').addEventListener('input', () => validateInput(document.getElementById('mobile'), 'phone'));
+document.getElementById('cnic').addEventListener('input', () => validateInput(document.getElementById('cnic'), 'cnic'));
+document.getElementById('email').addEventListener('input', () => validateInput(document.getElementById('email'), 'email'));
+document.getElementById('cellNo').addEventListener('input', () => validateInput(document.getElementById('cellNo'), 'phone'));
+if (document.getElementById('advocateCell')) {
+  document.getElementById('advocateCell').addEventListener('input', () => validateInput(document.getElementById('advocateCell'), 'phone'));
+}
+
+// Periodic Data Sync
+setInterval(syncLocalStorageToIndexedDB, 300000); // Every 5 minutes
+
+// Accessibility Enhancements
+document.querySelectorAll('input, button, a').forEach(el => {
+  el.setAttribute('tabindex', '0');
+  el.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter' && el.tagName !== 'INPUT') {
+      el.click();
+    }
+  });
+});
+
+// Prevent accidental navigation
+window.addEventListener('beforeunload', (e) => {
+  if (files.length > 0 || profiles.length > 0) {
+    e.preventDefault();
+    e.returnValue = 'You have unsaved data. Are you sure you want to leave?';
+  }
+});
+
+// Dynamic Theme Support
 function applyTheme(theme) {
-  document.body.classList.remove('light', 'dark');
-  document.body.classList.add(theme);
-  localStorage.setItem('theme', theme);
+  document.body.className = theme;
+localStorage.setItem('theme', theme);
 }
 
 // Toast Notification
@@ -1600,33 +1597,36 @@ function showToast(message, duration = 3000) {
   }, 100);
 }
 
-// Event Listeners
-const themeToggle = document.getElementById('themeToggle');
-if (themeToggle) {
-  themeToggle.addEventListener('click', () => {
-    const currentTheme = localStorage.getItem('theme') || 'light';
-    const newTheme = currentTheme === 'light' ? 'dark' : 'light';
-    applyTheme(newTheme);
-  });
-}
+// Handle Theme Toggle
+document.getElementById('themeToggle').addEventListener('click', () => {
+  const currentTheme = localStorage.getItem('theme') || 'light';
+  const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+  applyTheme(newTheme);
+});
 
 // Initialize Theme
 const savedTheme = localStorage.getItem('theme') || 'light';
 applyTheme(savedTheme);
 
-// Backup and Restore Listeners
+// Handle Backup Folder Selection
 document.getElementById('selectBackupFolderBtn').addEventListener('click', selectBackupFolder);
+
+// Handle Manual Backup
 document.getElementById('backupBtn').addEventListener('click', backupData);
+
+// Handle Restore
 document.getElementById('restoreBtn').addEventListener('click', triggerRestore);
+
+// Handle Reset
 document.getElementById('resetBtn').addEventListener('click', resetApp);
 
-// Form and UI Handlers
+// Form Input Handlers
 document.getElementById('caseType').addEventListener('change', toggleCriminalFields);
 document.getElementById('copyAgency').addEventListener('change', toggleCopyAgency);
 document.getElementById('cmsNo').addEventListener('input', autoFillCMS);
-document.getElementById('deliveredTo').addEventListener('input', (e => suggestProfiles(e.target.value, 'deliveredTo'));
+document.getElementById('deliveredTo').addEventListener('input', (e) => suggestProfiles(e.target.value, 'deliveredTo'));
 document.getElementById('profileType').addEventListener('change', toggleProfileFields);
-document.getElementById('profileSearch').addEventListener('input', renderProfileTable);
+document.getElementById('profileSearch').addEventListener('input', renderProfiles);
 document.getElementById('profileFilterType').addEventListener('change', renderProfiles);
 document.getElementById('returnCms').addEventListener('input', filterPendingFiles);
 document.getElementById('returnTitle').addEventListener('input', filterPendingFiles);
@@ -1635,39 +1635,27 @@ document.getElementById('profileImportBtn').addEventListener('click', triggerImp
 document.getElementById('profileExportBtn').addEventListener('click', exportProfiles);
 document.getElementById('profileImport').addEventListener('change', importProfiles);
 document.getElementById('dataRestore').addEventListener('change', restoreData);
-document.getElementById('searchPrevRecords').addEventListener('submit', (event => {
+document.getElementById('searchPrevRecords').addEventListener('submit', (e) => {
   e.preventDefault();
   performDashboardSearch();
-}));
+});
 document.getElementById('printReportBtn').addEventListener('click', printDashboardReport);
 document.getElementById('exportCsvBtn').addEventListener('click', () => exportDashboardReport('csv'));
 document.getElementById('exportPdfBtn').addEventListener('click', () => exportDashboardReport('pdf'));
 document.getElementById('closeReportPanel').addEventListener('click', () => {
   document.getElementById('dashboardReportPanel').style.display = 'none';
 });
-document.getElementById('changePinForm').addEventListener('submit', (event => {
+document.getElementById('changePinForm').addEventListener('submit', (e) => {
   e.preventDefault();
-  changePin);
-}));
+  changePin();
+});
 document.getElementById('cancelPinChange').addEventListener('click', hideChangePin);
 
 // Modal Close Handlers
-document.getElementById('disclaimerModal').addEventListener('click', (event => closeModalIfOutside(e.target, 'disclaimerModal')));
-document.getElementById('pinModal').addEventListener('click', (event => e) closeModalIfOutside(e.target, 'pinModal'));
-document.getElementById('changePinModal').addEventListener('click', (event => e) closeModalIfOutside(e.target, 'changePinModal'));
-document.getElementById('profileModal').addEventListener('click', (event => e) closeModalIfOutside(e.target, 'profileModal'));
-
-// Sidebar Outside Click Handler
-document.addEventListener('click', (event => {
-  const sidebar = document.getElementById('sidebar');
-  const overlay = document.querySelector('.sidebar-overlay');
-  const sidebarToggle = document.querySelector('.sidebar-toggle');
-  if (sidebar && overlay && sidebarToggle && sidebar.classList.contains('active')) {
-    if (!sidebar.contains(e.target) && !sidebarToggle.contains(e.target)) {
-      toggleSidebar(false);
-    }
-  }
-}));
+document.getElementById('disclaimerModal').addEventListener('click', (e) => closeModalIfOutside(e, 'disclaimerModal'));
+document.getElementById('pinModal').addEventListener('click', (e) => closeModalIfOutside(e, 'pinModal'));
+document.getElementById('changePinModal').addEventListener('click', (e) => closeModalIfOutside(e, 'changePinModal'));
+document.getElementById('profileModal').addEventListener('click', (e) => closeModalIfOutside(e, 'profileModal'));
 
 // Service Worker Registration
 if ('serviceWorker' in navigator) {
@@ -1691,7 +1679,7 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 
-// Cleanup on Unload
+// Ensure canvas is properly disposed on page unload
 window.addEventListener('unload', () => {
   if (chartInstance) {
     chartInstance.destroy();
