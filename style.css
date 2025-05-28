@@ -775,3 +775,12 @@ input[type="checkbox"] {
   background-color: #00509e;
   transform: scale(1.05);
 }
+.sidebar {
+  position: fixed;
+  z-index: 100;
+}
+.sidebar-overlay {
+  position: fixed;
+  background: rgba(0,0,0,0.3);
+  z-index: 99;
+}
