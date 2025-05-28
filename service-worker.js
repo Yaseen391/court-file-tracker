@@ -1,33 +1,40 @@
-const CACHE_NAME = 'cft-cache-v1';
-const urlsToCache = [
+// Service Worker for Court File Tracker
+const CACHE_NAME = 'cft-cache-v3';
+const STATIC_ASSETS = [
   '/',
   '/index.html',
   '/style.css',
   '/app.js',
-  '/offline.html',
+  '/icon-192.png',
+  '/icon-512.png',
+  '/icon-192-maskable.png',
+  '/icon-512-maskable.png',
   '/manifest.json',
-  '/icons/icon-192.png',
-  '/icons/icon-512.png',
-  '/icons/icon-192-maskable.png',
-  '/icons/icon-512-maskable.png',
-  'https://apis.google.com/js/api.js',
-  'https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js'
+  '/offline.html',
+  'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
+  'https://cdnjs.cloudflare.com/ajax/libs/fuse.js/6.6.2/fuse.min.js',
+  'https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js',
+  'https://cdn.jsdelivr.net/npm/exif-js'
 ];
 
-self.addEventListener('install', event => {
+// Install Event: Cache static assets
+self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then(cache => cache.addAll(urlsToCache))
-      .catch(error => console.error('Cache addAll failed:', error))
+    caches.open(CACHE_NAME).then((cache) => {
+      return cache.addAll(STATIC_ASSETS).catch((error) => {
+        console.error('Cache addAll failed:', error);
+      });
+    })
   );
   self.skipWaiting();
 });
 
-self.addEventListener('activate', event => {
+// Activate Event: Clean up old caches
+self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then(cacheNames => {
+    caches.keys().then((cacheNames) => {
       return Promise.all(
-        cacheNames.map(cacheName => {
+        cacheNames.map((cacheName) => {
           if (cacheName !== CACHE_NAME) {
             return caches.delete(cacheName);
           }
@@ -38,72 +45,27 @@ self.addEventListener('activate', event => {
   self.clients.claim();
 });
 
-self.addEventListener('fetch', event => {
-  const url = new URL(event.request.url);
-
-  // Network-only for Google API and authentication requests
-  if (
-    url.origin === 'https://apis.google.com' ||
-    url.origin === 'https://www.googleapis.com' ||
-    url.origin === 'https://accounts.google.com'
-  ) {
-    event.respondWith(
-      fetch(event.request).catch(() => {
-        return new Response(JSON.stringify({ error: 'Network unavailable' }), {
-          status: 503,
-          headers: { 'Content-Type': 'application/json' }
-        });
-      })
-    );
-    return;
-  }
-
-  // Cache-first for static assets
+// Fetch Event: Cache-first for static assets
+self.addEventListener('fetch', (event) => {
   event.respondWith(
-    caches.match(event.request)
-      .then(response => {
-        if (response) {
-          return response;
-        }
-        return fetch(event.request)
-          .then(networkResponse => {
-            // Cache new GET requests (excluding APIs)
-            if (event.request.method === 'GET' && !url.pathname.startsWith('/api')) {
-              return caches.open(CACHE_NAME).then(cache => {
-                cache.put(event.request, networkResponse.clone());
-                return networkResponse;
-              });
-            }
+    caches.match(event.request).then((response) => {
+      if (response) {
+        return response;
+      }
+      return fetch(event.request).then((networkResponse) => {
+        if (event.request.method === 'GET') {
+          return caches.open(CACHE_NAME).then((cache) => {
+            cache.put(event.request, networkResponse.clone());
             return networkResponse;
-          })
-          .catch(() => {
-            // Serve offline.html for navigation requests
-            if (event.request.mode === 'navigate') {
-              return caches.match('/offline.html');
-            }
-            return new Response('Offline: Please check your internet connection.', {
-              status: 503
-            });
           });
-      })
-  );
-});
-
-self.addEventListener('push', event => {
-  const data = event.data ? event.data.json() : { title: 'Court File Tracker', body: 'New update available' };
-  const options = {
-    body: data.body,
-    icon: '/icons/icon-192.png',
-    badge: '/icons/icon-192.png'
-  };
-  event.waitUntil(
-    self.registration.showNotification(data.title, options)
-  );
-});
-
-self.addEventListener('notificationclick', event => {
-  event.notification.close();
-  event.waitUntil(
-    clients.openWindow('/')
+        }
+        return networkResponse;
+      });
+    }).catch(() => {
+      if (event.request.mode === 'navigate') {
+        return caches.match('/offline.html');
+      }
+      return new Response('Offline: Please check your internet connection.', { status: 503 });
+    })
   );
 });
