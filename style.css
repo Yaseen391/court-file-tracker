@@ -759,3 +759,19 @@ input[type="checkbox"] {
   margin-bottom: 16px;
   color: #003366;
 }
+#savedProfile button {
+  margin-top: 10px;
+  padding: 10px 15px;
+  background-color: #003366;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 16px;
+  transition: background-color 0.2s, transform 0.2s;
+}
+
+#savedProfile button:hover {
+  background-color: #00509e;
+  transform: scale(1.05);
+}
