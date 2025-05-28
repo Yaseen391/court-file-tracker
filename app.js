@@ -12,11 +12,11 @@ let analytics = JSON.parse(localStorage.getItem('analytics')) || {
 };
 let chartInstance = null;
 let deferredPrompt;
-let backupFolderHandle = null; // Store folder handle for backups
+let backupFolderHandle = null;
 
 // IndexedDB Setup
 const dbName = 'CourtFileTrackerDB';
-const dbVersion = 2; // Updated version for new folder store
+const dbVersion = 2;
 let db;
 
 function initIndexedDB() {
@@ -27,13 +27,13 @@ function initIndexedDB() {
       db.createObjectStore('data', { keyPath: 'key' });
     }
     if (!db.objectStoreNames.contains('folder')) {
-      db.createObjectStore('folder', { keyPath: 'id' }); // New store for folder handle
+      db.createObjectStore('folder', { keyPath: 'id' });
     }
   };
   request.onsuccess = (event) => {
     db = event.target.result;
     syncLocalStorageToIndexedDB();
-    loadBackupFolder(); // Load stored folder handle
+    loadBackupFolder();
   };
   request.onerror = () => console.error('IndexedDB error');
 }
@@ -77,12 +77,10 @@ async function loadBackupFolder() {
   request.onsuccess = async () => {
     if (request.result && request.result.handle) {
       try {
-        // Verify folder permission
         const permission = await request.result.handle.queryPermission({ mode: 'readwrite' });
         if (permission === 'granted') {
           backupFolderHandle = request.result.handle;
         } else {
-          // Request permission
           if (await request.result.handle.requestPermission({ mode: 'readwrite' }) === 'granted') {
             backupFolderHandle = request.result.handle;
           } else {
@@ -122,45 +120,21 @@ async function selectBackupFolder() {
   }
 }
 
-function scheduleDailyBackup() {
+async function performSilentBackup() {
+  if (!backupFolderHandle) return;
   const now = new Date();
-  const midnight = new Date(
-    now.getFullYear(),
-    now.getMonth(),
-    now.getDate() + 1,
-    0, 0, 0
-  );
-  const timeUntilMidnight = midnight.getTime() - now.getTime();
-
-  setTimeout(() => {
-    performDailyBackup();
-    setInterval(performDailyBackup, 24 * 60 * 60 * 1000); // Every 24 hours
-  }, timeUntilMidnight);
-}
-
-async function performDailyBackup() {
-  if (!backupFolderHandle) {
-    showToast('No backup folder selected. Please select a folder.');
-    return;
-  }
-  try {
-    const today = new Date().toLocaleDateString('en-CA');
-    const dailyFiles = files.filter(f => new Date(f.deliveredAt).toLocaleDateString('en-CA') === today);
-    const data = { files: dailyFiles, profiles, analytics };
-    const timestamp = formatDate(new Date(), 'YYYYMMDD');
-    const fileName = `backup_${timestamp}.json`;
-    const fileHandle = await backupFolderHandle.getFileHandle(fileName, { create: true });
-    const writable = await fileHandle.createWritable();
-    await writable.write(JSON.stringify(data, null, 2));
-    await writable.close();
+  const fileName = `backup_${formatDate(now, 'YYYYMMDD_HHMMSS')}.json`;
+  const dailyFiles = files.filter(f => new Date(f.deliveredAt).toLocaleDateString('en-CA') === now.toLocaleDateString('en-CA'));
+  const data = { files: dailyFiles, profiles, analytics };
+  backupFolderHandle.getFileHandle(fileName, { create: true }).then(fileHandle => {
+    return fileHandle.createWritable().then(writable => {
+      return writable.write(JSON.stringify(data, null, 2)).then(() => writable.close());
+    });
+  }).then(() => {
     analytics.backupsCreated++;
     localStorage.setItem('analytics', JSON.stringify(analytics));
     syncLocalStorageToIndexedDB();
-    showToast(`Daily backup created: ${fileName}`);
-  } catch (error) {
-    console.error('Daily backup error:', error);
-    showToast('Failed to create daily backup');
-  }
+  }).catch(console.error);
 }
 
 function maskCNIC(cnic) {
@@ -187,16 +161,18 @@ window.onload = () => {
   setupPushNotifications();
   setupPhotoAdjust('userPhoto', 'userPhotoPreview', 'userPhotoAdjust');
   setupPhotoAdjust('profilePhoto', 'photoPreview', 'photoAdjust');
-  scheduleDailyBackup();
+  setInterval(() => {
+    performSilentBackup();
+  }, 60 * 60 * 1000);
 
-  // Add touch event listener for sidebar overlay
   const overlay = document.querySelector('.sidebar-overlay');
   overlay.addEventListener('touchstart', (e) => {
     e.preventDefault();
-    toggleSidebar();
+    toggleSidebar(true);
   });
+  overlay.addEventListener('click', () => toggleSidebar(true));
+  window.addEventListener('popstate', () => toggleSidebar(true));
 
-  // PWA Install Prompt
   window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();
     deferredPrompt = e;
@@ -254,11 +230,16 @@ function navigate(screenId) {
   }
 }
 
-function toggleSidebar() {
+function toggleSidebar(forceClose = false) {
   const sidebar = document.getElementById('sidebar');
   const overlay = document.querySelector('.sidebar-overlay');
-  sidebar.classList.toggle('active');
-  overlay.classList.toggle('active');
+  if (forceClose || sidebar.classList.contains('active')) {
+    sidebar.classList.remove('active');
+    overlay.classList.remove('active');
+  } else {
+    sidebar.classList.add('active');
+    overlay.classList.add('active');
+  }
 }
 
 function closeModalIfOutside(event, modalId) {
@@ -268,7 +249,6 @@ function closeModalIfOutside(event, modalId) {
   }
 }
 
-// Admin Form Submission
 document.getElementById('adminForm').addEventListener('submit', (e) => {
   e.preventDefault();
   document.getElementById('loadingIndicator').style.display = 'block';
@@ -289,26 +269,33 @@ document.getElementById('adminForm').addEventListener('submit', (e) => {
       }
 
       const processPhoto = (photoData) => {
-        userProfile = {
-          clerkName: document.getElementById('clerkName').value,
-          judgeName: document.getElementById('judgeName').value,
-          courtName: document.getElementById('courtName').value,
-          mobile: document.getElementById('mobile').value,
-          cnic: document.getElementById('cnic').value,
-          pin: document.getElementById('pin').value,
-          email: document.getElementById('email').value,
-          photo: photoData
-        };
-        console.log('Saving userProfile:', userProfile);
-        localStorage.setItem('userProfile', JSON.stringify(userProfile));
-        syncLocalStorageToIndexedDB();
-        document.getElementById('setupMessage').style.display = 'none';
-        document.getElementById('adminForm').style.display = 'none';
-        document.getElementById('savedProfile').style.display = 'block';
-        updateSavedProfile();
-        showToast('Profile saved successfully!');
-        document.getElementById('loadingIndicator').style.display = 'none';
-        navigate('dashboard');
+        selectBackupFolder().then(() => {
+          if (!backupFolderHandle) {
+            showToast("You must select a folder to proceed.");
+            document.getElementById('loadingIndicator').style.display = 'none';
+            return;
+          }
+          userProfile = {
+            clerkName: document.getElementById('clerkName').value,
+            judgeName: document.getElementById('judgeName').value,
+            courtName: document.getElementById('courtName').value,
+            mobile: document.getElementById('mobile').value,
+            cnic: document.getElementById('cnic').value,
+            pin: document.getElementById('pin').value,
+            email: document.getElementById('email').value,
+            photo: photoData
+          };
+          console.log('Saving userProfile:', userProfile);
+          localStorage.setItem('userProfile', JSON.stringify(userProfile));
+          syncLocalStorageToIndexedDB();
+          document.getElementById('setupMessage').style.display = 'none';
+          document.getElementById('adminForm').style.display = 'none';
+          document.getElementById('savedProfile').style.display = 'block';
+          updateSavedProfile();
+          showToast('Profile saved successfully!');
+          document.getElementById('loadingIndicator').style.display = 'none';
+          navigate('dashboard');
+        });
       };
 
       if (typeof photo === 'string' && photo.startsWith('data:')) {
@@ -365,7 +352,6 @@ function editUserProfile() {
   document.getElementById('saveProfileBtn').disabled = false;
 }
 
-// Photo Adjust Setup
 function setupPhotoAdjust(inputId, previewId, adjustContainerId) {
   const input = document.getElementById(inputId);
   const preview = document.getElementById(previewId);
@@ -623,7 +609,7 @@ function showDashboardReport(type) {
 
   const today = new Date().toLocaleDateString('en-CA');
   const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toLocaleDateString('en-CA');
-  const tenDaysAgo = new Date(Date.now() - 10 * 24 * 60 * 1000);
+  const tenDaysAgo = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000);
 
   let filteredFiles = files;
   let title = '';
@@ -1012,7 +998,6 @@ document.getElementById('fileForm').addEventListener('submit', (e) => {
     }, 500);
   });
 });
-
 function autoFillCMS() {
   const cmsNo = document.getElementById('cmsNo').value;
   const existing = files.find(f => f.cmsNo === cmsNo);
@@ -1199,7 +1184,6 @@ function toggleProfileFields() {
   document.getElementById('profilePhoto').required = type !== 'advocate';
 }
 
-// Profile Form Submission
 document.getElementById('profileForm').addEventListener('submit', (e) => {
   e.preventDefault();
   document.getElementById('loadingIndicator').style.display = 'block';
@@ -1409,8 +1393,22 @@ function restoreData() {
   reader.onload = () => {
     try {
       const data = JSON.parse(reader.result);
-      if (data.files) files = data.files;
-      if (data.profiles) profiles = data.profiles;
+      let existingFiles = JSON.parse(localStorage.getItem('files')) || [];
+      let mergedFiles = [...existingFiles];
+      (data.files || []).forEach(f => {
+        if (!existingFiles.find(ef => ef.cmsNo === f.cmsNo)) {
+          mergedFiles.push(f);
+        }
+      });
+      let existingProfiles = JSON.parse(localStorage.getItem('profiles')) || [];
+      let mergedProfiles = [...existingProfiles];
+      (data.profiles || []).forEach(p => {
+        if (!existingProfiles.find(ep => ep.name === p.name && ep.type === p.type)) {
+          mergedProfiles.push(p);
+        }
+      });
+      files = mergedFiles;
+      profiles = mergedProfiles;
       if (data.userProfile) {
         userProfile = { ...userProfile, ...data.userProfile, pin: userProfile.pin };
         localStorage.setItem('userProfile', JSON.stringify(userProfile));
@@ -1489,7 +1487,6 @@ function showAnalytics() {
   document.getElementById('analyticsBackups').textContent = analytics.backupsCreated;
 }
 
-// Handle Online/Offline Status
 window.addEventListener('online', () => {
   showToast('You are now online');
 });
@@ -1498,7 +1495,6 @@ window.addEventListener('offline', () => {
   showToast('You are now offline. Some features may be limited.');
 });
 
-// Keyboard Shortcuts
 document.addEventListener('keydown', (e) => {
   if (e.ctrlKey && e.key === 's') {
     e.preventDefault();
@@ -1518,7 +1514,6 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-// Form Validation
 function validateInput(input, type) {
   if (type === 'phone') {
     const phoneRegex = /^\d{10,15}$/;
@@ -1544,7 +1539,6 @@ function validateInput(input, type) {
   }
 }
 
-// Attach validation to inputs
 document.getElementById('mobile').addEventListener('input', () => validateInput(document.getElementById('mobile'), 'phone'));
 document.getElementById('cnic').addEventListener('input', () => validateInput(document.getElementById('cnic'), 'cnic'));
 document.getElementById('email').addEventListener('input', () => validateInput(document.getElementById('email'), 'email'));
@@ -1553,10 +1547,8 @@ if (document.getElementById('advocateCell')) {
   document.getElementById('advocateCell').addEventListener('input', () => validateInput(document.getElementById('advocateCell'), 'phone'));
 }
 
-// Periodic Data Sync
-setInterval(syncLocalStorageToIndexedDB, 300000); // Every 5 minutes
+setInterval(syncLocalStorageToIndexedDB, 300000);
 
-// Accessibility Enhancements
 document.querySelectorAll('input, button, a').forEach(el => {
   el.setAttribute('tabindex', '0');
   el.addEventListener('keypress', (e) => {
@@ -1566,7 +1558,6 @@ document.querySelectorAll('input, button, a').forEach(el => {
   });
 });
 
-// Prevent accidental navigation
 window.addEventListener('beforeunload', (e) => {
   if (files.length > 0 || profiles.length > 0) {
     e.preventDefault();
@@ -1574,53 +1565,36 @@ window.addEventListener('beforeunload', (e) => {
   }
 });
 
-// Dynamic Theme Support
 function applyTheme(theme) {
   document.body.className = theme;
-localStorage.setItem('theme', theme);
+  localStorage.setItem('theme', theme);
 }
 
-// Toast Notification
-function showToast(message, duration = 3000) {
-  const toast = document.createElement('div');
-  toast.className = 'toast';
+function showToast(message) {
+  const toast = document.getElementById('toast');
+  if (!toast) return;
+  if (toast.style.display === 'block') return;
   toast.textContent = message;
-  document.body.appendChild(toast);
+  toast.style.display = 'block';
   setTimeout(() => {
-    toast.classList.add('show');
-    setTimeout(() => {
-      toast.classList.remove('show');
-      setTimeout(() => {
-        toast.remove();
-      }, 300);
-    }, duration);
-  }, 100);
+    toast.style.display = 'none';
+  }, 4000);
 }
 
-// Handle Theme Toggle
 document.getElementById('themeToggle').addEventListener('click', () => {
   const currentTheme = localStorage.getItem('theme') || 'light';
   const newTheme = currentTheme === 'light' ? 'dark' : 'light';
   applyTheme(newTheme);
 });
 
-// Initialize Theme
 const savedTheme = localStorage.getItem('theme') || 'light';
 applyTheme(savedTheme);
 
-// Handle Backup Folder Selection
 document.getElementById('selectBackupFolderBtn').addEventListener('click', selectBackupFolder);
-
-// Handle Manual Backup
 document.getElementById('backupBtn').addEventListener('click', backupData);
-
-// Handle Restore
 document.getElementById('restoreBtn').addEventListener('click', triggerRestore);
-
-// Handle Reset
 document.getElementById('resetBtn').addEventListener('click', resetApp);
 
-// Form Input Handlers
 document.getElementById('caseType').addEventListener('change', toggleCriminalFields);
 document.getElementById('copyAgency').addEventListener('change', toggleCopyAgency);
 document.getElementById('cmsNo').addEventListener('input', autoFillCMS);
@@ -1651,13 +1625,11 @@ document.getElementById('changePinForm').addEventListener('submit', (e) => {
 });
 document.getElementById('cancelPinChange').addEventListener('click', hideChangePin);
 
-// Modal Close Handlers
 document.getElementById('disclaimerModal').addEventListener('click', (e) => closeModalIfOutside(e, 'disclaimerModal'));
 document.getElementById('pinModal').addEventListener('click', (e) => closeModalIfOutside(e, 'pinModal'));
 document.getElementById('changePinModal').addEventListener('click', (e) => closeModalIfOutside(e, 'changePinModal'));
 document.getElementById('profileModal').addEventListener('click', (e) => closeModalIfOutside(e, 'profileModal'));
 
-// Service Worker Registration
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker
@@ -1671,7 +1643,6 @@ if ('serviceWorker' in navigator) {
   });
 }
 
-// Handle Visibility Change
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') {
     syncIndexedDBToLocalStorage();
@@ -1679,7 +1650,6 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 
-// Ensure canvas is properly disposed on page unload
 window.addEventListener('unload', () => {
   if (chartInstance) {
     chartInstance.destroy();
@@ -1687,5 +1657,4 @@ window.addEventListener('unload', () => {
   }
 });
 
-// Log App Initialization
 console.log('Court File Tracker PWA initialized');
