@@ -419,13 +419,19 @@ window.onload = () => {
   setupPhotoAdjust('profilePhoto', 'photoPreview', 'photoAdjust');
   setInterval(refreshGoogleToken, 60000);
   scheduleBackups();
-
+  // Add touch event listener for sidebar overlay
+const overlay = document.querySelector('.sidebar-overlay');
+overlay.addEventListener('touchstart', (e) => {
+  e.preventDefault();
+  toggleSidebar();
+});
   // PWA Install Prompt
   window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();
     deferredPrompt = e;
     document.getElementById('installBtn').style.display = 'block';
   });
+  
 
   document.getElementById('installBtn').addEventListener('click', () => {
     if (deferredPrompt) {
