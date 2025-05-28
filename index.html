@@ -303,26 +303,23 @@
           Please complete your profile setup to continue using the app.
         </div>
         <div id="savedProfile" style="display:none; background:white; padding:20px; border-radius:10px; max-width:600px; margin:auto;">
-          <h3>Saved Profile</h3>
-          <table class="profile-table">
-            <tr><th>Photo</th><td><img id="savedUserPhoto" src="" style="width:120px;height:120px;border-radius:50%;border:1px solid #ccc;display:none;" /></td></tr>
-            <tr><th>Name</th><td><span id="savedClerkName"></span></td></tr>
-            <tr><th>Designation</th><td><span id="savedJudgeName"></span></td></tr>
-            <tr><th>Court</th><td><span id="savedCourtName"></span></td></tr>
-            <tr><th>Mobile</th><td><a id="savedMobile" href=""></a></td></tr>
-            <tr><th>Total Files</th><td><span id="totalFiles"></span></td></tr>
-            <tr><th>Total Profiles</th><td><span id="totalProfiles"></span></td></tr>
-          </table>
-          <button onclick="editUserProfile()">Edit Profile</button>
-          <button id="changePinBtn" onclick="showChangePin()" style="display:none;">Change PIN</button>
-          <h4>Data Management</h4>
-          <button onclick="backupData()">Backup to Local</button>
-          <button onclick="triggerRestore()">Restore from Local</button>
-          <button onclick="signInWithGoogle()">Sign in with Google</button>
-          <button id="backupToDrive" style="display:none;" onclick="backupToDrive()">Backup to Google Drive</button>
-          <button id="restoreFromDrive" style="display:none;" onclick="restoreFromDrive()">Restore from Google Drive</button>
-          <button id="shareBackup" style="display:none;" onclick="showShareBackup()">Share Backup</button>
-        </div>
+  <h3>Saved Profile</h3>
+  <table class="profile-table">
+    <tr><th>Photo</th><td><img id="savedUserPhoto" src="" style="width:120px;height:120px;border-radius:50%;border:1px solid #ccc;display:none;" /></td></tr>
+    <tr><th>Name</th><td><span id="savedClerkName"></span></td></tr>
+    <tr><th>Designation</th><td><span id="savedJudgeName"></span></td></tr>
+    <tr><th>Court</th><td><span id="savedCourtName"></span></td></tr>
+    <tr><th>Mobile</th><td><a id="savedMobile" href=""></a></td></tr>
+    <tr><th>Total Files</th><td><span id="totalFiles"></span></td></tr>
+    <tr><th>Total Profiles</th><td><span id="totalProfiles"></span></td></tr>
+  </table>
+  <button onclick="editUserProfile()">Edit Profile</button>
+  <button id="changePinBtn" onclick="showChangePin()" style="display:none;">Change PIN</button>
+  <h4>Data Management</h4>
+  <button onclick="selectBackupFolder()">Select Backup Folder</button>
+  <button onclick="backupData()">Backup to Local</button>
+  <button onclick="triggerRestore()">Restore from Local</button>
+</div>
         <input type="file" id="dataRestore" accept=".json" style="display:none;" onchange="restoreData()" />
         <form id="adminForm" style="display:block;">
           <label>Full Name: <span class="required">*</span><input type="text" id="clerkName" required /></label>
@@ -423,8 +420,6 @@
   </div>
 
   <!-- External Libraries -->
-  <script src="https://accounts.google.com/gsi/client"></script>
-  <script src="https://apis.google.com/js/api.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/fuse.js/6.6.2/fuse.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
