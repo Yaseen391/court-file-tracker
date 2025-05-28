@@ -1,6 +1,7 @@
-const CACHE_NAME = 'cft-cache-v3'; // Updated cache name to force re-cache
+const CACHE_NAME = 'cft-cache-v3';
 const STATIC_ASSETS = [
   '/',
+  './',
   '/index.html',
   '/style.css',
   '/app.js',
@@ -18,26 +19,26 @@ const STATIC_ASSETS = [
   'https://cdn.jsdelivr.net/npm/exif-js'
 ];
 
-// Install Event: Cache static assets
-self.addEventListener('install', (event) => {
+// Install event: Pre-cache static assets
+self.addEventListener('install', event => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(STATIC_ASSETS).catch((error) => {
-        console.error('Cache addAll failed:', error);
+    caches.open(CACHE_NAME).then(cache => {
+      return cache.addAll(STATIC_ASSETS).catch(err => {
+        console.error('Cache addAll failed:', err);
       });
     })
   );
   self.skipWaiting();
 });
 
-// Activate Event: Clean up old caches
-self.addEventListener('activate', (event) => {
+// Activate event: Clean up old caches
+self.addEventListener('activate', event => {
   event.waitUntil(
-    caches.keys().then((cacheNames) => {
+    caches.keys().then(cacheNames => {
       return Promise.all(
-        cacheNames.map((cacheName) => {
-          if (cacheName !== CACHE_NAME) {
-            return caches.delete(cacheName);
+        cacheNames.map(name => {
+          if (name !== CACHE_NAME) {
+            return caches.delete(name);
           }
         })
       );
@@ -46,16 +47,18 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
-// Fetch Event: Cache-first for static assets
-self.addEventListener('fetch', (event) => {
+// Fetch event: Serve cached content if available, otherwise fetch from network
+self.addEventListener('fetch', event => {
   event.respondWith(
-    caches.match(event.request).then((response) => {
-      if (response) {
-        return response;
-      }
-      return fetch(event.request).then((networkResponse) => {
-        if (event.request.method === 'GET' && !event.request.url.includes('/api')) {
-          return caches.open(CACHE_NAME).then((cache) => {
+    caches.match(event.request).then(response => {
+      if (response) return response;
+
+      return fetch(event.request).then(networkResponse => {
+        if (
+          event.request.method === 'GET' &&
+          !event.request.url.includes('/api')
+        ) {
+          return caches.open(CACHE_NAME).then(cache => {
             cache.put(event.request, networkResponse.clone());
             return networkResponse;
           });
@@ -63,10 +66,14 @@ self.addEventListener('fetch', (event) => {
         return networkResponse;
       });
     }).catch(() => {
+      // Show offline fallback only for navigation requests
       if (event.request.mode === 'navigate') {
         return caches.match('/offline.html');
       }
-      return new Response('Offline: Please check your internet connection.', { status: 503 });
+      return new Response('Offline: Please check your internet connection.', {
+        status: 503,
+        statusText: 'Offline',
+      });
     })
   );
 });
