@@ -151,8 +151,8 @@ h1, h2, h3 {
   height: calc(100% - 60px);
   background: rgba(0, 0, 0, 0.3);
   z-index: 100;
+  touch-action: none; /* Prevent scrolling on touch */
 }
-
 .sidebar.active + .sidebar-overlay {
   display: block;
 }
