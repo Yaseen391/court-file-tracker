@@ -1,25 +1,63 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Offline - Court File Tracker</title>
-  <link rel="stylesheet" href="style.css">
-  <meta name="theme-color" content="#317EFB">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Court File Tracker - Offline</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: 'Roboto', 'Segoe UI', sans-serif;
+      background-color: #f4f7fa;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      text-align: center;
+      color: #333;
+    }
+    .container {
+      padding: 20px;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+      max-width: 400px;
+    }
+    h1 {
+      font-size: 24px;
+      color: #003366;
+      margin-bottom: 10px;
+    }
+    p {
+      font-size: 16px;
+      margin-bottom: 20px;
+    }
+    button {
+      padding: 10px 20px;
+      background-color: #003366;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 16px;
+      transition: background-color 0.2s, transform 0.2s;
+    }
+    button:hover {
+      background-color: #00509e;
+      transform: scale(1.05);
+    }
+    button:focus {
+      outline: 2px solid #fff;
+      outline-offset: 2px;
+    }
+  </style>
 </head>
 <body>
   <div class="container">
-    <header>
-      <h1>Court File Tracker</h1>
-      <p>Smart Solutions for Efficient Record Management</p>
-    </header>
-    <main id="main-content" class="main-content">
-      <section>
-        <h2>Offline Mode</h2>
-        <p>You are currently offline. Some features may be limited. Please check your internet connection and try again.</p>
-        <p>Cached data may be available in the Dashboard or File Fetcher sections.</p>
-      </section>
-    </main>
+    <h1>Court File Tracker</h1>
+    <p>You are currently offline. Please check your internet connection and try again.</p>
+    <button onclick="window.location.reload()" aria-label="Retry Connection">Retry</button>
   </div>
 </body>
 </html>
