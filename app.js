@@ -2,7 +2,6 @@
 let files = JSON.parse(localStorage.getItem('files')) || [];
 let profiles = JSON.parse(localStorage.getItem('profiles')) || [];
 let userProfile = JSON.parse(localStorage.getItem('userProfile')) || null;
-let offlineQueue = JSON.parse(localStorage.getItem('offlineQueue')) || [];
 let currentReportData = [];
 let currentPage = 1;
 const itemsPerPage = 10;
@@ -12,33 +11,29 @@ let analytics = JSON.parse(localStorage.getItem('analytics')) || {
   backupsCreated: 0
 };
 let chartInstance = null;
-let deferredPrompt; // Added for PWA install prompt
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('service-worker.js')
-      .then(registration => {
-        console.log('ServiceWorker registered: ', registration);
-      })
-      .catch(error => {
-        console.log('ServiceWorker registration failed: ', error);
-      });
-  });
-}
+let deferredPrompt;
+let backupFolderHandle = null; // Store folder handle for backups
 
 // IndexedDB Setup
 const dbName = 'CourtFileTrackerDB';
-const dbVersion = 1;
+const dbVersion = 2; // Updated version for new folder store
 let db;
 
 function initIndexedDB() {
   const request = indexedDB.open(dbName, dbVersion);
   request.onupgradeneeded = (event) => {
     const db = event.target.result;
-    db.createObjectStore('data', { keyPath: 'key' });
+    if (!db.objectStoreNames.contains('data')) {
+      db.createObjectStore('data', { keyPath: 'key' });
+    }
+    if (!db.objectStoreNames.contains('folder')) {
+      db.createObjectStore('folder', { keyPath: 'id' }); // New store for folder handle
+    }
   };
   request.onsuccess = (event) => {
     db = event.target.result;
     syncLocalStorageToIndexedDB();
+    loadBackupFolder(); // Load stored folder handle
   };
   request.onerror = () => console.error('IndexedDB error');
 }
@@ -48,7 +43,6 @@ function syncLocalStorageToIndexedDB() {
     files: JSON.parse(localStorage.getItem('files')) || [],
     profiles: JSON.parse(localStorage.getItem('profiles')) || [],
     userProfile: JSON.parse(localStorage.getItem('userProfile')) || null,
-    offlineQueue: JSON.parse(localStorage.getItem('offlineQueue')) || [],
     analytics: JSON.parse(localStorage.getItem('analytics')) || analytics
   };
   const transaction = db.transaction(['data'], 'readwrite');
@@ -61,7 +55,7 @@ function syncLocalStorageToIndexedDB() {
 function syncIndexedDBToLocalStorage() {
   const transaction = db.transaction(['data'], 'readonly');
   const store = transaction.objectStore('data');
-  const keys = ['files', 'profiles', 'userProfile', 'offlineQueue', 'analytics'];
+  const keys = ['files', 'profiles', 'userProfile', 'analytics'];
   keys.forEach(key => {
     const request = store.get(key);
     request.onsuccess = () => {
@@ -70,302 +64,103 @@ function syncIndexedDBToLocalStorage() {
         if (key === 'files') files = request.result.value;
         if (key === 'profiles') profiles = request.result.value;
         if (key === 'userProfile') userProfile = request.result.value;
-        if (key === 'offlineQueue') offlineQueue = request.result.value;
         if (key === 'analytics') analytics = request.result.value;
       }
     };
   });
 }
 
-// Google Drive API Configuration
-const CLIENT_ID = '1022877727253-vlif6k2sstl4gn98e8svsh8mhd3j0gl3.apps.googleusercontent.com';
-const API_KEY = 'AIzaSyCmYFpMXEtPdfSg4-K7lgdqNc-njgqONmQ';
-const SCOPES = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.appdata';
-let tokenClient;
-
-function initGoogleDrive() {
-  gapi.load('client', () => {
-    gapi.client.init({
-      apiKey: API_KEY,
-      discoveryDocs: ['https://www.googleapis.com/discovery/v1/apis/drive/v3/rest'],
-    }).then(() => {
-      tokenClient = google.accounts.oauth2.initTokenClient({
-        client_id: CLIENT_ID,
-        scope: SCOPES,
-        callback: (response) => {
-          if (response.access_token) {
-            const tokenData = {
-              access_token: response.access_token,
-              expires_at: Date.now() + (response.expires_in * 1000)
-            };
-            localStorage.setItem('gapi_token', JSON.stringify(tokenData));
-            updateGoogleDriveButtons(true);
-            showToast('Signed in to Google Drive');
-            syncLocalStorageToIndexedDB();
-            processOfflineQueue();
-            createAppDataFolder();
+async function loadBackupFolder() {
+  const transaction = db.transaction(['folder'], 'readonly');
+  const store = transaction.objectStore('folder');
+  const request = store.get('backupFolder');
+  request.onsuccess = async () => {
+    if (request.result && request.result.handle) {
+      try {
+        // Verify folder permission
+        const permission = await request.result.handle.queryPermission({ mode: 'readwrite' });
+        if (permission === 'granted') {
+          backupFolderHandle = request.result.handle;
+        } else {
+          // Request permission
+          if (await request.result.handle.requestPermission({ mode: 'readwrite' }) === 'granted') {
+            backupFolderHandle = request.result.handle;
           } else {
-            console.error('Google sign-in failed:', response);
-            showToast('Failed to sign in to Google Drive. Please try again.');
+            showToast('Permission to access backup folder denied');
+            backupFolderHandle = null;
           }
         }
-      });
-      if (isGoogleTokenValid()) {
-        updateGoogleDriveButtons(true);
-        createAppDataFolder();
+      } catch (error) {
+        console.error('Error loading backup folder:', error);
+        showToast('Failed to load backup folder');
+        backupFolderHandle = null;
       }
-    }).catch((error) => {
-      console.error('Google API init error:', error);
-      showToast('Failed to initialize Google Drive. Please try again.');
-    });
-  });
+    }
+  };
 }
 
-function updateGoogleDriveButtons(show) {
-  document.getElementById('backupToDrive').style.display = show ? 'inline-block' : 'none';
-  document.getElementById('restoreFromDrive').style.display = show ? 'inline-block' : 'none';
-  document.getElementById('shareBackup').style.display = show ? 'inline-block' : 'none';
-}
-
-function signInWithGoogle() {
-  if (!navigator.onLine) {
-    showToast('No internet connection. Please try again later.');
-    return;
-  }
-  if (!tokenClient) {
-    showToast('Google Drive not initialized. Please try again.');
-    initGoogleDrive();
-    return;
-  }
-  console.log('Triggering Google Drive sign-in');
-  tokenClient.requestAccessToken();
-}
-
-function isGoogleTokenValid() {
-  const token = JSON.parse(localStorage.getItem('gapi_token'));
-  return token && token.expires_at > Date.now();
-}
-
-function refreshGoogleToken() {
-  if (!navigator.onLine || !tokenClient) return;
-  const token = JSON.parse(localStorage.getItem('gapi_token'));
-  if (token && token.expires_at < Date.now() + 60000) {
-    tokenClient.requestAccessToken({ prompt: '' });
-  }
-}
-
-function createAppDataFolder() {
-  gapi.client.drive.files.list({
-    q: "name='CFT_Data' and mimeType='application/vnd.google-apps.folder' and 'appDataFolder' in parents",
-    spaces: 'appDataFolder'
-  }).then((response) => {
-    if (response.result.files.length === 0) {
-      gapi.client.drive.files.create({
-        resource: {
-          name: 'CFT_Data',
-          mimeType: 'application/vnd.google-apps.folder',
-          parents: ['appDataFolder']
-        }
-      }).then((folder) => {
-        createSubFolders(folder.result.id);
-      });
+async function selectBackupFolder() {
+  try {
+    if ('showDirectoryPicker' in window) {
+      const folderHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
+      const permission = await folderHandle.queryPermission({ mode: 'readwrite' });
+      if (permission === 'granted') {
+        backupFolderHandle = folderHandle;
+        const transaction = db.transaction(['folder'], 'readwrite');
+        const store = transaction.objectStore('folder');
+        store.put({ id: 'backupFolder', handle: folderHandle });
+        showToast('Backup folder selected successfully');
+      } else {
+        showToast('Permission to access folder denied');
+      }
     } else {
-      createSubFolders(response.result.files[0].id);
+      showToast('File System Access API not supported in this browser');
     }
-  }).catch((error) => {
-    console.error('Folder creation error:', error);
-  });
+  } catch (error) {
+    console.error('Error selecting backup folder:', error);
+    showToast('Failed to select backup folder');
+  }
 }
 
-function createSubFolders(parentId) {
-  const subFolders = ['CaseData', 'Profiles'];
-  subFolders.forEach((name) => {
-    gapi.client.drive.files.list({
-      q: `name='${name}' and mimeType='application/vnd.google-apps.folder' and '${parentId}' in parents`,
-      spaces: 'appDataFolder'
-    }).then((response) => {
-      if (response.result.files.length === 0) {
-        gapi.client.drive.files.create({
-          resource: {
-            name,
-            mimeType: 'application/vnd.google-apps.folder',
-            parents: [parentId]
-          }
-        });
-      }
-    });
-  });
+function scheduleDailyBackup() {
+  const now = new Date();
+  const midnight = new Date(
+    now.getFullYear(),
+    now.getMonth(),
+    now.getDate() + 1,
+    0, 0, 0
+  );
+  const timeUntilMidnight = midnight.getTime() - now.getTime();
+
+  setTimeout(() => {
+    performDailyBackup();
+    setInterval(performDailyBackup, 24 * 60 * 60 * 1000); // Every 24 hours
+  }, timeUntilMidnight);
 }
 
-function backupToDrive() {
-  if (!navigator.onLine) {
-    offlineQueue.push({ action: 'backupToDrive', data: null });
-    localStorage.setItem('offlineQueue', JSON.stringify(offlineQueue));
+async function performDailyBackup() {
+  if (!backupFolderHandle) {
+    showToast('No backup folder selected. Please select a folder.');
+    return;
+  }
+  try {
+    const today = new Date().toLocaleDateString('en-CA');
+    const dailyFiles = files.filter(f => new Date(f.deliveredAt).toLocaleDateString('en-CA') === today);
+    const data = { files: dailyFiles, profiles, analytics };
+    const timestamp = formatDate(new Date(), 'YYYYMMDD');
+    const fileName = `backup_${timestamp}.json`;
+    const fileHandle = await backupFolderHandle.getFileHandle(fileName, { create: true });
+    const writable = await fileHandle.createWritable();
+    await writable.write(JSON.stringify(data, null, 2));
+    await writable.close();
+    analytics.backupsCreated++;
+    localStorage.setItem('analytics', JSON.stringify(analytics));
     syncLocalStorageToIndexedDB();
-    showToast('Backup queued for when online');
-    return;
+    showToast(`Daily backup created: ${fileName}`);
+  } catch (error) {
+    console.error('Daily backup error:', error);
+    showToast('Failed to create daily backup');
   }
-  if (!isGoogleTokenValid()) {
-    showToast('Please sign in to Google Drive');
-    signInWithGoogle();
-    return;
-  }
-  const timestamp = formatDate(new Date(), 'YYYYMMDD_HHMMSS');
-  const backups = [
-    { name: `CaseData/cft_files_${timestamp}.json`, data: files },
-    { name: `Profiles/cft_profiles_${timestamp}.json`, data: profiles }
-  ];
-  backups.forEach((backup) => {
-    const blob = new Blob([JSON.stringify(backup.data, null, 2)], { type: 'application/json' });
-    gapi.client.drive.files.list({
-      q: `name='${backup.name.split('/')[0]}' and mimeType='application/vnd.google-apps.folder' and 'appDataFolder' in parents`,
-      spaces: 'appDataFolder'
-    }).then((response) => {
-      const parentId = response.result.files[0]?.id || 'appDataFolder';
-      const metadata = {
-        name: backup.name.split('/')[1],
-        mimeType: 'application/json',
-        parents: [parentId]
-      };
-      const form = new FormData();
-      form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
-      form.append('file', blob);
-      gapi.client.request({
-        path: '/upload/drive/v3/files',
-        method: 'POST',
-        params: { uploadType: 'multipart' },
-        body: form
-      }).then(() => {
-        analytics.backupsCreated++;
-        localStorage.setItem('analytics', JSON.stringify(analytics));
-        syncLocalStorageToIndexedDB();
-        showToast(`${backup.name.split('/')[0]} backup uploaded`);
-      }).catch((error) => {
-        console.error('Backup error:', error);
-        showToast(`Failed to upload ${backup.name.split('/')[0]} backup. Please try again.`);
-      });
-    });
-  });
-}
-
-function restoreFromDrive() {
-  if (!navigator.onLine) {
-    showToast('No internet connection. Please try again later.');
-    return;
-  }
-  if (!isGoogleTokenValid()) {
-    showToast('Please sign in to Google Drive');
-    signInWithGoogle();
-    return;
-  }
-  gapi.client.drive.files.list({
-    q: "name contains 'cft_' and ('CaseData' in parents or 'Profiles' in parents)",
-    spaces: 'appDataFolder',
-    fields: 'files(id, name, parents)'
-  }).then((response) => {
-    const backupFiles = response.result.files;
-    const select = document.getElementById('backupFiles');
-    select.innerHTML = '<option value="">Select a backup</option>';
-    backupFiles.forEach(file => {
-      const option = document.createElement('option');
-      option.value = file.id;
-      option.textContent = file.name;
-      select.appendChild(option);
-    });
-    document.getElementById('shareBackupModal').style.display = 'block';
-  }).catch((error) => {
-    console.error('List files error:', error);
-    showToast('Failed to list backups. Please try again.');
-  });
-
-  document.getElementById('backupFiles').addEventListener('change', (e) => {
-    const fileId = e.target.value;
-    if (fileId) {
-      gapi.client.drive.files.get({
-        fileId: fileId,
-        alt: 'media'
-      }).then((response) => {
-        const data = JSON.parse(response.body);
-        if (e.target.selectedOptions[0].textContent.includes('cft_files_')) {
-          files = data;
-          localStorage.setItem('files', JSON.stringify(files));
-        } else if (e.target.selectedOptions[0].textContent.includes('cft_profiles_')) {
-          profiles = data;
-          localStorage.setItem('profiles', JSON.stringify(profiles));
-        }
-        syncLocalStorageToIndexedDB();
-        showToast('Data restored successfully from Google Drive');
-        updateSavedProfile();
-        updateDashboardCards();
-        hideShareBackup();
-      }).catch((error) => {
-        console.error('Restore error:', error);
-        showToast('Failed to restore data. Please try again.');
-      });
-    }
-  }, { once: true }); // Ensure single listener
-}
-
-function showTransferData() {
-  document.getElementById('shareBackupModal').style.display = 'block';
-  gapi.client.drive.files.list({
-    q: "name contains 'cft_' and ('CaseData' in parents or 'Profiles' in parents)",
-    spaces: 'appDataFolder',
-    fields: 'files(id, name, parents)'
-  }).then((response) => {
-    const backupFiles = response.result.files;
-    const select = document.getElementById('backupFiles');
-    select.innerHTML = '<option value="">Select a backup</option>';
-    backupFiles.forEach(file => {
-      const option = document.createElement('option');
-      option.value = file.id;
-      option.textContent = file.name;
-      select.appendChild(option);
-    });
-  }).catch((error) => {
-    console.error('List files error:', error);
-    showToast('Failed to list backups. Please try again.');
-  });
-}
-
-function shareBackup() {
-  const fileId = document.getElementById('backupFiles').value;
-  const email = document.getElementById('shareEmail').value;
-  if (!fileId || !email) {
-    showToast('Please select a backup and enter an email');
-    return;
-  }
-  gapi.client.drive.permissions.create({
-    fileId: fileId,
-    resource: {
-      type: 'user',
-      role: 'reader',
-      emailAddress: email
-    }
-  }).then(() => {
-    gapi.client.drive.files.get({
-      fileId: fileId,
-      fields: 'webViewLink'
-    }).then((response) => {
-      showToast(`Backup shared with ${email}. Link: ${response.result.webViewLink}`);
-      navigator.serviceWorker.ready.then(registration => {
-        registration.showNotification('Backup Shared', {
-          body: `Backup shared with ${email}. They can access it via Google Drive.`,
-          icon: 'icon-192.png'
-        });
-      });
-      hideShareBackup();
-    });
-  }).catch((error) => {
-    console.error('Share error:', error);
-    showToast('Failed to share backup. Please try again.');
-  });
-}
-
-function hideShareBackup() {
-  document.getElementById('shareBackupModal').style.display = 'none';
-  document.getElementById('backupFiles').value = '';
-  document.getElementById('shareEmail').value = '';
 }
 
 function maskCNIC(cnic) {
@@ -375,40 +170,15 @@ function maskCNIC(cnic) {
   return `${parts[0].slice(0, 2)}***-${parts[1].slice(0, 3)}****-${parts[2]}`;
 }
 
-function processOfflineQueue() {
-  if (!navigator.onLine || !isGoogleTokenValid()) return;
-  offlineQueue.forEach(({ action, data }) => {
-    if (action === 'backupToDrive') backupToDrive();
-  });
-  offlineQueue = [];
-  localStorage.setItem('offlineQueue', JSON.stringify(offlineQueue));
-  syncLocalStorageToIndexedDB();
-}
-
-function scheduleBackups() {
-  setInterval(() => {
-    if (navigator.onLine && isGoogleTokenValid()) {
-      backupToDrive();
-    }
-  }, 6 * 60 * 60 * 1000); // Every 6 hours
-}
-
 window.onload = () => {
   console.log('app.js loaded successfully');
   initIndexedDB();
-  initGoogleDrive();
   if (userProfile) {
     document.getElementById('setupMessage').style.display = 'none';
     document.getElementById('adminForm').style.display = 'none';
     document.getElementById('savedProfile').style.display = 'block';
     updateSavedProfile();
-    if (isGoogleTokenValid()) {
-      updateGoogleDriveButtons(true);
-      navigate('dashboard');
-    } else {
-      showToast('Please sign in to Google Drive to continue');
-      signInWithGoogle();
-    }
+    navigate('dashboard');
   } else {
     navigate('admin');
   }
@@ -417,21 +187,21 @@ window.onload = () => {
   setupPushNotifications();
   setupPhotoAdjust('userPhoto', 'userPhotoPreview', 'userPhotoAdjust');
   setupPhotoAdjust('profilePhoto', 'photoPreview', 'photoAdjust');
-  setInterval(refreshGoogleToken, 60000);
-  scheduleBackups();
+  scheduleDailyBackup();
+
   // Add touch event listener for sidebar overlay
-const overlay = document.querySelector('.sidebar-overlay');
-overlay.addEventListener('touchstart', (e) => {
-  e.preventDefault();
-  toggleSidebar();
-});
+  const overlay = document.querySelector('.sidebar-overlay');
+  overlay.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    toggleSidebar();
+  });
+
   // PWA Install Prompt
   window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();
     deferredPrompt = e;
     document.getElementById('installBtn').style.display = 'block';
   });
-  
 
   document.getElementById('installBtn').addEventListener('click', () => {
     if (deferredPrompt) {
@@ -471,11 +241,6 @@ function checkOverdueFiles() {
 }
 
 function navigate(screenId) {
-  if (userProfile && !isGoogleTokenValid() && screenId !== 'admin') {
-    showToast('Please sign in to Google Drive to access this section');
-    signInWithGoogle();
-    return;
-  }
   document.querySelectorAll('.screen').forEach(screen => screen.classList.remove('active'));
   document.getElementById(screenId).classList.add('active');
   document.querySelectorAll('.sidebar button').forEach(btn => btn.classList.remove('active'));
@@ -541,9 +306,7 @@ document.getElementById('adminForm').addEventListener('submit', (e) => {
         document.getElementById('adminForm').style.display = 'none';
         document.getElementById('savedProfile').style.display = 'block';
         updateSavedProfile();
-        showToast('Profile saved successfully! Please sign in to Google Drive.');
-        console.log('Triggering Google Drive sign-in');
-        signInWithGoogle();
+        showToast('Profile saved successfully!');
         document.getElementById('loadingIndicator').style.display = 'none';
         navigate('dashboard');
       };
@@ -860,7 +623,7 @@ function showDashboardReport(type) {
 
   const today = new Date().toLocaleDateString('en-CA');
   const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toLocaleDateString('en-CA');
-  const tenDaysAgo = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000);
+  const tenDaysAgo = new Date(Date.now() - 10 * 24 * 60 * 1000);
 
   let filteredFiles = files;
   let title = '';
@@ -1040,6 +803,12 @@ function formatDate(date, format = 'YYYY-MM-DD') {
   const hours = String(d.getHours()).padStart(2, '0');
   const minutes = String(d.getMinutes()).padStart(2, '0');
   const seconds = String(d.getSeconds()).padStart(2, '0');
+  if (format === 'YYYYMMDD') {
+    return `${year}${month}${day}`;
+  }
+  if (format === 'YYYYMMDD_HHMMSS') {
+    return `${year}${month}${day}_${hours}${minutes}${seconds}`;
+  }
   if (format === 'YYYY-MM-DD HH:mm:ss') {
     return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
   }
@@ -1619,7 +1388,7 @@ function backupData() {
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href =url;
+  a.href = url;
   a.download = `backup_${formatDate(new Date(), 'YYYYMMDD_HHMMSS')}.json`;
   a.click();
   URL.revokeObjectURL(url);
@@ -1671,32 +1440,21 @@ function resetApp() {
       files = [];
       profiles = [];
       userProfile = null;
-      offlineQueue = [];
+      backupFolderHandle = null;
       analytics = { filesEntered: 0, searchesPerformed: 0, backupsCreated: 0 };
       localStorage.clear();
-      const transaction = db.transaction(['data'], 'readwrite');
-      const store = transaction.objectStore('data');
-      store.clear();
+      const transaction = db.transaction(['data', 'folder'], 'readwrite');
+      transaction.objectStore('data').clear();
+      transaction.objectStore('folder').clear();
       showToast('App reset successfully');
       navigate('admin');
       document.getElementById('setupMessage').style.display = 'block';
       document.getElementById('adminForm').style.display = 'block';
       document.getElementById('savedProfile').style.display = 'none';
-      updateGoogleDriveButtons(false);
     }
   });
 }
 
-function showToast(message) {
-  const toast = document.getElementById('toast');
-  toast.textContent = message;
-  toast.classList.add('show');
-  setTimeout(() => {
-    toast.classList.remove('show');
-  }, 3000);
-}
-
-// Analytics Dashboard
 function showAnalytics() {
   navigate('analytics');
   const ctx = document.getElementById('analyticsChart').getContext('2d');
@@ -1707,7 +1465,7 @@ function showAnalytics() {
   chartInstance = new Chart(ctx, {
     type: 'bar',
     data: {
-      labels: ['Files Entered', 'Searches Performed', 'Backups Created'],
+      labels: ['Files Delivered', 'Searches Performed', 'Backups Created'],
       datasets: [{
         label: 'Analytics',
         data: [analytics.filesEntered, analytics.searchesPerformed, analytics.backupsCreated],
@@ -1731,23 +1489,9 @@ function showAnalytics() {
   document.getElementById('analyticsBackups').textContent = analytics.backupsCreated;
 }
 
-// Service Worker Registration
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').then(registration => {
-      console.log('Service Worker registered:', registration);
-    }).catch(error => {
-      console.error('Service Worker registration failed:', error);
-    });
-  });
-}
-
 // Handle Online/Offline Status
 window.addEventListener('online', () => {
   showToast('You are now online');
-  if (isGoogleTokenValid()) {
-    processOfflineQueue();
-  }
 });
 
 window.addEventListener('offline', () => {
@@ -1810,11 +1554,7 @@ if (document.getElementById('advocateCell')) {
 }
 
 // Periodic Data Sync
-setInterval(() => {
-  if (navigator.onLine && isGoogleTokenValid()) {
-    syncLocalStorageToIndexedDB();
-  }
-}, 300000); // Every 5 minutes
+setInterval(syncLocalStorageToIndexedDB, 300000); // Every 5 minutes
 
 // Accessibility Enhancements
 document.querySelectorAll('input, button, a').forEach(el => {
@@ -1837,108 +1577,115 @@ window.addEventListener('beforeunload', (e) => {
 // Dynamic Theme Support
 function applyTheme(theme) {
   document.body.className = theme;
-  localStorage.setItem('theme', theme);
+localStorage.setItem('theme', theme);
 }
 
+// Toast Notification
+function showToast(message, duration = 3000) {
+  const toast = document.createElement('div');
+  toast.className = 'toast';
+  toast.textContent = message;
+  document.body.appendChild(toast);
+  setTimeout(() => {
+    toast.classList.add('show');
+    setTimeout(() => {
+      toast.classList.remove('show');
+      setTimeout(() => {
+        toast.remove();
+      }, 300);
+    }, duration);
+  }, 100);
+}
+
+// Handle Theme Toggle
 document.getElementById('themeToggle').addEventListener('click', () => {
   const currentTheme = localStorage.getItem('theme') || 'light';
   const newTheme = currentTheme === 'light' ? 'dark' : 'light';
   applyTheme(newTheme);
 });
 
-// Apply saved theme on load
+// Initialize Theme
 const savedTheme = localStorage.getItem('theme') || 'light';
 applyTheme(savedTheme);
 
-// Error Boundary
-window.addEventListener('error', (event) => {
-  console.error('Global error:', event.error);
-  showToast('An unexpected error occurred. Please try again.');
+// Handle Backup Folder Selection
+document.getElementById('selectBackupFolderBtn').addEventListener('click', selectBackupFolder);
+
+// Handle Manual Backup
+document.getElementById('backupBtn').addEventListener('click', backupData);
+
+// Handle Restore
+document.getElementById('restoreBtn').addEventListener('click', triggerRestore);
+
+// Handle Reset
+document.getElementById('resetBtn').addEventListener('click', resetApp);
+
+// Form Input Handlers
+document.getElementById('caseType').addEventListener('change', toggleCriminalFields);
+document.getElementById('copyAgency').addEventListener('change', toggleCopyAgency);
+document.getElementById('cmsNo').addEventListener('input', autoFillCMS);
+document.getElementById('deliveredTo').addEventListener('input', (e) => suggestProfiles(e.target.value, 'deliveredTo'));
+document.getElementById('profileType').addEventListener('change', toggleProfileFields);
+document.getElementById('profileSearch').addEventListener('input', renderProfiles);
+document.getElementById('profileFilterType').addEventListener('change', renderProfiles);
+document.getElementById('returnCms').addEventListener('input', filterPendingFiles);
+document.getElementById('returnTitle').addEventListener('input', filterPendingFiles);
+document.getElementById('bulkReturnBtn').addEventListener('click', bulkReturnFiles);
+document.getElementById('profileImportBtn').addEventListener('click', triggerImport);
+document.getElementById('profileExportBtn').addEventListener('click', exportProfiles);
+document.getElementById('profileImport').addEventListener('change', importProfiles);
+document.getElementById('dataRestore').addEventListener('change', restoreData);
+document.getElementById('searchPrevRecords').addEventListener('submit', (e) => {
+  e.preventDefault();
+  performDashboardSearch();
+});
+document.getElementById('printReportBtn').addEventListener('click', printDashboardReport);
+document.getElementById('exportCsvBtn').addEventListener('click', () => exportDashboardReport('csv'));
+document.getElementById('exportPdfBtn').addEventListener('click', () => exportDashboardReport('pdf'));
+document.getElementById('closeReportPanel').addEventListener('click', () => {
+  document.getElementById('dashboardReportPanel').style.display = 'none';
+});
+document.getElementById('changePinForm').addEventListener('submit', (e) => {
+  e.preventDefault();
+  changePin();
+});
+document.getElementById('cancelPinChange').addEventListener('click', hideChangePin);
+
+// Modal Close Handlers
+document.getElementById('disclaimerModal').addEventListener('click', (e) => closeModalIfOutside(e, 'disclaimerModal'));
+document.getElementById('pinModal').addEventListener('click', (e) => closeModalIfOutside(e, 'pinModal'));
+document.getElementById('changePinModal').addEventListener('click', (e) => closeModalIfOutside(e, 'changePinModal'));
+document.getElementById('profileModal').addEventListener('click', (e) => closeModalIfOutside(e, 'profileModal'));
+
+// Service Worker Registration
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker
+      .register('/service-worker.js')
+      .then((registration) => {
+        console.log('Service Worker registered with scope:', registration.scope);
+      })
+      .catch((error) => {
+        console.error('Service Worker registration failed:', error);
+      });
+  });
+}
+
+// Handle Visibility Change
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') {
+    syncIndexedDBToLocalStorage();
+    updateDashboardCards();
+  }
 });
 
-// Chart.js cleanup on navigation
-window.addEventListener('popstate', () => {
+// Ensure canvas is properly disposed on page unload
+window.addEventListener('unload', () => {
   if (chartInstance) {
     chartInstance.destroy();
     chartInstance = null;
   }
 });
 
-// Handle visibility change
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && isGoogleTokenValid()) {
-    refreshGoogleToken();
-    syncLocalStorageToIndexedDB();
-  }
-});
-
-// Voice Input Support
-function enableVoiceInput(inputId) {
-  const input = document.getElementById(inputId);
-  if ('webkitSpeechRecognition' in window) {
-    const recognition = new webkitSpeechRecognition();
-    recognition.lang = 'en-US';
-    recognition.interimResults = false;
-    recognition.onresult = (event) => {
-      input.value = event.results[0][0].transcript;
-      input.dispatchEvent(new Event('input'));
-    };
-    recognition.onerror = () => showToast('Voice input failed. Please try again.');
-    recognition.start();
-  } else {
-    showToast('Voice input not supported in this browser.');
-  }
-}
-
-// Add voice input buttons
-['clerkName', 'judgeName', 'courtName', 'profileName'].forEach(id => {
-  const input = document.getElementById(id);
-  if (input) {
-    const button = document.createElement('button');
-    button.textContent = '🎤';
-    button.type = 'button';
-    button.style.marginLeft = '5px';
-    button.onclick = () => enableVoiceInput(id);
-    input.parentNode.appendChild(button);
-  }
-});
-
-// Lazy load images
-document.querySelectorAll('img').forEach(img => {
-  img.setAttribute('loading', 'lazy');
-});
-
-// Compress localStorage data
-function compressData(data) {
-  return pako.gzip(JSON.stringify(data), { to: 'string' });
-}
-
-function decompressData(compressed) {
-  return JSON.parse(pako.ungzip(compressed, { to: 'string' }));
-}
-
-// Override localStorage methods to use compression
-const originalSetItem = localStorage.setItem;
-localStorage.setItem = function(key, value) {
-  if (['files', 'profiles', 'analytics'].includes(key)) {
-    originalSetItem.call(this, key, compressData(value));
-  } else {
-    originalSetItem.call(this, key, value);
-  }
-};
-
-const originalGetItem = localStorage.getItem;
-localStorage.getItem = function(key) {
-  const value = originalGetItem.call(this, key);
-  if (['files', 'profiles', 'analytics'].includes(key) && value) {
-    try {
-      return decompressData(value);
-    } catch (e) {
-      return value;
-    }
-  }
-  return value;
-};
-
-// End of script
-console.log('Court File Tracker initialized');
+// Log App Initialization
+console.log('Court File Tracker PWA initialized');                       
