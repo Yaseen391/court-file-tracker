@@ -35,7 +35,6 @@
   <button onclick="navigate('admin')"><span>🛡️</span> Admin</button>
   <button onclick="navigate('developersDisclaimer')"><span>ℹ️</span> Developers Disclaimer</button>
   <button id="installBtn" style="display:none;"><span>📱</span> Install App</button> <!-- Added Install Button -->
-     // document.getElementById('installBtn').style.display = 'none'; // Comment out to ensure visibility
 </aside>
     <!-- Main Screens -->
     <main>
@@ -400,6 +399,15 @@
         </div>
       </div>
 
+      <!-- Backup Folder Prompt Modal -->
+<div id="backupFolderModal" class="modal" onclick="closeModalIfOutside(event, 'backupFolderModal')">
+  <div class="modal-content">
+    <h3>Select Backup Folder</h3>
+    <p>Please select a folder to store your backups before using the app.</p>
+    <button onclick="selectBackupFolder()">Select Folder</button>
+    <button onclick="document.getElementById('backupFolderModal').style.display='none';">Cancel</button>
+  </div>
+</div>
       <!-- Share Backup Modal -->
       <div id="shareBackupModal" class="modal" onclick="closeModalIfOutside(event, 'shareBackupModal')">
         <div class="modal-content">
