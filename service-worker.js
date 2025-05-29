@@ -47,31 +47,25 @@ self.addEventListener('activate', event => {
 });
 
 // Fetch event: Serve cached content if available, otherwise fetch from network
-self.addEventListener('fetch', event => {
+self.addEventListener('fetch', (event) => {
   event.respondWith(
-    caches.match(event.request).then(response => {
-      if (response) return response;
-
-      return fetch(event.request).then(networkResponse => {
-        if (
-          event.request.method === 'GET' &&
-          !event.request.url.includes('/api')
-        ) {
-          return caches.open(CACHE_NAME).then(cache => {
+    caches.match(event.request).then((response) => {
+      if (response) {
+        return response;
+      }
+      return fetch(event.request).then((networkResponse) => {
+        if (event.request.method === 'GET' && !event.request.url.includes('/api')) {
+          return caches.open(CACHE_NAME).then((cache) => {
             cache.put(event.request, networkResponse.clone());
             return networkResponse;
           });
         }
         return networkResponse;
-      });
-    }).catch(() => {
-      // Show offline fallback only for navigation requests
-      if (event.request.mode === 'navigate') {
-        return caches.match('/offline.html');
-      }
-      return new Response('Offline: Please check your internet connection.', {
-        status: 503,
-        statusText: 'Offline',
+      }).catch(() => {
+        if (event.request.mode === 'navigate') {
+          return caches.match('/court-file-tracker/offline.html');
+        }
+        return new Response('Offline: Please check your internet connection.', { status: 503 });
       });
     })
   );
