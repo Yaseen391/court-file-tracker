@@ -1,3 +1,4 @@
+
 // Global Variables
 let files = JSON.parse(localStorage.getItem('files')) || [];
 let profiles = JSON.parse(localStorage.getItem('profiles')) || [];
@@ -187,7 +188,7 @@ window.onload = () => {
           showToast('App installation started');
         }
         deferredPrompt = null;
-        document.getElementById('installBtn').style.display = 'none';
+// document.getElementById('installBtn').style.display = 'none'; // Comment out to ensure visibility
       });
     }
   });
