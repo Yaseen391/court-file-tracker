@@ -1,3 +1,4 @@
+```
 // Global Variables
 let files = JSON.parse(localStorage.getItem('files')) || [];
 let profiles = JSON.parse(localStorage.getItem('profiles')) || [];
@@ -199,7 +200,7 @@ async function performDailyBackup() {
 
     const data = {
       files: mergedFiles,
-      profiles,
+      profiles: mergedProfiles,
       analytics
     };
 
@@ -667,12 +668,12 @@ function updateDashboardCards() {
   const tomorrowHearings = files.filter(f => new Date(f.date).toLocaleDateString('en-CA') === tomorrow).length;
   const overdue = files.filter(f => !f.returned && new Date(f.deliveredAt) < tenDaysAgo).length;
 
-  document.getElementById('cardDeliveries').innerHTML = `<span class="tooltip">Files delivered today</span><h3>${deliveries}</h3><p>Deliveries Today</p>';
-  document.getElementById('cardReturns').innerHTML = `<span class="tooltip">Files returned today</span><h3>${returns}</h3><p>Returns Today</p>';
-  document.getElementById('cardPending').innerHTML = `<span class="tooltip">Files not yet returned</span><h3>${pending}</h3><p>Pending Files</p>';
-  document.getElementById('cardTomorrow').innerHTML = `<span class="tooltip">Hearings scheduled for tomorrow</span><h3>${tomorrowHearings}</h3><p>Tomorrow Hearings</p>';
-  document.getElementById('cardOverdue').innerHTML = `<span class="tooltip">Files pending over 10 days</span><h3>${overdue}</h3><p>Overdue Files</p>';
-  document.getElementById('cardSearchPrev').innerHTML = `<span class="tooltip">Search all previous records</span><h3>Search</h3><p>Previous Records</p>';
+  document.getElementById('cardDeliveries').innerHTML = `<span class="tooltip">Files delivered today</span><h3>${deliveries}</h3><p>Deliveries Today</p>`;
+  document.getElementById('cardReturns').innerHTML = `<span class="tooltip">Files returned today</span><h3>${returns}</h3><p>Returns Today</p>`;
+  document.getElementById('cardPending').innerHTML = `<span class="tooltip">Files not yet returned</span><h3>${pending}</h3><p>Pending Files</p>`;
+  document.getElementById('cardTomorrow').innerHTML = `<span class="tooltip">Hearings scheduled for tomorrow</span><h3>${tomorrowHearings}</h3><p>Tomorrow Hearings</p>`;
+  document.getElementById('cardOverdue').innerHTML = `<span class="tooltip">Files pending over 10 days</span><h3>${overdue}</h3><p>Overdue Files</p>`;
+  document.getElementById('cardSearchPrev').innerHTML = `<span class="tooltip">Search all previous records</span><h3>Search</h3><p>Previous Records</p>`;
 
   if (chartInstance) {
     chartInstance.destroy();
@@ -689,7 +690,8 @@ function updateDashboardCards() {
         data: [deliveries, returns, pending, tomorrowHearings, overdue],
         backgroundColor: ['#0288d1', '#4caf50', '#d32f2f', '#fb8c00', '#7b1fa2']
       }]
-    }).options: {
+    },
+    options: {
       scales: {
         y: {
           beginAtZero: true,
@@ -718,7 +720,7 @@ function showDashboardReport(type) {
 
   const today = new Date().toLocaleDateString('en-CA');
   const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toLocaleDateString('en-CA');
-  const tenDaysAgo = new Date(Date.now() - 10 * 24 * 60 * 1000);
+  const tenDaysAgo = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000);
 
   let filteredFiles = files;
   let title = '';
@@ -775,29 +777,28 @@ function renderReportTable() {
       let valB = b[sortColumn] || '';
       if (sortColumn === 'deliveredAt' || sortColumn === 'returnedAt' || sortColumn === 'date') {
         valA = new Date(valA).getTime();
-        valB = new Date(valB.getTime();
+        valB = new Date(valB).getTime();
       } else if (sortColumn === 'criminalDetails') {
-        valA = a[caseType === 'criminal' ? `${a.firNo || ''} ${a.firYear || ''} ${a.firUs || ''} ${a.policeStation || ''} : '' : '' : '';
-        valB = b[caseType === 'criminal' ? `${b.firNo || ''} ${b.firYear || ''} ${b.firUs || ''} ${b.policeStation : '' : '' : ' : '';
-        document.getElementById('cardReturns').innerHTML = `<span class="tooltip">Files return by ${returns}</span>`;
+        valA = a.caseType === 'criminal' ? `${a.firNo || ''} ${a.firYear || ''} ${a.firUs || ''} ${a.policeStation || ''}` : '';
+        valB = b.caseType === 'criminal' ? `${b.firNo || ''} ${b.firYear || ''} ${b.firUs || ''} ${b.policeStation || ''}` : '';
       }
       return (valA > valB ? 1 : -1) * sortDirection;
     });
   }
 
   const start = (currentPage - 1) * itemsPerPage;
-  const end = start + pagination;
+  const end = start + itemsPerPage;
   const paginatedData = sortedData.slice(start, end);
 
   paginatedData.forEach((f, index) => {
     const row = document.createElement('tr');
-    const timeSpan = f.returned ? getDynamicTimeSpan(f.deliveredAt, f.fendedAt) : getDynamicTimeSpan(f.deliveredAt);
-    const profile = profiles.find(p => p.name === f.deliveredToName && p.type === f.deliveredToType === f.deliveredToType) || {};
-    const swalDetails = f.swalFormNo ? `No ${f.swalNoNo}, Date: ${formatDate(f.swalDate)}` : '';
+    const timeSpan = f.returned ? getDynamicTimeSpan(f.deliveredAt, f.returnedAt) : getDynamicTimeSpan(f.deliveredAt);
+    const profile = profiles.find(p => p.name === f.deliveredToName && p.type === f.deliveredToType) || {};
+    const swalDetails = f.swalFormNo ? `No: ${f.swalFormNo}, Date: ${formatDate(f.swalDate)}` : '';
     const criminalDetails = f.caseType === 'criminal' ? [
       f.firNo ? `FIR No: ${f.firNo}` : '',
       f.firYear ? `FIR Year: ${f.firYear}` : '',
-      f.firUs ? `FIR U/S : ${f.firUs}` : '',
+      f.firUs ? `FIR U/S: ${f.firUs}` : '',
       f.policeStation ? `Police Station: ${f.policeStation}` : ''
     ].filter(Boolean).join(', ') : '';
     const profileDetails = [
@@ -958,418 +959,703 @@ function performDashboardSearch() {
     return (!searchTitle || f.title.toLowerCase().includes(searchTitle)) &&
            (!searchCms || f.cmsNo.toString().includes(searchCms)) &&
            (!searchFileTaker || (f.deliveredToName.toLowerCase().includes(searchFileTaker) && (!searchFileTakerType || f.deliveredToType === searchFileTakerType))) &&
-           (!searchFirNo || (f.firNo && f.firNo.toLowerCase().includes(searchFirNo)))
-    (!searchFirYear || (f.firYear && f.firYear.toString().includes(searchFirYear))) &&
+           (!searchFirNo || (f.firNo && f.firNo.toLowerCase().includes(searchFirNo))) &&
+           (!searchFirYear || (f.firYear && f.firYear.toString().includes(searchFirYear))) &&
            (!searchPoliceStation || (f.policeStation && f.policeStation.toLowerCase().includes(searchPoliceStation)));
   });
+
   currentPage = 1;
   renderReportTable();
-  showToast('Search completed');
 }
 
-function suggestProfiles(inputId, suggestionId, typeFieldId) {
-  const input = document.getElementById(inputId);
-  const suggestionBox = document.getElementById(suggestionId);
-  suggestionBox.innerHTML = '';
-  suggestionBox.style.display = 'none';
+function printDashboardReport() {
+  const reportTitle = document.getElementById('reportTitle').textContent;
+  const table = document.getElementById('dashboardReportTable').outerHTML;
+  const printWindow = window.open('', '_blank');
+  printWindow.document.write(`
+    <html>
+      <head>
+        <title>${reportTitle}</title>
+        <style>
+          body { font-family: Arial, sans-serif; margin: 20px; }
+          table { width: 100%; border-collapse: collapse; }
+          th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+          th { background-color: #f5f5f5; }
+          h2 { text-align: center; }
+        </style>
+      </head>
+      <body>
+        <h2>${reportTitle}</h2>
+        ${table}
+      </body>
+    </html>
+  `);
+  printWindow.document.close();
+  printWindow.print();
+}
 
-  const query = input.value.toLowerCase();
-  if (query.length < 2) return;
-
-  const suggestions = profiles.filter(p => 
-    p.name.toLowerCase().includes(query) || 
-    (p.cellNo && p.cellNo.includes(query)) ||
-    (p.cnic && p.cnic.includes(query))
-  );
-
-  if (suggestions.length > 0) {
-    suggestionBox.style.display = 'block';
-    suggestions.forEach(profile => {
-      const div = document.createElement('div');
-      div.className = 'suggestion-item';
-      div.textContent = `${profile.name} (${profile.type})`;
-      div.onclick = () => {
-        input.value = profile.name;
-        if (typeFieldId) {
-          document.getElementById(typeFieldId).value = profile.type;
-          input.dataset.type = profile.type;
-        }
-        suggestionBox.innerHTML = '';
-        suggestionBox.style.display = 'none';
-      };
-      suggestionBox.appendChild(div);
+function exportDashboardReport(format) {
+  if (format === 'csv') {
+    let csv = 'Sr#,CMS No,Title,Case Type,Nature,Criminal Details,Date Type,Swal Form Details,Delivered To,Delivery Date,Return Date,Time Span,Court,Clerk Name,Profile Details\n';
+    currentReportData.forEach((f, index) => {
+      const profile = profiles.find(p => p.name === f.deliveredToName && p.type === f.deliveredToType) || {};
+      const timeSpan = f.returned ? getDynamicTimeSpan(f.deliveredAt, f.returnedAt) : getDynamicTimeSpan(f.deliveredAt);
+      const swalDetails = f.swalFormNo ? `No: ${f.swalFormNo}, Date: ${formatDate(f.swalDate)}` : '';
+      const criminalDetails = f.caseType === 'criminal' ? [
+        f.firNo ? `FIR No: ${f.firNo}` : '',
+        f.firYear ? `FIR Year: ${f.firYear}` : '',
+        f.firUs ? `FIR U/S: ${f.firUs}` : '',
+        f.policeStation ? `Police Station: ${f.policeStation}` : ''
+      ].filter(Boolean).join(', ') : '';
+      const profileDetails = [
+        profile.chamberNo ? `Chamber No: ${profile.chamberNo}` : '',
+        profile.advocateName ? `Advocate Name: ${profile.advocateName}` : '',
+        profile.advocateCell ? `Advocate Cell: ${profile.advocateCell}` : '',
+        profile.designation ? `Designation: ${profile.designation}` : '',
+        profile.postedAt ? `Posted At: ${profile.postedAt}` : '',
+        profile.type === 'other' && profile.cnic ? `ID/CNIC: ${maskCNIC(profile.cnic)}` : '',
+        profile.relation ? `Relation: ${profile.relation}` : ''
+      ].filter(Boolean).join(', ');
+      csv += `${index + 1},${f.cmsNo},"${f.title.replace('vs', 'Vs.')}",${f.caseType},"${f.nature}","${criminalDetails}",${f.dateType === 'decision' ? 'Decision Date' : 'Next Hearing Date'}: ${formatDate(f.date)},"${swalDetails}","${f.deliveredToName} (${f.deliveredToType})","${formatDate(f.deliveredAt, 'YYYY-MM-DD HH:mm:ss')}",${f.returned ? `"${formatDate(f.returnedAt, 'YYYY-MM-DD HH:mm:ss')}"` : ''},"${timeSpan}",${f.courtName},${f.clerkName},"${profileDetails}"\n`;
     });
-  }
-}
-
-// File Entry Form Submission
-document.getElementById('fileEntryForm').addEventListener('submit', (e) => {
-  e.preventDefault();
-  document.getElementById('loadingIndicator').style.display = 'block';
-  try {
-    setTimeout(() => {
-      const profilePhotoInput = document.getElementById('profilePhoto');
-      let photo = profilePhotoInput.adjustedPhoto;
-      if (!photo && profilePhotoInput.files && profilePhotoInput.files[0]) {
-        photo = profilePhotoInput.files[0];
-      }
-
-      const processPhoto = (photoData) => {
-        const newFile = {
-          cmsNo: document.getElementById('cmsNo').value,
-          title: document.getElementById('title').value,
-          caseType: document.getElementById('caseType').value,
-          nature: document.getElementById('nature').value,
-          firNo: document.getElementById('firNo').value,
-          firYear: document.getElementById('firYear').value,
-          firUs: document.getElementById('firUs').value,
-          policeStation: document.getElementById('policeStation').value,
-          dateType: document.getElementById('dateType').value,
-          date: document.getElementById('hearingDate').value,
-          swalFormNo: document.getElementById('swalFormNo').value,
-          swalDate: document.getElementById('swalDate').value,
-          deliveredToName: document.getElementById('deliveredTo').value,
-          deliveredToType: document.getElementById('deliveredTo').dataset.type || document.getElementById('deliveredToType').value,
-          deliveredAt: new Date().toISOString(),
-          returned: false,
-          courtName: userProfile.courtName,
-          clerkName: userProfile.clerkName
-        };
-        files.push(newFile);
-        localStorage.setItem('files', JSON.stringify(files));
-        syncLocalStorageToIndexedDB();
-
-        let profile = profiles.find(p => p.name === newFile.deliveredToName && p.type === newFile.deliveredToType);
-        if (!profile) {
-          profile = {
-            name: newFile.deliveredToName,
-            type: newFile.deliveredToType,
-            cellNo: document.getElementById('cellNo').value,
-            chamberNo: document.getElementById('chamberNo').value,
-            advocateName: document.getElementById('advocateName').value,
-            advocateCell: document.getElementById('advocateCell').value,
-            designation: document.getElementById('designation').value,
-            postedAt: document.getElementById('postedAt').value,
-            cnic: newFile.deliveredToType === 'other' ? document.getElementById('profileCnic').value : '',
-            relation: document.getElementById('relation').value,
-            photo: photoData
-          };
-          profiles.push(profile);
-          localStorage.setItem('profiles', JSON.stringify(profiles));
-          syncLocalStorageToIndexedDB();
-        } else if (photoData) {
-          profile.photo = photoData;
-          localStorage.setItem('profiles', JSON.stringify(profiles));
-          syncLocalStorageToIndexedDB();
-        }
-
-        analytics.filesEntered++;
-        localStorage.setItem('analytics', JSON.stringify(analytics));
-        syncLocalStorageToIndexedDB();
-        document.getElementById('fileEntryForm').reset();
-        document.getElementById('photoPreview').style.display = 'none';
-        document.getElementById('photoAdjust').style.display = 'none';
-        document.getElementById('deliveredTo').dataset.type = '';
-        showToast('File and profile saved successfully');
-        updateDashboardCards();
-        document.getElementById('loadingIndicator').style.display = 'none';
-      };
-
-      if (!photo) {
-        processPhoto(null);
-      } else if (typeof photo === 'string' && photo.startsWith('data:')) {
-        processPhoto(photo);
-      } else {
-        const reader = new FileReader();
-        reader.onload = () => processPhoto(reader.result);
-        reader.onerror = () => {
-          showToast('Failed to read photo');
-          document.getElementById('loadingIndicator').style.display = 'none';
-        };
-        reader.readAsDataURL(photo);
-      }
-    }, 500);
-  } catch (error) {
-    console.error('File entry error:', error);
-    showToast('Failed to save file. Please try again.');
-    document.getElementById('loadingIndicator').style.display = 'none';
-  }
-});
-
-// Return File Form Submission
-document.getElementById('returnFileForm').addEventListener('submit', (e) => {
-  e.preventDefault();
-  const cmsNo = document.getElementById('returnCmsNo').value;
-  const file = files.find(f => f.cmsNo === cmsNo && !f.returned);
-  if (file) {
-    promptPin((success) => {
-      if (success) {
-        file.returned = true;
-        file.returnedAt = new Date().toISOString();
-        localStorage.setItem('files', JSON.stringify(files));
-        syncLocalStorageToIndexedDB();
-        showToast('File marked as returned');
-        document.getElementById('returnFileForm').reset();
-        filterPendingFiles();
-        updateDashboardCards();
-      }
-    });
-  } else {
-    showToast('File not found or already returned');
-  }
-});
-
-function filterPendingFiles() {
-  const searchCms = document.getElementById('searchPendingCms').value;
-  const searchTitle = document.getElementById('searchPendingTitle').value.toLowerCase();
-  const filteredFiles = files.filter(f => !f.returned &&
-    (!searchCms || f.cmsNo.toString().includes(searchCms)) &&
-    (!searchTitle || f.title.toLowerCase().includes(searchTitle)));
-  renderPendingFiles(filteredFiles);
-}
-
-function renderPendingFiles(filteredFiles) {
-  const tbody = document.getElementById('pendingFilesTable').querySelector('tbody');
-  tbody.innerHTML = '';
-  filteredFiles.forEach((f, index) => {
-    const profile = profiles.find(p => p.name === f.deliveredToName && p.type === f.deliveredToType) || {};
-    const row = document.createElement('tr');
-    row.innerHTML = `
-      <td>${index + 1}</td>
-      <td>${f.cmsNo}</td>
-      <td>${f.title.replace('vs', 'Vs.')}</td>
-      <td>${f.caseType}</td>
-      <td>${f.dateType === 'decision' ? 'Decision Date' : 'Next Hearing Date'}: ${formatDate(f.date)}</td>
-      <td><a href="#" onclick="showProfileDetails('${f.deliveredToName}', '${f.deliveredToType}')">${f.deliveredToName} (${f.deliveredToType})</a></td>
-      <td>${formatDate(f.deliveredAt)}</td>
-      <td><button onclick="markAsReturned('${f.cmsNo}')">Mark Returned</button></td>
-    `;
-    tbody.appendChild(row);
-  });
-}
-
-function markAsReturned(cmsNo) {
-  const file = files.find(f => f.cmsNo === cmsNo && !f.returned);
-  if (file) {
-    promptPin((success) => {
-      if (success) {
-        file.returned = true;
-        file.returnedAt = new Date().toISOString();
-        localStorage.setItem('files', JSON.stringify(files));
-        syncLocalStorageToIndexedDB();
-        showToast('File marked as returned');
-        filterPendingFiles();
-        updateDashboardCards();
-      }
-    });
-  }
-}
-
-// File Fetcher Profiles
-function renderProfiles() {
-  const tbody = document.getElementById('profilesTable').querySelector('tbody');
-  tbody.innerHTML = '';
-  const searchName = document.getElementById('searchProfileName').value.toLowerCase();
-  const searchType = document.getElementById('searchProfileType').value;
-  const filteredProfiles = profiles.filter(p =>
-    (!searchName || p.name.toLowerCase().includes(searchName)) &&
-    (!searchType || p.type === searchType));
-  filteredProfiles.forEach((p, index) => {
-    const row = document.createElement('tr');
-    row.innerHTML = `
-      <td>${index + 1}</td>
-      <td>${p.name}</td>
-      <td>${p.type}</td>
-      <td>${p.cellNo || ''}</td>
-      <td><button onclick="showProfileDetails('${p.name}', '${p.type}')">View</button></td>
-    `;
-    tbody.appendChild(row);
-  });
-}
-
-function showToast(message) {
-  const toast = document.getElementById('toast');
-  toast.textContent = message;
-  toast.className = 'toast show';
-  setTimeout(() => {
-    toast.className = 'toast';
-  }, 3000);
-}
-
-// Case Type Change Handler
-document.getElementById('caseType').addEventListener('change', (e) => {
-  const criminalFields = document.getElementById('criminalFields');
-  criminalFields.style.display = e.target.value === 'criminal' ? 'block' : 'none';
-});
-
-// Delivered To Type Change Handler
-document.getElementById('deliveredToType').addEventListener('change', (e) => {
-  const cnicField = document.getElementById('cnicField');
-  cnicField.style.display = e.target.value === 'other' ? 'block' : 'none';
-});
-
-// Zoom Photo Functionality
-let currentScale = 1;
-let startDistance = 0;
-let isDraggingPhoto = false;
-let startXPhoto, startYPhoto;
-let translateX = 0, translateY = 0;
-
-document.getElementById('profileModalPhoto').addEventListener('click', () => {
-  const zoomModal = document.getElementById('photoZoomModal');
-  zoomModal.style.display = 'block';
-  currentScale = 1;
-  translateX = 0;
-  translateY = 0;
-  applyTransform();
-});
-
-function applyTransform() {
-  const img = document.getElementById('profileModalPhotoZoom');
-  img.style.transform = `scale(${currentScale}) translate(${translateX}px, ${translateY}px)`;
-}
-
-document.getElementById('photoZoomModal').addEventListener('wheel', (e) => {
-  e.preventDefault();
-  currentScale += e.deltaY * -0.001;
-  currentScale = Math.min(Math.max(0.5, currentScale), 3);
-  applyTransform();
-});
-
-document.getElementById('profileModalPhotoZoom').addEventListener('mousedown', (e) => {
-  e.preventDefault();
-  isDraggingPhoto = true;
-  startXPhoto = e.clientX - translateX;
-  startYPhoto = e.clientY - translateY;
-});
-
-document.getElementById('profileModalPhotoZoom').addEventListener('mousemove', (e) => {
-  if (isDraggingPhoto) {
-    translateX = e.clientX - startXPhoto;
-    translateY = e.clientY - startYPhoto;
-    applyTransform();
-  }
-});
-
-document.getElementById('profileModalPhotoZoom').addEventListener('mouseup', () => {
-  isDraggingPhoto = false;
-});
-
-document.getElementById('profileModalPhotoZoom').addEventListener('mouseleave', () => {
-  isDraggingPhoto = false;
-});
-
-document.getElementById('profileModalPhotoZoom').addEventListener('touchstart', (e) => {
-  e.preventDefault();
-  if (e.touches.length === 1) {
-    isDraggingPhoto = true;
-    startXPhoto = e.touches[0].clientX - translateX;
-    startYPhoto = e.touches[0].clientY - translateY;
-  } else if (e.touches.length === 2) {
-    startDistance = Math.hypot(
-      e.touches[0].clientX - e.touches[1].clientX,
-      e.touches[0].clientY - e.touches[1].clientY
-    );
-  }
-});
-
-document.getElementById('profileModalPhotoZoom').addEventListener('touchmove', (e) => {
-  e.preventDefault();
-  if (e.touches.length === 1 && isDraggingPhoto) {
-    translateX = e.touches[0].clientX - startXPhoto;
-    translateY = e.touches[0].clientY - startYPhoto;
-    applyTransform();
-  } else if (e.touches.length === 2) {
-    const currentDistance = Math.hypot(
-      e.touches[0].clientX - e.touches[1].clientX,
-      e.touches[0].clientY - e.touches[1].clientY
-    );
-    const scaleChange = currentDistance / startDistance;
-    currentScale *= scaleChange;
-    currentScale = Math.min(Math.max(0.5, currentScale), 3);
-    startDistance = currentDistance;
-    applyTransform();
-  }
-});
-
-document.getElementById('profileModalPhotoZoom').addEventListener('touchend', () => {
-  isDraggingPhoto = false;
-});
-
-function closePhotoZoom() {
-  document.getElementById('photoZoomModal').style.display = 'none';
-}
-
-// Backup and Restore
-function showBackupModal() {
-  document.getElementById('backupModal').style.display = 'block';
-}
-
-function hideBackupModal() {
-  document.getElementById('backupModal').style.display = 'none';
-}
-
-async function exportData() {
-  try {
-    const data = { files, profiles, analytics };
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `cft_backup_${formatDate(new Date(), 'YYYYMMDD_HHMMSS')}.json`;
+    a.download = `report_${formatDate(new Date(), 'YYYYMMDD_HHMMSS')}.csv`;
     a.click();
     URL.revokeObjectURL(url);
-    showToast('Data exported successfully');
-  } catch (error) {
-    console.error('Export error:', error);
-    showToast('Failed to export data');
+  } else if (format === 'pdf') {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    doc.setFontSize(16);
+    doc.text(document.getElementById('reportTitle').textContent, 10, 10);
+    doc.autoTable({
+      html: '#dashboardReportTable',
+      startY: 20,
+      theme: 'striped',
+      styles: { fontSize: 8 },
+      columnStyles: { 0: { cellWidth: 10 }, 1: { cellWidth: 20 }, 2: { cellWidth: 30 } }
+    });
+    doc.save(`report_${formatDate(new Date(), 'YYYYMMDD_HHMMSS')}.pdf`);
   }
 }
 
-async function importData() {
-  try {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = '.json';
-    input.onchange = async (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-      const text = await file.text();
-      const data = JSON.parse(text);
-      files = data.files || [];
-      profiles = data.profiles || [];
-      analytics = data.analytics || analytics;
+document.getElementById('fileForm').addEventListener('submit', (e) => {
+  e.preventDefault();
+  document.getElementById('loadingIndicator').style.display = 'block';
+  promptPin((success) => {
+    if (!success) {
+      showToast('PIN verification failed');
+      document.getElementById('loadingIndicator').style.display = 'none';
+      return;
+    }
+    const cmsNo = document.getElementById('cmsNo').value;
+    const existingDelivered = files.find(f => f.cmsNo === cmsNo && !f.returned);
+    if (existingDelivered) {
+      const profile = profiles.find(p => p.name === existingDelivered.deliveredToName && p.type === existingDelivered.deliveredToType);
+      showToast(`File ${cmsNo} is already delivered to ${existingDelivered.deliveredToName} (${existingDelivered.deliveredToType}) and not yet returned.`);
+      document.getElementById('loadingIndicator').style.display = 'none';
+      return;
+    }
+    setTimeout(() => {
+      const deliveredToName = document.getElementById('deliveredTo').value;
+      const deliveredToType = document.getElementById('deliveredType').value;
+      const profileExists = profiles.find(p => p.name === deliveredToName && p.type === deliveredToType);
+      if (!profileExists) {
+        showToast('Profile does not exist. Please add it in the File Fetcher section.');
+        document.getElementById('loadingIndicator').style.display = 'none';
+        navigate('fileFetcher');
+        showProfileForm();
+        return;
+      }
+      const fileData = {
+        cmsNo: document.getElementById('cmsNo').value,
+        title: `${document.getElementById('petitioner').value} vs ${document.getElementById('respondent').value}`,
+        caseType: document.getElementById('caseType').value,
+        nature: document.getElementById('nature').value,
+        firNo: document.getElementById('firNo').value,
+        firYear: document.getElementById('firYear').value,
+        firUs: document.getElementById('firUs').value,
+        policeStation: document.getElementById('policeStation').value,
+        dateType: document.getElementById('dateType').value,
+        date: document.getElementById('date').value,
+        deliveredToName: deliveredToName,
+        deliveredToType: deliveredToType,
+        swalFormNo: document.getElementById('copyAgency').checked ? document.getElementById('swalFormNo').value : '',
+        swalDate: document.getElementById('copyAgency').checked ? document.getElementById('swalDate').value : '',
+        deliveredAt: new Date().toISOString(),
+        courtName: userProfile.courtName,
+        clerkName: userProfile.clerkName,
+        returned: false
+      };
+      files.push(fileData);
+      analytics.filesEntered++;
       localStorage.setItem('files', JSON.stringify(files));
-      localStorage.setItem('profiles', JSON.stringify(profiles));
       localStorage.setItem('analytics', JSON.stringify(analytics));
       syncLocalStorageToIndexedDB();
+      document.getElementById('fileForm').reset();
+      document.getElementById('criminalFields').style.display = 'none';
+      document.getElementById('copyAgencyFields').style.display = 'none';
+      document.getElementById('copyAgency').checked = false;
+      const caseFields = ['petitioner', 'respondent', 'caseType', 'nature', 'firNo', 'firYear', 'firUs', 'policeStation'];
+      const editableFields = ['dateType', 'date', 'deliveredTo', 'deliveredType', 'swalFormNo', 'swalDate', 'copyAgency'];
+      caseFields.concat(editableFields).forEach(field => {
+        document.getElementById(field).disabled = false;
+      });
+      document.getElementById('copyAgency').disabled = false;
+      showToast('File saved and delivered successfully');
+      document.getElementById('loadingIndicator').style.display = 'none';
       updateDashboardCards();
-      renderProfiles();
-      showToast('Data imported successfully');
-    };
-    input.click();
-  } catch (error) {
-    console.error('Import error:', error);
-    showToast('Failed to import data');
+    }, 500);
+  });
+});
+
+function autoFillCMS() {
+  const cmsNo = document.getElementById('cmsNo').value;
+  const existing = files.find(f => f.cmsNo === cmsNo);
+  const caseFields = ['petitioner', 'respondent', 'caseType', 'nature', 'firNo', 'firYear', 'firUs', 'policeStation'];
+  const editableFields = ['dateType', 'date', 'deliveredTo', 'deliveredType', 'swalFormNo', 'swalDate', 'copyAgency'];
+  if (existing) {
+    document.getElementById('petitioner').value = existing.title.split(' vs ')[0];
+    document.getElementById('respondent').value = existing.title.split(' vs ')[1];
+    document.getElementById('caseType').value = existing.caseType;
+    document.getElementById('nature').value = existing.nature;
+    document.getElementById('firNo').value = existing.firNo || '';
+    document.getElementById('firYear').value = existing.firYear || '';
+    document.getElementById('firUs').value = existing.firUs || '';
+    document.getElementById('policeStation').value = existing.policeStation || '';
+    toggleCriminalFields();
+    caseFields.forEach(field => {
+      document.getElementById(field).disabled = true;
+    });
+    editableFields.forEach(field => {
+      document.getElementById(field).disabled = false;
+    });
+    document.getElementById('copyAgency').checked = false;
+    document.getElementById('deliveredTo').value = '';
+    document.getElementById('deliveredType').value = '';
+    document.getElementById('swalFormNo').value = '';
+    document.getElementById('swalDate').value = '';
+    toggleCopyAgency();
+  } else {
+    caseFields.concat(editableFields).forEach(field => {
+      document.getElementById(field).disabled = false;
+    });
+    document.getElementById('copyAgency').disabled = false;
   }
 }
 
-// Service Worker Registration
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').then(registration => {
-      console.log('ServiceWorker registered:', registration);
-    }).catch(error => {
-      console.error('ServiceWorker registration failed:', error);
-    });
+function toggleCriminalFields() {
+  document.getElementById('criminalFields').style.display = document.getElementById('caseType').value === 'criminal' ? 'block' : 'none';
+}
+
+function toggleCopyAgency() {
+  document.getElementById('copyAgencyFields').style.display = document.getElementById('copyAgency').checked ? 'block' : 'none';
+}
+
+function suggestProfiles(input, inputId) {
+  const suggestions = document.getElementById(inputId === 'deliveredTo' ? 'suggestions' : 'searchSuggestions');
+  suggestions.innerHTML = '';
+  if (!input) return;
+  const fuse = new Fuse(profiles, {
+    keys: ['name', 'cellNo', 'chamberNo'],
+    threshold: 0.3
+  });
+  const results = fuse.search(input).slice(0, 5);
+  results.forEach(result => {
+    const li = document.createElement('li');
+    const img = document.createElement('img');
+    img.src = result.item.photo || 'icon-192.png';
+    img.style.width = '40px';
+    img.style.height = '40px';
+    img.style.borderRadius = '50%';
+    img.style.border = '1px solid #ccc';
+    li.appendChild(img);
+    const text = document.createElement('span');
+    text.textContent = `${result.item.name} (${result.item.type})`;
+    li.appendChild(text);
+    li.onclick = () => {
+      document.getElementById(inputId).value = result.item.name;
+      if (inputId === 'deliveredTo') {
+        document.getElementById('deliveredType').value = result.item.type;
+      } else if (inputId === 'searchFileTaker') {
+        document.getElementById('searchFileTaker').dataset.type = result.item.type; // Store type for search
+        performDashboardSearch(); // Trigger search after selection
+      }
+      suggestions.innerHTML = '';
+    };
+    suggestions.appendChild(li);
   });
 }
 
-// Prevent accidental navigation
-window.addEventListener('beforeunload', (e) => {
-  if (document.getElementById('fileEntryForm').querySelector(':invalid') ||
-      document.getElementById('adminForm').querySelector(':invalid')) {
-    e.preventDefault();
-    e.returnValue = 'You have unsaved changes. Are you sure you want to leave?';
+function filterPendingFiles() {
+  const cms = document.getElementById('returnCms').value;
+  const title = document.getElementById('returnTitle').value.toLowerCase();
+  const tbody = document.getElementById('pendingFilesTable').querySelector('tbody');
+  tbody.innerHTML = '';
+  const filteredFiles = files.filter(f => !f.returned && (!cms || f.cmsNo.toString().includes(cms)) && (!title || f.title.toLowerCase().includes(title)));
+  filteredFiles.forEach(f => {
+    const row = document.createElement('tr');
+    row.innerHTML = `
+      <td><input type="checkbox" class="sc-btn" data-cms="${f.cmsNo}"></td>
+      <td>${f.cmsNo}</td>
+      <td>${f.title.replace('vs', 'Vs.')}</td>
+      <td>${f.caseType}</td>
+      <td><a href="#" onclick="showProfileDetails('${f.deliveredToName}', '${f.deliveredToType}')">${f.deliveredToName} (${f.deliveredToType})</a></td>
+      <td><button onclick="returnFile('${f.cmsNo}')">Return</button></td>
+    `;
+    tbody.appendChild(row);
+  });
+}
+
+function returnFile(cmsNo) {
+  promptPin((success) => {
+    if (success) {
+      const file = files.find(f => f.cmsNo === cmsNo && !f.returned);
+      if (file) {
+        file.returned = true;
+        file.returnedAt = new Date().toISOString();
+        localStorage.setItem('files', JSON.stringify(files));
+        syncLocalStorageToIndexedDB();
+        showToast(`File ${cmsNo} returned successfully`);
+        filterPendingFiles();
+        updateDashboardCards();
+      }
+    }
+  });
+}
+
+function bulkReturnFiles() {
+  const selected = document.querySelectorAll('.sc-btn:checked');
+  if (selected.length === 0) {
+    showToast('Please select at least one file to return');
+    return;
   }
+  promptPin((success) => {
+    if (success) {
+      selected.forEach(checkbox => {
+        const cmsNo = checkbox.dataset.cms;
+        const file = files.find(f => f.cmsNo === cmsNo && !f.returned);
+        if (file) {
+          file.returned = true;
+          file.returnedAt = new Date().toISOString();
+        }
+      });
+      localStorage.setItem('files', JSON.stringify(files));
+      syncLocalStorageToIndexedDB();
+      showToast(`${selected.length} file(s) returned successfully`);
+      filterPendingFiles();
+      updateDashboardCards();
+    }
+  });
+}
+
+function showProfileForm() {
+  document.getElementById('profileForm').style.display = 'block';
+  document.getElementById('profileSearchSection').style.display = 'none';
+  document.getElementById('profileList').style.display = 'none';
+  document.getElementById('profileType').value = '';
+  document.getElementById('profileFields').innerHTML = '';
+  document.getElementById('profilePhoto').value = '';
+  document.getElementById('photoAdjust').style.display = 'none';
+}
+
+function showProfileSearch() {
+  document.getElementById('profileForm').style.display = 'none';
+  document.getElementById('profileSearchSection').style.display = 'block';
+  document.getElementById('profileList').style.display = 'block';
+  renderProfiles();
+}
+
+function toggleProfileFields() {
+  const type = document.getElementById('profileType').value;
+  const fields = document.getElement('div');
+  fields.innerHTML = `
+    <label>Name: <span class="required">*</span><input type="text" id="profileName" required /></label>
+    <label>Cell No: <span class="required">*</span><input type="text" id="cellNo" required /></label>
+  `;
+  if (type === 'munshi') {
+    fields.innerHTML += `
+      <label>Chamber No: <span class="required">*</span><input type="text" id="chamberNo" required /></label>
+      <label>Advocate Name: <span class="required">*</span><input type="text" id="advocateName" required /></label>
+      <label>Advocate Cell: <input type="text" id="advocateCell" /></label>
+    `;
+  } else if (type === 'advocate') {
+    fields.innerHTML += `
+      <label>Chamber No: <span class="required">*</span><input type="text" id="chamberNo" required /></label>
+    `;
+  } else if (type === 'delegate') {
+    fields.innerHTML += `
+      <label>Designation: <input type="text" id="designation" /></label>
+      <label>Posted At: <input type="text" id="postedAt" /></label>
+    `;
+  } else if (type === 'other') {
+    fields.innerHTML += `
+      <label>ID/CNIC: <input type="text" id="cnic" /></label>
+      <label>Relation: <input type="text" id="relation" /></label>
+    `;
+  }
+  document.getElementById('photoRequired').style.display = type === 'advocate' ? 'none' : 'inline';
+  document.getElementById('profilePhoto').required = type !== 'advocate';
+}
+
+// Profile Form Submission
+document.getElementById('profileForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    document.getElementById('loadingIndicator').style.display = 'block';
+    try {
+      const profileTypeDoc = document.getElementById('profileType').value;
+      const photoInput = document.getElementById('profilePhoto');
+      let photo = photoInput.adjustedPhoto;
+      if (!photo && photoInput.files && photoInput.files[0]) {
+        photo = photoInput.files[0];
+      }
+
+      if (!photo && profileType !== 'advocate') {
+        showToast('Please upload a profile photo');
+        document.getElementById('loadingIndicator').style.display = 'none';
+        return;
+      }
+
+      const processPhoto = (photoData) => {
+        const profile = {
+          type: document.getElementById('profileType').value,
+          name: document.getElementById('profileName').value,
+          cellNo: document.getElementById('cellNo').value,
+          chamberNo: document.getElementById('chamberNo') ? document.getElementById('chamberNo').value : '',
+          advocateName: document.getElementById('advocateName').value,
+          advocateCell: document.getElementById('advocateCell') ? document.getElementById('advocateCell').value : '',
+          designation: document.getElementById('designation') ? document.getElementById('designation').value : '',
+          postedAt: document.getElementById('postedAt') ? document.getElementById('postedAt').value : '',
+          cnic: document.getElementById('cnic') ? document.getElementById('cnic').value : '',
+          relation: document.getElementById('relation') ? document.getElementById('relation').value : '',
+          photo: photoData || ''
+        };
+
+        const existingIndex = profiles.findIndex(p => p.name === profile.name && p.type === profile.type);
+        if (existingIndex >= 0) {
+          profiles[existingIndex] = profile;
+        } else {
+          profiles.push(profile);
+        }
+
+        localStorage.setItem('profiles', JSON.stringify(profiles));
+        syncLocalStorageToIndexedDB();
+        document pelGetElementById('profileForm').reset();
+        document.getElementById('profileFields').innerHTML = '';
+        document.getElementById('photoAdjust').style.display = 'none';
+        showToast('Profile saved successfully');
+        document.getElementById('loadingIndicator').style.display = 'none';
+        showProfileSearch();
+      });
+
+      if (photo && typeof photo === 'string' && photo.startsWith('data:')) {
+        console.log('Using adjusted data URL');
+        processPhoto(photo);
+      } else if (photo) {
+        console.log('Reading raw file');
+        const reader = new FileReader();
+        reader.onload = () => {
+          console.log('Photo read successfully');
+          processPhoto(reader.result);
+        });
+        reader.onerror = () => {
+          console.error('Error reading photo');
+          showToast('Failed to read photo. Please try again.');
+          document.getElementById('loadingIndicator').style.display = 'none';
+        });
+        reader.readAsDataURL(photo);
+      } else {
+        console.log('No photo provided (Advocate profile)');
+        processPhoto('');
+      }
+    } catch (error) {
+      console.error('Profile form error:', error);
+      showToast('Failed to save profile. Please try again.');
+      document.getElementById('loadingIndicator').style.display = 'none');
+    }
+  });
+
+function renderProfiles() {
+  const type = document.getElementById('profileFilterType').value;
+  const searchFilter = document.getElementById('profileSearch').value.toLowerCase();
+  const tbody = document.querySelectorById('profileTable').getElementById('querySelector tbody');
+  tbody.innerHTML = '';
+  let filteredProfiles = profiles;
+  if (typeFilter) {
+    filteredProfiles = profiles.filter(p => p.type === typeFilter);
+  }
+  if (search) {
+    const fuse = new searchableFuse(filteredProfiles, {
+      keys: ['name', 'cellNo', 'chamberNo', 'advocateName', 'designation'],
+      threshold: 0.3
+    });
+    filteredProfiles = fuse.search(search).map(result => result.item);
+  }
+
+  filteredProfiles.forEach(p => {
+    const delivered = files.filter(f => f.deliveredToName === p.name && p.name.length && p.type === f.deliveredToType));
+    .length;
+    const pending = files.filter(f => f.deliveredToName === p.name && p.name.length && p.type === f.deliveredToType && !f.returned);
+    .length);
+    const row = document.createElement('tr');
+    row.innerHTML = `
+      <td><img src="${p.photo || 'icon-192.png'}" alt="Profile Photo" style="width:50px; height:50px; border-radius:50%; border:1px solid #ccc;"></td>
+      <td>${p.name}</td>
+      <td>${p.type}</td>
+      <td>${p.cellNo}</td>
+      <td>${p.chamberNo || ''}</td>
+      <td>${delivered}</td>
+      <td>${pending}</td>
+      <td>
+        <button onclick="editProfile('${p.name}', '${p.type}')">Edit</button>
+        <button onclick="deleteProfile('${p.name}', '${p.type}')">Delete</button>
+      </td>
+    `;
+    tbody.appendChild(row);
+  });
+}
+
+function editProfile(name, type) {
+  const profile = profiles.find(p => p.name === name && p.type === type);
+  if (!profile) return;
+  document.getElementById('profileForm').style.display = 'block';
+  document.getElementById('profileSearchSection').style.display = 'none';
+  document.getElementById('profileList').style.display = 'none';
+  document.getElementById('profileType').value = profile.type;
+  toggleProfileFields();
+  document.getElementById('profileName').value = profile.name;
+  document.getElementById('cellNo').value = profile.cellNo;
+  if (document.getElementById('chamberNo')) document.getElementById('chamberNo').value = profile.chamberNo || '';
+  if (document.getElementById('advocateName')) document.getElementById('advocateName').value = profile.advocateName || '';
+  if (document.getElementById('advocateCell')) document.getElementById('advocateCell').value = profile.advocateCell || '';
+  if (document.getElementById('designation')) document.getElementById('designation').value = profile.designation || '';
+  if (document.getElementById('postedAt')) document.getElementById('postedAt').value = profile.postedAt || '';
+  if (document.getElementById('cnic')) document.getElementById('cnic').value = profile.cnic || '';
+  if (document.getElementById('relation')) document.getElementById('relation').value = profile.relation || '';
+}
+
+function deleteProfile(name, type) {
+  promptPin((success) => {
+    if (success) {
+      profiles = profiles.filter(p => p.name !== name || p.type !== type);
+      localStorage.setItem('profiles', JSON.stringify(profiles));
+      syncLocalStorageToIndexedDB();
+      showToast('Profile deleted successfully');
+      renderProfiles();
+    }
+  });
+}
+
+function triggerImport() {
+  document.getElementById('profileImport').click();
+}
+
+function importProfiles() {
+  const file = document.getElementById('profileImport').files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const importedProfiles = JSON.parse(reader.result);
+      if (!Array.isArray(importedProfiles)) throw new Error('Invalid profile data');
+      profiles = [...profiles, ...importedProfiles];
+      localStorage.setItem('profiles', JSON.stringify(profiles));
+      syncLocalStorageToIndexedDB();
+      showToast('Profiles imported successfully');
+      showProfileSearch();
+    } catch (error) {
+      showToast('Failed to import profiles. Invalid file format.');
+    }
+  };
+  reader.readAsText(file);
+}
+
+function exportProfiles() {
+  const blob = new Blob([JSON.stringify(profiles, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `profiles_${formatDate(new Date(), 'YYYYMMDD_HHMMSS')}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function backupData() {
+  const data = {
+    files,
+    profiles,
+    userProfile: { ...userProfile, pin: '', cnic: maskCNIC(userProfile.cnic) },
+    analytics
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `backup_${formatDate(new Date(), 'YYYYMMDD_HHMMSS')}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+  analytics.backupsCreated++;
+  localStorage.setItem('analytics', JSON.stringify(analytics));
+  syncLocalStorageToIndexedDB();
+  showToast('Backup created successfully');
+}
+
+function triggerRestore() {
+  document.getElementById('dataRestore').click();
+}
+
+function restoreData() {
+  const file = document.getElementById('dataRestore').files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const data = JSON.parse(reader.result);
+
+      // Merge files
+      if (data.files) {
+        data.files.forEach(newFile => {
+          const existingIndex = files.findIndex(f => f.cmsNo === newFile.cmsNo);
+          if (existingIndex === -1) {
+            files.push(newFile);
+          } else {
+            // Update existing file if newer
+            if (new Date(newFile.deliveredAt) > new Date(files[existingIndex].deliveredAt)) {
+              files[existingIndex] = newFile;
+            }
+          }
+        });
+      }
+
+      // Merge profiles
+      if (data.profiles) {
+        data.profiles.forEach(newProfile => {
+          const existingIndex = profiles.findIndex(p => p.name === newProfile.name && p.type === newProfile.type);
+          if (existingIndex === -1) {
+            profiles.push(newProfile);
+          } else {
+            // Update profile if newer data is available
+            profiles[existingIndex] = { ...profiles[existingIndex], ...newProfile };
+          }
+        });
+      }
+
+      // Update userProfile (preserve PIN)
+      if (data.userProfile) {
+        userProfile = { ...userProfile, ...data.userProfile, pin: userProfile.pin };
+        localStorage.setItem('userProfile', JSON.stringify(userProfile));
+      }
+
+      // Merge analytics
+      if (data.analytics) {
+        analytics = { ...analytics, ...data.analytics };
+        localStorage.setItem('analytics', JSON.stringify(analytics));
+      }
+
+      localStorage.setItem('files', JSON.stringify(files));
+      localStorage.setItem('profiles', JSON.stringify(profiles));
+      syncLocalStorageToIndexedDB();
+      showToast('Data restored and merged successfully');
+      updateSavedProfile();
+      updateDashboardCards();
+      navigate('dashboard');
+    } catch (error) {
+      console.error('Restore error:', error);
+      showToast('Failed to restore data. Invalid file format.');
+    }
+  };
+  reader.readAsText(file);
+}
+function resetApp() {
+  promptPin((success) => {
+    if (success) {
+      files = [];
+      profiles = [];
+      userProfile = null;
+      backupFolderHandle = null;
+      analytics = { filesEntered: 0, searchesPerformed: 0, backupsCreated: 0 };
+      localStorage.clear();
+      const transaction = db.transaction(['data', 'folder'], 'readwrite');
+      transaction.objectStore('data').clear();
+      transaction.objectStore('folder').clear();
+      showToast('App reset successfully');
+      document.getElementById('setupMessage').style.display = 'block';
+      document.getElementById('adminForm').style.display = 'block';
+      document.getElementById('savedProfile').style.display = 'none';
+      document.getElementById('backupFolderModal').style.display = 'none';
+      navigate('admin');
+      updateDashboardCards();
+    }
+  });
+}
+
+function showToast(message, duration = 3000) {
+  const toast = document.createElement('div');
+  toast.className = 'toast';
+  toast.textContent = message;
+  Object.assign(toast.style, {
+    position: 'fixed',
+    bottom: '20px',
+    right: '20px',
+    backgroundColor: '#333',
+    color: '#fff',
+    padding: '10px 20px',
+    borderRadius: '5px',
+    boxShadow: '0 2px 5px rgba(0,0,0,0.2)',
+    zIndex: '1000',
+    opacity: '0',
+    transition: 'opacity 0.3s ease-in-out'
+  });
+  document.body.appendChild(toast);
+  setTimeout(() => {
+    toast.style.opacity = '1';
+  }, 100);
+  setTimeout(() => {
+    toast.style.opacity = '0';
+    setTimeout(() => {
+      document.body.removeChild(toast);
+    }, 300);
+  }, duration);
+}
+
+// Ensure all event listeners are set up correctly
+document.addEventListener('DOMContentLoaded', () => {
+  // File form event listeners
+  document.getElementById('cmsNo').addEventListener('input', autoFillCMS);
+  document.getElementById('caseType').addEventListener('change', toggleCriminalFields);
+  document.getElementById('copyAgency').addEventListener('change', toggleCopyAgency);
+  document.getElementById('deliveredTo').addEventListener('input', (e) => suggestProfiles(e.target.value, 'deliveredTo'));
+  document.getElementById('searchFileTaker').addEventListener('input', (e) => suggestProfiles(e.target.value, 'searchFileTaker'));
+
+  // Profile form event listeners
+  document.getElementById('profileType').addEventListener('change', toggleProfileFields);
+  document.getElementById('profileSearch').addEventListener('input', renderProfiles);
+  document.getElementById('profileFilterType').addEventListener('change', renderProfiles);
+
+  // Return screen event listeners
+  document.getElementById('returnCms').addEventListener('input', filterPendingFiles);
+  document.getElementById('returnTitle').addEventListener('input', filterPendingFiles);
+
+  // Dashboard search event listeners
+  document.getElementById('searchTitle').addEventListener('input', performDashboardSearch);
+  document.getElementById('searchCms').addEventListener('input', performDashboardSearch);
+  document.getElementById('searchFirNo').addEventListener('input', performDashboardSearch);
+  document.getElementById('searchFirYear').addEventListener('input', performDashboardSearch);
+  document.getElementById('searchPoliceStation').addEventListener('input', performDashboardSearch);
+
+  // Modal close event listeners
+  document.getElementById('disclaimerModal').addEventListener('click', (e) => closeModalIfOutside(e, 'disclaimerModal'));
+  document.getElementById('profileModal').addEventListener('click', (e) => closeModalIfOutside(e, 'profileModal'));
+  document.getElementById('pinModal').addEventListener('click', (e) => closeModalIfOutside(e, 'pinModal'));
+  document.getElementById('changePinModal').addEventListener('click', (e) => closeModalIfOutside(e, 'changePinModal'));
+  document.getElementById('backupFolderModal').addEventListener('click', (e) => closeModalIfOutside(e, 'backupFolderModal'));
+
+  // Backup folder selection
+  document.getElementById('selectBackupFolderBtn').addEventListener('click', selectBackupFolder);
+
+  // Import/Export event listeners
+  document.getElementById('profileImport').addEventListener('change', importProfiles);
+  document.getElementById('dataRestore').addEventListener('change', restoreData);
 });
