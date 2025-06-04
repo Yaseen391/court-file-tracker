@@ -1,5 +1,5 @@
-```
-// Global Variables
+
+// Global Variables//
 let files = JSON.parse(localStorage.getItem('files')) || [];
 let profiles = JSON.parse(localStorage.getItem('profiles')) || [];
 let userProfile = JSON.parse(localStorage.getItem('userProfile')) || null;
