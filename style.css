@@ -101,13 +101,15 @@ h1, h2, h3 {
   display: flex;
   flex-direction: column;
   padding: 15px;
-  min-height: calc(100vh - 60px);
   position: fixed;
-  top: 60px;
+  top: 60px; /* Aligns below topbar */
   left: 0;
+  height: calc(100vh - 60px); /* Full height minus topbar */
   transition: transform 0.3s ease;
   z-index: 200;
+  overflow-y: auto; /* Scroll if content overflows */
 }
+
 .sidebar-logo {
   display: block;
   width: 60px;
@@ -149,11 +151,12 @@ h1, h2, h3 {
   top: 60px;
   left: 0;
   width: 100%;
-  height: calc(100% - 60px);
+  height: calc(100vh - 60px);
   background: rgba(0, 0, 0, 0.3);
   z-index: 100;
   touch-action: none; /* Prevent scrolling on touch */
 }
+
 .sidebar.active + .sidebar-overlay {
   display: block;
 }
@@ -163,6 +166,69 @@ main {
   padding: 20px;
   flex-grow: 1;
   background: #f9f9f9;
+  margin-left: 220px; /* Shift main content to right of sidebar on PC */
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .sidebar {
+    position: fixed;
+    top: 60px;
+    left: 0;
+    transform: translateX(-100%);
+    height: calc(100vh - 60px);
+    transition: transform 0.3s ease-in-out;
+    z-index: 200;
+  }
+
+  .sidebar.active {
+    transform: translateX(0);
+  }
+
+  #menuBtn {
+    display: block;
+  }
+
+  .app-container {
+    flex-direction: column;
+  }
+
+  .dashboard-grid, .fetcher-grid {
+    grid-template-columns: 1fr; /* Single column on mobile */
+  }
+
+  .window-controls {
+    display: none;
+  }
+
+  .top-title h1 {
+    font-size: 24px;
+  }
+
+  .top-title p {
+    font-size: 14px;
+  }
+
+  .sidebar button {
+    padding: 14px;
+    font-size: 18px;
+  }
+
+  .search-container {
+    flex-direction: column;
+  }
+
+  .search-container label {
+    min-width: auto;
+  }
+
+  .table-container {
+    max-height: 300px;
+  }
+
+  main {
+    margin-left: 0; /* No margin on mobile since sidebar is hidden */
+  }
 }
 
 /* Screens */
