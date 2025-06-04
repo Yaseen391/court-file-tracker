@@ -27,7 +27,7 @@ function initIndexedDB() {
       db.createObjectStore('data', { keyPath: 'key' });
     }
     if (!db.objectStoreNames.contains('folder')) {
-      db.createObjectStore('folder', { keyPath: 'id' }); // Store for folder handle
+      db.createObjectStore('folder', { keyPath: 'id' }); // New store for folder handle
     }
   };
   request.onsuccess = (event) => {
@@ -77,62 +77,46 @@ async function loadBackupFolder() {
   request.onsuccess = async () => {
     if (request.result && request.result.handle) {
       try {
-        backupFolderHandle = request.result.handle;
-        const permission = await backupFolderHandle.queryPermission({ mode: 'readwrite' });
-        if (permission !== 'granted') {
-          document.getElementById('modal').style.display = 'block';
-          showToast('Please re-select the backup folder');
+        // Verify folder permission
+        const permission = await request.result.handle.queryPermission({ mode: 'readwrite' });
+        if (permission === 'granted') {
+          backupFolderHandle = request.result.handle;
         } else {
-          await ensureCFTFolder();
+          // Request permission
+          if (await request.result.handle.requestPermission({ mode: 'readwrite' }) === 'granted') {
+            backupFolderHandle = request.result.handle;
+          } else {
+            console.warn('Permission to access backup folder denied');
+            backupFolderHandle = null;
+          }
         }
       } catch (error) {
         console.error('Error loading backup folder:', error);
         backupFolderHandle = null;
-        document.getElementById('modal').style.display = 'block';
       }
-    } else {
-      document.getElementById('modal').style.display = 'block';
     }
   };
   request.onerror = () => {
     console.error('Error accessing backup folder store');
     backupFolderHandle = null;
-    document.getElementById('modal').style.display = 'block';
   };
 }
-
-async function ensureCFTFolder() {
-  try {
-    const cftFolder = await backupFolderHandle.getDirectoryHandle('CFT', { create: true });
-    backupFolderHandle = cftFolder; // Update handle to point to CFT folder
-    const transaction = db.transaction(['folder'], 'readwrite');
-    const store = transaction.objectStore('folder');
-    store.put({ id: 'backupFolder', handle: cftFolder });
-  } catch (error) {
-    console.error('Error creating CFT folder:', error);
-    showToast('Failed to create CFT folder');
-  }
-}
-
 async function selectBackupFolder() {
   try {
     if ('showDirectoryPicker' in window) {
       const folderHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
-      const permission = await folderHandle.requestPermission({ mode: 'readwrite' });
+      const permission = await folderHandle.queryPermission({ mode: 'readwrite' });
       if (permission === 'granted') {
         backupFolderHandle = folderHandle;
-        await ensureCFTFolder();
         const transaction = db.transaction(['folder'], 'readwrite');
         const store = transaction.objectStore('folder');
-        store.put({ id: 'backupFolder', handle: backupFolderHandle });
-        document.getElementById('modal').style.display = 'none';
+        store.put({ id: 'backupFolder', handle: folderHandle });
         showToast('Backup folder selected successfully');
       } else {
         showToast('Permission to access folder denied');
       }
     } else {
-      showToast('File System Access API not supported. Using local storage only.');
-      backupFolderHandle = null;
+      showToast('File System Access API not supported in this browser');
     }
   } catch (error) {
     console.error('Error selecting backup folder:', error);
@@ -144,15 +128,17 @@ function scheduleDailyBackup() {
   performDailyBackup(); // Run immediately
   setInterval(performDailyBackup, 60 * 60 * 1000); // Every hour
 }
-
 async function performDailyBackup() {
   if (!backupFolderHandle) {
     console.warn('No backup folder selected for backup');
     return;
   }
   try {
-    const data = { files, profiles, analytics };
-    const fileName = 'cft_backup.json';
+    const today = new Date().toLocaleDateString('en-CA');
+    const dailyFiles = files.filter(f => new Date(f.deliveredAt).toLocaleDateString('en-CA') === today);
+    const data = { files: dailyFiles, profiles, analytics };
+    const timestamp = formatDate(new Date(), 'YYYYMMDD_HHMMSS');
+    const fileName = `backup_${timestamp}.json`;
     const fileHandle = await backupFolderHandle.getFileHandle(fileName, { create: true });
     const writable = await fileHandle.createWritable();
     await writable.write(JSON.stringify(data, null, 2));
@@ -160,51 +146,15 @@ async function performDailyBackup() {
     analytics.backupsCreated++;
     localStorage.setItem('analytics', JSON.stringify(analytics));
     syncLocalStorageToIndexedDB();
-    showToast('Backup updated successfully');
   } catch (error) {
     console.error('Daily backup error:', error);
-    showToast('Backup failed');
   }
 }
-
 function maskCNIC(cnic) {
   if (!cnic) return '';
   const parts = cnic.split('-');
   if (parts.length !== 3) return '*****-*******-*';
   return `${parts[0].slice(0, 2)}***-${parts[1].slice(0, 3)}****-${parts[2]}`;
-}
-
-function toggleSidebar() {
-  const sidebar = document.getElementById('sidebar');
-  const overlay = document.querySelector('.sidebar-overlay');
-  const isActive = sidebar.classList.contains('active');
-  
-  if (isActive) {
-    sidebar.classList.remove('active');
-    overlay.style.display = 'none';
-    document.body.style.overflow = ''; // Re-enable scrolling
-  } else {
-    sidebar.classList.add('active');
-    overlay.style.display = 'block';
-    document.body.style.overflow = 'hidden'; // Disable scrolling
-  }
-}
-
-function setupSwipeToClose() {
-  let touchStartX = 0;
-  let touchEndX = 0;
-  const sidebar = document.getElementById('sidebar');
-  
-  sidebar.addEventListener('touchstart', (e) => {
-    touchStartX = e.changedTouches[0].screenX;
-  }, { passive: true });
-  
-  sidebar.addEventListener('touchend', (e) => {
-    touchEndX = e.changedTouches[0].screenX;
-    if (touchStartX - touchEndX > 50) { // Swipe left
-      toggleSidebar();
-    }
-  }, { passive: true });
 }
 
 window.onload = () => {
@@ -216,7 +166,6 @@ window.onload = () => {
     document.getElementById('savedProfile').style.display = 'block';
     updateSavedProfile();
     navigate('dashboard');
-    loadBackupFolder();
   } else {
     navigate('admin');
   }
@@ -226,25 +175,22 @@ window.onload = () => {
   setupPhotoAdjust('userPhoto', 'userPhotoPreview', 'userPhotoAdjust');
   setupPhotoAdjust('profilePhoto', 'photoPreview', 'photoAdjust');
   scheduleDailyBackup();
-  setupSwipeToClose();
 
   // Add touch and click event listeners for sidebar overlay
   const overlay = document.querySelector('.sidebar-overlay');
   overlay.addEventListener('touchstart', (e) => {
     e.preventDefault();
     toggleSidebar();
-  }, { passive: false });
+  });
   overlay.addEventListener('click', (e) => {
     e.preventDefault();
     toggleSidebar();
   });
 
   // Handle back button to close sidebar
-  window.addEventListener('popstate', (e) => {
-    e.preventDefault();
+  window.addEventListener('popstate', () => {
     if (document.getElementById('sidebar').classList.contains('active')) {
       toggleSidebar();
-      history.pushState(null, null, window.location.href); // Prevent actual navigation
     }
   });
 
@@ -267,10 +213,7 @@ window.onload = () => {
       });
     }
   });
-
-  document.getElementById('menuBtn').addEventListener('click', toggleSidebar);
 };
-
 function setupPushNotifications() {
   if ('Notification' in window && navigator.serviceWorker) {
     Notification.requestPermission().then(permission => {
@@ -300,6 +243,12 @@ function navigate(screenId) {
     document.getElementById('admin').classList.add('active');
     return;
   }
+  if (!backupFolderHandle && screenId !== 'admin') {
+    showToast('Please select a backup folder first');
+    document.getElementById('backupFolderModal').style.display = 'block';
+    document.getElementById('admin').classList.add('active');
+    return;
+  }
   document.querySelectorAll('.screen').forEach(screen => screen.classList.remove('active'));
   document.getElementById(screenId).classList.add('active');
   document.querySelectorAll('.sidebar button').forEach(btn => btn.classList.remove('active'));
@@ -308,8 +257,15 @@ function navigate(screenId) {
   if (screenId === 'return') filterPendingFiles();
   if (screenId === 'fileFetcher') renderProfiles();
   if (window.innerWidth <= 768) {
-    toggleSidebar();
+    document.getElementById('sidebar').classList.remove('active');
+    document.querySelector('.sidebar-overlay').classList.remove('active');
   }
+}
+function toggleSidebar() {
+  const sidebar = document.getElementById('sidebar');
+  const overlay = document.querySelector('.sidebar-overlay');
+  sidebar.classList.toggle('active');
+  overlay.classList.toggle('active');
 }
 
 function closeModalIfOutside(event, modalId) {
@@ -358,8 +314,8 @@ document.getElementById('adminForm').addEventListener('submit', (e) => {
         document.getElementById('savedProfile').style.display = 'block';
         updateSavedProfile();
         showToast('Profile saved successfully! Please select a backup folder.');
-        document.getElementById('loadingIndicator').style.display = 'none';
-        document.getElementById('modal').style.display = 'block';
+document.getElementById('loadingIndicator').style.display = 'none';
+document.getElementById('backupFolderModal').style.display = 'block';
       };
 
       if (typeof photo === 'string' && photo.startsWith('data:')) {
@@ -634,7 +590,7 @@ function updateDashboardCards() {
     chartInstance = null;
   }
 
-  const ctx = document.getElementById('cftChart').getContext('2d');
+  const ctx = document.getElementById('statsChart').getContext('2d');
   chartInstance = new Chart(ctx, {
     type: 'bar',
     data: {
@@ -669,12 +625,12 @@ function showDashboardReport(type) {
   console.log(`Showing report for type: ${type}`);
   document.getElementById('dashboardReportPanel').style.display = 'block';
   document.getElementById('loadingIndicator').style.display = 'block';
-  document.getElementById('searchPrev').style.display = type === 'searchPrev' ? 'block' : 'none';
+  document.getElementById('searchPrevRecords').style.display = type === 'searchPrev' ? 'block' : 'none';
   currentPage = 1;
 
   const today = new Date().toLocaleDateString('en-CA');
   const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toLocaleDateString('en-CA');
-  const tenDaysAgo = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000);
+  const tenDaysAgo = new Date(Date.now() - 10 * 24 * 60 * 1000);
 
   let filteredFiles = files;
   let title = '';
@@ -746,7 +702,7 @@ function renderReportTable() {
 
   paginatedData.forEach((f, index) => {
     const row = document.createElement('tr');
-    const timeSpan = f.returned ? getDynamicTimeSpan(f.deliveredAt, f.returnedAt) : getDynamicTimeSpan(f);
+    const timeSpan = f.returned ? getDynamicTimeSpan(f.deliveredAt, f.returnedAt) : getDynamicTimeSpan(f.deliveredAt);
     const profile = profiles.find(p => p.name === f.deliveredToName && p.type === f.deliveredToType) || {};
     const swalDetails = f.swalFormNo ? `No: ${f.swalFormNo}, Date: ${formatDate(f.swalDate)}` : '';
     const criminalDetails = f.caseType === 'criminal' ? [
@@ -761,8 +717,8 @@ function renderReportTable() {
       profile.advocateCell ? `Advocate Cell: ${profile.advocateCell}` : '',
       profile.designation ? `Designation: ${profile.designation}` : '',
       profile.postedAt ? `Posted At: ${profile.postedAt}` : '',
-      profile.type === 'other' && profile.cnic ? `ID/Cnic: ${maskCNIC(profile.cnic)}` : '',
-      profile.religion ? `Relation: ${profile.relation}` : ''
+      profile.type === 'other' && profile.cnic ? `ID/CNIC: ${maskCNIC(profile.cnic)}` : '',
+      profile.relation ? `Relation: ${profile.relation}` : ''
     ].filter(Boolean).join(', ');
     row.innerHTML = `
       <td>${start + index + 1}</td>
@@ -784,14 +740,14 @@ function renderReportTable() {
     tbody.appendChild(row);
   });
 
-  updatePagination();
+  updatePagination(sortedData.length);
   updateDynamicTimeSpans();
 }
 
 function getDynamicTimeSpan(deliveredAt, returnedAt = null) {
   const start = new Date(deliveredAt).getTime();
   const end = returnedAt ? new Date(returnedAt).getTime() : Date.now();
-  const diff = endTime - start;
+  const diff = end - start;
   const seconds = Math.floor(diff / 1000);
   const minutes = Math.floor(seconds / 60);
   const hours = Math.floor(minutes / 60);
@@ -825,10 +781,10 @@ document.getElementById('dashboardReportTable').querySelectorAll('th').forEach((
   });
 });
 
-function updatePagination() {
-  document.getElementById('pageInfo').textContent = `Page ${currentPage} of ${Math.ceil(currentReportData.length / itemsPerPage)}`;
+function updatePagination(totalItems) {
+  document.getElementById('pageInfo').textContent = `Page ${currentPage} of ${Math.ceil(totalItems / itemsPerPage)}`;
   document.getElementById('prevPage').disabled = currentPage === 1;
-  document.getElementById('nextPage').disabled = currentPage === Math.ceil(currentReportData.length / itemsPerPage);
+  document.getElementById('nextPage').disabled = currentPage === Math.ceil(totalItems / itemsPerPage);
 }
 
 document.getElementById('prevPage').onclick = () => {
@@ -909,12 +865,9 @@ function performDashboardSearch() {
   const searchPoliceStation = document.getElementById('searchPoliceStation').value.toLowerCase();
 
   currentReportData = files.filter(f => {
-    const matchesFileTaker = !searchFileTaker || 
-      (f.deliveredToName.toLowerCase() === searchFileTaker && 
-       profiles.find(p => p.name.toLowerCase() === searchFileTaker && p.type === f.deliveredToType));
     return (!searchTitle || f.title.toLowerCase().includes(searchTitle)) &&
            (!searchCms || f.cmsNo.toString().includes(searchCms)) &&
-           matchesFileTaker &&
+           (!searchFileTaker || f.deliveredToName.toLowerCase().includes(searchFileTaker)) &&
            (!searchFirNo || (f.firNo && f.firNo.toLowerCase().includes(searchFirNo))) &&
            (!searchFirYear || (f.firYear && f.firYear.toString().includes(searchFirYear))) &&
            (!searchPoliceStation || (f.policeStation && f.policeStation.toLowerCase().includes(searchPoliceStation)));
@@ -1135,8 +1088,6 @@ function suggestProfiles(input, inputId) {
       document.getElementById(inputId).value = result.item.name;
       if (inputId === 'deliveredTo') {
         document.getElementById('deliveredType').value = result.item.type;
-      } else if (inputId === 'searchFileTaker') {
-        document.getElementById(inputId).dataset.type = result.item.type;
       }
       suggestions.innerHTML = '';
     };
@@ -1438,7 +1389,7 @@ function backupData() {
   const data = {
     files,
     profiles,
-    userProfile: { ...userProfile, pin: undefined, cnic: maskCNIC(userProfile.cnic) },
+    userProfile: { ...userProfile, pin: null, cnic: maskCNIC(userProfile.cnic) },
     analytics
   };
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -1458,79 +1409,67 @@ function triggerRestore() {
   document.getElementById('dataRestore').click();
 }
 
-async function restoreData() {
-  try {
-    if (backupFolderHandle) {
-      try {
-        const fileHandle = await backupFolderHandle.getFileHandle('cft_backup.json');
-        const file = await fileHandle.getFile();
-        const text = await file.text();
-        const data = JSON.parse(text);
-        mergeData(data);
-        showToast('Data restored from CFT folder successfully');
-        return;
-      } catch (error) {
-        console.warn('No backup file in CFT folder:', error);
+function restoreData() {
+  const file = document.getElementById('dataRestore').files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const data = JSON.parse(reader.result);
+
+      // Merge files冥 files
+      if (data.files) {
+        data.files.forEach(newFile => {
+          const existingIndex = files.findIndex(f => f.cmsNo === newFile.cmsNo);
+          if (existingIndex === -1) {
+            files.push(newFile);
+          } else {
+            // Update existing file if newer
+            if (new Date(newFile.deliveredAt) > new Date(files[existingIndex].deliveredAt)) {
+              files[existingIndex] = newFile;
+            }
+          }
+        });
       }
+
+      // Merge profiles
+      if (data.profiles) {
+        data.profiles.forEach(newProfile => {
+          const existingIndex = profiles.findIndex(p => p.name === newProfile.name && p.type === newProfile.type);
+          if (existingIndex === -1) {
+            profiles.push(newProfile);
+          } else {
+            // Update profile if newer data is available
+            profiles[existingIndex] = { ...profiles[existingIndex], ...newProfile };
+          }
+        });
+      }
+
+      // Update userProfile (preserve PIN)
+      if (data.userProfile) {
+        userProfile = { ...userProfile, ...data.userProfile, pin: userProfile.pin };
+        localStorage.setItem('userProfile', JSON.stringify(userProfile));
+      }
+
+      // Merge analytics
+      if (data.analytics) {
+        analytics = { ...analytics, ...data.analytics };
+        localStorage.setItem('analytics', JSON.stringify(analytics));
+      }
+
+      localStorage.setItem('files', JSON.stringify(files));
+      localStorage.setItem('profiles', JSON.stringify(profiles));
+      syncLocalStorageToIndexedDB();
+      showToast('Data restored and merged successfully');
+      updateSavedProfile();
+      updateDashboardCards();
+      navigate('dashboard');
+    } catch (error) {
+      console.error('Restore error:', error);
+      showToast('Failed to restore data. Invalid file format.');
     }
-    const fileInput = document.getElementById('dataRestore');
-    const file = fileInput.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        const data = JSON.parse(reader.result);
-        mergeData(data);
-        showToast('Data restored and merged successfully');
-      } catch (error) {
-        console.error('Restore error:', error);
-        showToast('Failed to restore data. Invalid file format.');
-      }
-    };
-    reader.readAsText(file);
-  } catch (error) {
-    console.error('Restore error:', error);
-    showToast('Failed to restore data');
-  }
-}
-
-function mergeData(data) {
-  // Merge files
-  if (data.files) {
-    data.files.forEach(newFile => {
-      const existingIndex = files.findIndex(f => f.cmsNo === newFile.cmsNo);
-      if (existingIndex === -1) {
-        files.push(newFile);
-      } else if (new Date(newFile.deliveredAt) > new Date(files[existingIndex].deliveredAt)) {
-        files[existingIndex] = newFile;
-      }
-    });
-  }
-
-  // Merge profiles
-  if (data.profiles) {
-    data.profiles.forEach(newProfile => {
-      const existingIndex = profiles.findIndex(p => p.name === newProfile.name && p.type === newProfile.type);
-      if (existingIndex === -1) {
-        profiles.push(newProfile);
-      } else {
-        profiles[existingIndex] = newProfile;
-      }
-    });
-  }
-
-  // Merge analytics
-  if (data.analytics) {
-    analytics = { ...analytics, ...data.analytics };
-    localStorage.setItem('analytics', JSON.stringify(analytics));
-  }
-
-  localStorage.setItem('files', JSON.stringify(files));
-  localStorage.setItem('profiles', JSON.stringify(profiles));
-  syncLocalStorageToIndexedDB();
-  updateSavedProfile();
-  updateDashboardCards();
-  navigate('dashboard');
+  };
+  reader.readAsText(file);
 }
 
 function resetApp() {
@@ -1616,7 +1555,8 @@ document.addEventListener('keydown', (e) => {
     navigate('analytics');
   }
 });
-// Form Validation (continued)
+
+// Form Validation
 function validateInput(input, type) {
   if (type === 'phone') {
     const phoneRegex = /^\d{10,15}$/;
@@ -1627,119 +1567,124 @@ function validateInput(input, type) {
     }
   } else if (type === 'cnic') {
     const cnicRegex = /^\d{5}-\d{7}-\d{1}$/;
-    if (!cnicRegex.test(input.value)) {
+    if (input.value && !cnicRegex.test(input.value)) {
       input.setCustomValidity('Please enter a valid CNIC (e.g., 12345-1234567-1)');
     } else {
       input.setCustomValidity('');
     }
   } else if (type === 'email') {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(input.value)) {
+    if (input.value && !emailRegex.test(input.value)) {
       input.setCustomValidity('Please enter a valid email address');
     } else {
       input.setCustomValidity('');
     }
-  } else if (type === 'pin') {
-    const pinRegex = /^\d{4,6}$/;
-    if (!pinRegex.test(input.value)) {
-      input.setCustomValidity('Please enter a valid PIN (4-6 digits)');
-    } else {
-      input.setCustomValidity('');
-    }
   }
 }
 
-// Show Toast Notification
-function showToast(message) {
-  const toast = document.getElementById('toast');
-  toast.textContent = message;
-  toast.className = 'toast show';
-  setTimeout(() => {
-    toast.className = 'toast';
-  }, 3000);
+// Attach validation to inputs
+document.getElementById('mobile').addEventListener('input', () => validateInput(document.getElementById('mobile'), 'phone'));
+document.getElementById('cnic').addEventListener('input', () => validateInput(document.getElementById('cnic'), 'cnic'));
+document.getElementById('email').addEventListener('input', () => validateInput(document.getElementById('email'), 'email'));
+document.getElementById('cellNo').addEventListener('input', () => validateInput(document.getElementById('cellNo'), 'phone'));
+if (document.getElementById('advocateCell')) {
+  document.getElementById('advocateCell').addEventListener('input', () => validateInput(document.getElementById('advocateCell'), 'phone'));
 }
 
-// Handle Sidebar Detachment and Main Container Hiding
-function updateLayout() {
-  const sidebar = document.getElementById('sidebar');
-  const mainContainer = document.querySelector('.main-container');
-  const isSmallScreen = window.innerWidth <= 768;
+// Periodic Data Sync
+setInterval(syncLocalStorageToIndexedDB, 300000); // Every 5 minutes
 
-  if (isSmallScreen) {
-    sidebar.classList.remove('detached');
-    mainContainer.classList.remove('hidden');
-    if (!sidebar.classList.contains('active')) {
-      mainContainer.style.display = 'block';
-    } else {
-      mainContainer.style.display = 'none';
+// Accessibility Enhancements
+document.querySelectorAll('input, button, a').forEach(el => {
+  el.setAttribute('tabindex', '0');
+  el.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter' && el.tagName !== 'INPUT') {
+      el.click();
     }
-  } else {
-    sidebar.classList.add('detached');
-    mainContainer.classList.remove('hidden');
-    mainContainer.style.display = 'block';
-  }
-}
-
-// Window Resize Handler for Responsive Layout
-window.addEventListener('resize', updateLayout);
-
-// Initialize Layout on Load
-document.addEventListener('DOMContentLoaded', () => {
-  updateLayout();
+  });
 });
 
-// File Fetcher Search Filtering
-function searchProfiles() {
-  const search = document.getElementById('profileSearch').value.toLowerCase();
-  const typeFilter = document.getElementById('profileFilterType').value;
-  const tbody = document.getElementById('profileTable').querySelector('tbody');
-  tbody.innerHTML = '';
-
-  let filteredProfiles = profiles;
-  if (typeFilter) {
-    filteredProfiles = filteredProfiles.filter(p => p.type === typeFilter);
+// Prevent accidental navigation
+window.addEventListener('beforeunload', (e) => {
+  if (files.length > 0 || profiles.length > 0) {
+    e.preventDefault();
+    e.returnValue = 'You have unsaved data. Are you sure you want to leave?';
   }
-  if (search) {
-    const fuse = new Fuse(filteredProfiles, {
-      keys: ['name', 'cellNo', 'chamberNo', 'advocateName', 'designation'],
-      threshold: 0.3,
-      includeScore: true
-    });
-    filteredProfiles = fuse.search(search).map(result => result.item);
-  }
+});
 
-  filteredProfiles.forEach(p => {
-    const delivered = files.filter(f => f.deliveredToName === p.name && f.deliveredToType === p.type).length;
-    const pending = files.filter(f => f.deliveredToName === p.name && f.deliveredToType === p.type && !f.returned).length;
-    const row = document.createElement('tr');
-    row.innerHTML = `
-      <td><img src="${p.photo || 'icon-192.png'}" style="width:50px;height:50px;border-radius:50%;border:1px solid #ccc;"></td>
-      <td>${p.name}</td>
-      <td>${p.type}</td>
-      <td>${p.cellNo}</td>
-      <td>${p.chamberNo || ''}</td>
-      <td>${delivered}</td>
-      <td>${pending}</td>
-      <td>
-        <button onclick="editProfile('${p.name}', '${p.type}')">Edit</button>
-        <button onclick="deleteProfile('${p.name}', '${p.type}')">Delete</button>
-      </td>
-    `;
-    tbody.appendChild(row);
-  });
+// Dynamic Theme Support
+function applyTheme(theme) {
+  document.body.className = theme;
+localStorage.setItem('theme', theme);
 }
 
-// Event Listeners for Form Inputs
-document.getElementById('mobile').addEventListener('input', (e) => validateInput(e.target, 'phone'));
-document.getElementById('cnic').addEventListener('input', (e) => validateInput(e.target, 'cnic'));
-document.getElementById('email').addEventListener('input', (e) => validateInput(e.target, 'email'));
-document.getElementById('pin').addEventListener('input', (e) => validateInput(e.target, 'pin'));
-document.getElementById('resetCnic').addEventListener('input', (e) => validateInput(e.target, 'cnic'));
-document.getElementById('resetPin').addEventListener('input', (e) => validateInput(e.target, 'pin'));
-document.getElementById('cellNo').addEventListener('input', (e) => validateInput(e.target, 'phone'));
-if (document.getElementById('advocateCell')) {
-  document.getElementById('advocateCell').addEventListener('input', (e) => validateInput(e.target, 'phone'));
+// Toast Notification
+function showToast(message, duration = 3000) {
+  // Remove any existing toasts
+  document.querySelectorAll('.toast').forEach(toast => toast.remove());
+
+  const toast = document.createElement('div');
+  toast.className = 'toast';
+  toast.textContent = message;
+  document.body.appendChild(toast);
+  setTimeout(() => {
+    toast.classList.add('show');
+    setTimeout(() => {
+      toast.classList.remove('show');
+      setTimeout(() => {
+        toast.remove();
+      }, 300);
+    }, duration);
+  }, 100);
 }
+// Handle Theme Toggle
+// Theme toggle removed as element does not exist
+// Initialize Theme
+const savedTheme = localStorage.getItem('theme') || 'light';
+applyTheme(savedTheme);
+
+// Handle Backup Folder Selection
+document.getElementById('selectBackupFolderBtn').addEventListener('click', selectBackupFolder);
+
+// Handle Manual Backup
+document.getElementById('backupBtn').addEventListener('click', backupData);
+
+// Handle Restore
+document.getElementById('restoreBtn').addEventListener('click', triggerRestore);
+
+// Handle Reset
+document.getElementById('resetBtn').addEventListener('click', resetApp);
+
+// Form Input Handlers
+document.getElementById('caseType').addEventListener('change', toggleCriminalFields);
+document.getElementById('copyAgency').addEventListener('change', toggleCopyAgency);
+document.getElementById('cmsNo').addEventListener('input', autoFillCMS);
+document.getElementById('deliveredTo').addEventListener('input', (e) => suggestProfiles(e.target.value, 'deliveredTo'));
+document.getElementById('profileType').addEventListener('change', toggleProfileFields);
+document.getElementById('profileSearch').addEventListener('input', renderProfiles);
+document.getElementById('profileFilterType').addEventListener('change', renderProfiles);
+document.getElementById('returnCms').addEventListener('input', filterPendingFiles);
+document.getElementById('returnTitle').addEventListener('input', filterPendingFiles);
+document.getElementById('bulkReturnBtn').addEventListener('click', bulkReturnFiles);
+document.getElementById('profileImportBtn').addEventListener('click', triggerImport);
+document.getElementById('profileExportBtn').addEventListener('click', exportProfiles);
+document.getElementById('profileImport').addEventListener('change', importProfiles);
+document.getElementById('dataRestore').addEventListener('change', restoreData);
+document.getElementById('searchPrevRecords').addEventListener('submit', (e) => {
+  e.preventDefault();
+  performDashboardSearch();
+});
+document.getElementById('printReportBtn').addEventListener('click', printDashboardReport);
+document.getElementById('exportCsvBtn').addEventListener('click', () => exportDashboardReport('csv'));
+document.getElementById('exportPdfBtn').addEventListener('click', () => exportDashboardReport('pdf'));
+document.getElementById('closeReportPanel').addEventListener('click', () => {
+  document.getElementById('dashboardReportPanel').style.display = 'none';
+});
+document.getElementById('changePinForm').addEventListener('submit', (e) => {
+  e.preventDefault();
+  changePin();
+});
+document.getElementById('cancelPinChange').addEventListener('click', hideChangePin);
 
 // Modal Close Handlers
 document.getElementById('disclaimerModal').addEventListener('click', (e) => closeModalIfOutside(e, 'disclaimerModal'));
@@ -1747,110 +1692,35 @@ document.getElementById('pinModal').addEventListener('click', (e) => closeModalI
 document.getElementById('changePinModal').addEventListener('click', (e) => closeModalIfOutside(e, 'changePinModal'));
 document.getElementById('profileModal').addEventListener('click', (e) => closeModalIfOutside(e, 'profileModal'));
 
-// Form Field Event Listeners
-document.getElementById('caseType').addEventListener('change', toggleCriminalFields);
-document.getElementById('copyAgency').addEventListener('change', toggleCopyAgency);
-document.getElementById('cmsNo').addEventListener('input', autoFillCMS);
-document.getElementById('deliveredTo').addEventListener('input', (e) => suggestProfiles(e.target.value, 'deliveredTo'));
-document.getElementById('searchFileTaker').addEventListener('input', (e) => suggestProfiles(e.target.value, 'searchFileTaker'));
-document.getElementById('profileType').addEventListener('change', toggleProfileFields);
-document.getElementById('profileSearch').addEventListener('input', searchProfiles);
-document.getElementById('profileFilterType').addEventListener('change', searchProfiles);
-document.getElementById('returnCms').addEventListener('input', filterPendingFiles);
-document.getElementById('returnTitle').addEventListener('input', filterPendingFiles);
-document.getElementById('searchTitle').addEventListener('input', performDashboardSearch);
-document.getElementById('searchCms').addEventListener('input', performDashboardSearch);
-document.getElementById('searchFileTaker').addEventListener('input', performDashboardSearch);
-document.getElementById('searchFirNo').addEventListener('input', performDashboardSearch);
-document.getElementById('searchFirYear').addEventListener('input', performDashboardSearch);
-document.getElementById('searchPoliceStation').addEventListener('input', performDashboardSearch);
-
-// Button Event Listeners
-document.getElementById('saveProfileBtn').addEventListener('click', () => document.getElementById('adminForm').dispatchEvent(new Event('submit')));
-document.getElementById('bulkReturnBtn').addEventListener('click', bulkReturnFiles);
-document.getElementById('changePinSubmit').addEventListener('click', changePin);
-document.getElementById('showChangePin').addEventListener('click', showChangePin);
-document.getElementById('importBtn').addEventListener('click', triggerImport);
-document.getElementById('exportBtn').addEventListener('click', exportProfiles);
-document.getElementById('backupBtn').addEventListener('click', backupData);
-document.getElementById('restoreBtn').addEventListener('click', triggerRestore);
-document.getElementById('resetBtn').addEventListener('click', resetApp);
-document.getElementById('editProfileBtn').addEventListener('click', editUserProfile);
-document.getElementById('profileImport').addEventListener('change', importProfiles);
-document.getElementById('dataRestore').addEventListener('change', restoreData);
-document.getElementById('printReport').addEventListener('click', () => printDashboardReport());
-document.getElementById('exportCsv').addEventListener('click', () => exportDashboardReport('csv'));
-document.getElementById('exportPdf').addEventListener('click', () => exportDashboardReport('pdf'));
-document.getElementById('showProfileForm').addEventListener('click', showProfileForm);
-document.getElementById('showProfileSearch').addEventListener('click', showProfileSearch);
-document.getElementById('selectFolderBtn').addEventListener('click', selectBackupFolder);
-
 // Service Worker Registration
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').then(registration => {
-      console.log('Service Worker registered with scope:', registration.scope);
-    }).catch(error => {
-      console.error('Service Worker registration failed:', error);
-    });
+    navigator.serviceWorker
+      .register('/service-worker.js')
+      .then((registration) => {
+        console.log('Service Worker registered with scope:', registration.scope);
+      })
+      .catch((error) => {
+        console.error('Service Worker registration failed:', error);
+      });
   });
 }
 
-// Prevent Form Resubmission on Refresh
-if (window.history.replaceState) {
-  window.history.replaceState(null, null, window.location.href);
-}
-
-// Initialize Fuse.js for Search (Ensure Fuse.js is included in your HTML)
-if (typeof Fuse === 'undefined') {
-  console.warn('Fuse.js is not loaded. Search functionality may be limited.');
-}
-
-// Ensure EXIF.js is loaded for Photo Orientation
-if (typeof EXIF === 'undefined') {
-  console.warn('EXIF.js is not loaded. Photo orientation may not be handled correctly.');
-}
-
-// Ensure Chart.js and jsPDF are loaded
-if (typeof Chart === 'undefined' || typeof jsPDF === 'undefined') {
-  console.warn('Chart.js or jsPDF is not loaded. Analytics and PDF export may not work.');
-}
-
-// Handle Page Visibility for Performance
+// Handle Visibility Change
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden) {
-    console.log('App is hidden. Pausing intensive tasks.');
-    // Optionally pause intervals like updateDynamicTimeSpans
-  } else {
-    console.log('App is visible. Resuming tasks.');
-    updateDynamicTimeSpans();
+  if (document.visibilityState === 'visible') {
+    syncIndexedDBToLocalStorage();
     updateDashboardCards();
   }
 });
 
-// Error Boundary for Uncaught Errors
-window.addEventListener('error', (event) => {
-  console.error('Uncaught error:', event.error);
-  showToast('An unexpected error occurred. Please try again.');
-});
-
-// Handle Unhandled Promise Rejections
-window.addEventListener('unhandledrejection', (event) => {
-  console.error('Unhandled promise rejection:', event.reason);
-  showToast('An operation failed. Please try again.');
-});
-
-// Ensure Backup Folder Modal Persists Until Selection
-document.getElementById('modal').addEventListener('click', (e) => {
-  if (e.target === document.getElementById('modal')) {
-    showToast('Please select a backup folder to continue.');
+// Ensure canvas is properly disposed on page unload
+window.addEventListener('unload', () => {
+  if (chartInstance) {
+    chartInstance.destroy();
+    chartInstance = null;
   }
 });
 
-// Close Dashboard Report Panel
-document.getElementById('closeReport').addEventListener('click', () => {
-  document.getElementById('dashboardReportPanel').style.display = 'none';
-});
-
-// Initialize App
-console.log('Court File Tracker initialized on', new Date().toLocaleString());
+// Log App Initialization
+console.log('Court File Tracker PWA initialized');
