@@ -91,6 +91,7 @@ h1, h2, h3 {
 .app-container {
   display: flex;
   min-height: calc(100vh - 60px);
+  margin-left: 220px; /* Shift content to avoid sidebar on PC */
 }
 
 /* Sidebar */
@@ -101,13 +102,14 @@ h1, h2, h3 {
   display: flex;
   flex-direction: column;
   padding: 15px;
-  min-height: calc(100vh - 60px);
   position: fixed;
   top: 60px;
   left: 0;
+  height: calc(100vh - 60px);
   transition: transform 0.3s ease;
   z-index: 200;
 }
+
 .sidebar-logo {
   display: block;
   width: 60px;
@@ -146,14 +148,15 @@ h1, h2, h3 {
 .sidebar-overlay {
   display: none;
   position: fixed;
-  top: 60px;
+  top: 0;
   left: 0;
   width: 100%;
-  height: calc(100% - 60px);
+  height: 100%;
   background: rgba(0, 0, 0, 0.3);
   z-index: 100;
   touch-action: none; /* Prevent scrolling on touch */
 }
+
 .sidebar.active + .sidebar-overlay {
   display: block;
 }
@@ -163,6 +166,7 @@ main {
   padding: 20px;
   flex-grow: 1;
   background: #f9f9f9;
+  width: calc(100% - 220px); /* Ensure main takes remaining width */
 }
 
 /* Screens */
@@ -521,6 +525,7 @@ input[type="checkbox"] {
   height: 100%;
   background: rgba(0,0,0,0.5);
   z-index: 1000;
+  overflow: auto; /* Allow scrolling if needed */
 }
 
 .modal-content {
@@ -528,7 +533,11 @@ input[type="checkbox"] {
   padding: 20px;
   border-radius: 8px;
   max-width: 400px;
-  margin: 100px auto;
+  width: 90%; /* Responsive width */
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
   text-align: left;
   box-shadow: 0 4px 8px rgba(0,0,0,0.2);
 }
@@ -698,12 +707,16 @@ input[type="checkbox"] {
     transform: translateX(0);
   }
 
-  #menuBtn {
-    display: block;
+  .app-container {
+    margin-left: 0; /* No shift on mobile */
   }
 
-  .app-container {
-    flex-direction: column;
+  main {
+    width: 100%; /* Full width on mobile */
+  }
+
+  #menuBtn {
+    display: block;
   }
 
   .dashboard-grid, .fetcher-grid {
@@ -760,6 +773,7 @@ input[type="checkbox"] {
   margin-bottom: 16px;
   color: #003366;
 }
+
 #savedProfile button {
   margin-top: 10px;
   padding: 10px 15px;
