@@ -156,6 +156,21 @@ function maskCNIC(cnic) {
   if (parts.length !== 3) return '*****-*******-*';
   return `${parts[0].slice(0, 2)}***-${parts[1].slice(0, 3)}****-${parts[2]}`;
 }
+// Add these new functions
+function closeSidebar() {
+  document.getElementById('sidebar').classList.remove('active');
+  document.querySelector('.sidebar-overlay').style.display = 'none';
+  history.pushState(null, null, window.location.pathname);
+}
+
+function handleBackButton() {
+  if (document.getElementById('sidebar').classList.contains('active')) {
+    closeSidebar();
+    return true;
+  }
+  return false;
+}
+
 
 window.onload = () => {
   console.log('app.js loaded successfully');
@@ -168,6 +183,19 @@ window.onload = () => {
     navigate('dashboard');
   } else {
     navigate('admin');
+    // Add inside window.onload
+window.addEventListener('popstate', handleBackButton);
+document.addEventListener('click', (e) => {
+  if (!document.getElementById('sidebar').contains(e.target) && 
+      e.target.id !== 'menuBtn' &&
+      document.getElementById('sidebar').classList.contains('active')) {
+    closeSidebar();
+  }
+});
+
+// Add touch events
+document.querySelector('.sidebar-overlay').addEventListener('touchstart', closeSidebar);
+document.querySelector('.sidebar-overlay').addEventListener('click', closeSidebar);
   }
   document.getElementById('agreeTerms').addEventListener('change', toggleSaveButton);
   updateDashboardCards();
@@ -263,15 +291,14 @@ function navigate(screenId) {
 }
 function toggleSidebar() {
   const sidebar = document.getElementById('sidebar');
-  const overlay = document.querySelector('.sidebar-overlay');
   sidebar.classList.toggle('active');
-  overlay.classList.toggle('active');
-}
-
-function closeModalIfOutside(event, modalId) {
-  const modalContent = document.querySelector(`#${modalId} .modal-content`);
-  if (!modalContent.contains(event.target)) {
-    document.getElementById(modalId).style.display = 'none';
+  document.querySelector('.sidebar-overlay').style.display = 
+    sidebar.classList.contains('active') ? 'block' : 'none';
+  
+  if (sidebar.classList.contains('active')) {
+    history.pushState({ sidebar: 'open' }, '', '#sidebar');
+  } else {
+    history.back();
   }
 }
 
