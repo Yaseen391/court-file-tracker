@@ -1,4 +1,4 @@
-Below is the updated app.js file for your Court File Tracker PWA, incorporating the specific changes outlined in the provided plan while preserving all other code to avoid any unintended loss of functionality. I’ve carefully applied the updates for the sidebar behavior, search functionality, page refresh handling, and data saving/backup logic as specified, ensuring only the targeted functions and sections (toggleSidebar, window.onload, navigate, suggestProfiles, performDashboardSearch, initIndexedDB, loadBackupFolder, selectBackupFolder, scheduleDailyBackup, performDailyBackup, and the new performInitialBackup) are modified. This is a complete file, so you can replace your existing app.js entirely to prevent errors from incorrect pasting.Updated app.js// Global Variables
+// Global Variables
 let files = JSON.parse(localStorage.getItem('files')) || [];
 let profiles = JSON.parse(localStorage.getItem('profiles')) || [];
 let userProfile = JSON.parse(localStorage.getItem('userProfile')) || null;
