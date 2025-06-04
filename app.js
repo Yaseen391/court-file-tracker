@@ -21,6 +21,7 @@ const dbVersion = 2; // Updated version for new folder store
 let db;
 
 function initIndexedDB() {
+  console.log('Initializing IndexedDB');
   const request = indexedDB.open(dbName, dbVersion);
   request.onupgradeneeded = (event) => {
     const db = event.target.result;
@@ -241,6 +242,7 @@ window.onload = () => {
   document.getElementById('agreeTerms').addEventListener('change', toggleSaveButton);
   updateDashboardCards();
   setupPushNotifications();
+  console.log('Calling setupPhotoAdjust');
   setupPhotoAdjust('userPhoto', 'userPhotoPreview', 'userPhotoAdjust');
   setupPhotoAdjust('profilePhoto', 'photoPreview', 'photoAdjust');
   scheduleDailyBackup();
@@ -367,6 +369,7 @@ function closeModalIfOutside(event, modalId) {
 
 // Admin Form Submission
 document.getElementById('adminForm').addEventListener('submit', (e) => {
+  console.log('Admin form submit listener triggered');
   e.preventDefault();
   document.getElementById('loadingIndicator').style.display = 'block';
   try {
@@ -464,6 +467,7 @@ function editUserProfile() {
 
 // Photo Adjust Setup
 function setupPhotoAdjust(inputId, previewId, adjustContainerId) {
+  console.log('setupPhotoAdjust called for:', inputId);
   const input = document.getElementById(inputId);
   const preview = document.getElementById(previewId);
   const adjustContainer = document.getElementById(adjustContainerId);
@@ -1270,7 +1274,7 @@ function showProfileSearch() {
 
 function toggleProfileFields() {
   const type = document.getElementById('profileType').value;
-  const fields = document.getElement('div');
+  const fields = document.getElementById('profileFields');
   fields.innerHTML = `
     <label>Name: <span class="required">*</span><input type="text" id="profileName" required /></label>
     <label>Cell No: <span class="required">*</span><input type="text" id="cellNo" required /></label>
@@ -1302,92 +1306,92 @@ function toggleProfileFields() {
 
 // Profile Form Submission
 document.getElementById('profileForm').addEventListener('submit', (e) => {
-    e.preventDefault();
-    document.getElementById('loadingIndicator').style.display = 'block';
-    try {
-      const profileTypeDoc = document.getElementById('profileType').value;
-      const photoInput = document.getElementById('profilePhoto');
-      let photo = photoInput.adjustedPhoto;
-      if (!photo && photoInput.files && photoInput.files[0]) {
-        photo = photoInput.files[0];
-      }
-
-      if (!photo && profileType !== 'advocate') {
-        showToast('Please upload a profile photo');
-        document.getElementById('loadingIndicator').style.display = 'none';
-        return;
-      }
-
-      const processPhoto = (photoData) => {
-        const profile = {
-          type: document.getElementById('profileType').value,
-          name: document.getElementById('profileName').value,
-          cellNo: document.getElementById('cellNo').value,
-          chamberNo: document.getElementById('chamberNo') ? document.getElementById('chamberNo').value : '',
-          advocateName: document.getElementById('advocateName').value,
-          advocateCell: document.getElementById('advocateCell') ? document.getElementById('advocateCell').value : '',
-          designation: document.getElementById('designation') ? document.getElementById('designation').value : '',
-          postedAt: document.getElementById('postedAt') ? document.getElementById('postedAt').value : '',
-          cnic: document.getElementById('cnic') ? document.getElementById('cnic').value : '',
-          relation: document.getElementById('relation') ? document.getElementById('relation').value : '',
-          photo: photoData || ''
-        };
-
-        const existingIndex = profiles.findIndex(p => p.name === profile.name && p.type === profile.type);
-        if (existingIndex >= 0) {
-          profiles[existingIndex] = profile;
-        } else {
-          profiles.push(profile);
-        }
-
-        localStorage.setItem('profiles', JSON.stringify(profiles));
-        syncLocalStorageToIndexedDB();
-        document pelGetElementById('profileForm').reset();
-        document.getElementById('profileFields').innerHTML = '';
-        document.getElementById('photoAdjust').style.display = 'none';
-        showToast('Profile saved successfully');
-        document.getElementById('loadingIndicator').style.display = 'none';
-        showProfileSearch();
-      });
-
-      if (photo && typeof photo === 'string' && photo.startsWith('data:')) {
-        console.log('Using adjusted data URL');
-        processPhoto(photo);
-      } else if (photo) {
-        console.log('Reading raw file');
-        const reader = new FileReader();
-        reader.onload = () => {
-          console.log('Photo read successfully');
-          processPhoto(reader.result);
-        });
-        reader.onerror = () => {
-          console.error('Error reading photo');
-          showToast('Failed to read photo. Please try again.');
-          document.getElementById('loadingIndicator').style.display = 'none';
-        });
-        reader.readAsDataURL(photo);
-      } else {
-        console.log('No photo provided (Advocate profile)');
-        processPhoto('');
-      }
-    } catch (error) {
-      console.error('Profile form error:', error);
-      showToast('Failed to save profile. Please try again.');
-      document.getElementById('loadingIndicator').style.display = 'none');
+  e.preventDefault();
+  document.getElementById('loadingIndicator').style.display = 'block';
+  try {
+    const profileType = document.getElementById('profileType').value;
+    const photoInput = document.getElementById('profilePhoto');
+    let photo = photoInput.adjustedPhoto;
+    if (!photo && photoInput.files && photoInput.files[0]) {
+      photo = photoInput.files[0];
     }
-  });
+
+    if (!photo && profileType !== 'advocate') {
+      showToast('Please upload a profile photo');
+      document.getElementById('loadingIndicator').style.display = 'none';
+      return;
+    }
+
+    const processPhoto = (photoData) => {
+      const profile = {
+        type: document.getElementById('profileType').value,
+        name: document.getElementById('profileName').value,
+        cellNo: document.getElementById('cellNo').value,
+        chamberNo: document.getElementById('chamberNo') ? document.getElementById('chamberNo').value : '',
+        advocateName: document.getElementById('advocateName') ? document.getElementById('advocateName').value : '',
+        advocateCell: document.getElementById('advocateCell') ? document.getElementById('advocateCell').value : '',
+        designation: document.getElementById('designation') ? document.getElementById('designation').value : '',
+        postedAt: document.getElementById('postedAt') ? document.getElementById('postedAt').value : '',
+        cnic: document.getElementById('cnic') ? document.getElementById('cnic').value : '',
+        relation: document.getElementById('relation') ? document.getElementById('relation').value : '',
+        photo: photoData || ''
+      };
+
+      const existingIndex = profiles.findIndex(p => p.name === profile.name && p.type === profile.type);
+      if (existingIndex >= 0) {
+        profiles[existingIndex] = profile;
+      } else {
+        profiles.push(profile);
+      }
+
+      localStorage.setItem('profiles', JSON.stringify(profiles));
+      syncLocalStorageToIndexedDB();
+      document.getElementById('profileForm').reset();
+      document.getElementById('profileFields').innerHTML = '';
+      document.getElementById('photoAdjust').style.display = 'none';
+      showToast('Profile saved successfully');
+      document.getElementById('loadingIndicator').style.display = 'none';
+      showProfileSearch();
+    };
+
+    if (photo && typeof photo === 'string' && photo.startsWith('data:')) {
+      console.log('Using adjusted data URL');
+      processPhoto(photo);
+    } else if (photo) {
+      console.log('Reading raw file');
+      const reader = new FileReader();
+      reader.onload = () => {
+        console.log('Photo read successfully');
+        processPhoto(reader.result);
+      };
+      reader.onerror = () => {
+        console.error('Error reading photo');
+        showToast('Failed to read photo. Please try again.');
+        document.getElementById('loadingIndicator').style.display = 'none';
+      };
+      reader.readAsDataURL(photo);
+    } else {
+      console.log('No photo provided (Advocate profile)');
+      processPhoto('');
+    }
+  } catch (error) {
+    console.error('Profile form error:', error);
+    showToast('Failed to save profile. Please try again.');
+    document.getElementById('loadingIndicator').style.display = 'none';
+  }
+});
 
 function renderProfiles() {
-  const type = document.getElementById('profileFilterType').value;
-  const searchFilter = document.getElementById('profileSearch').value.toLowerCase();
-  const tbody = document.querySelectorById('profileTable').getElementById('querySelector tbody');
+  const typeFilter = document.getElementById('profileFilterType').value;
+  const search = document.getElementById('profileSearch').value.toLowerCase();
+  const tbody = document.querySelector('#profileTable tbody');
   tbody.innerHTML = '';
   let filteredProfiles = profiles;
   if (typeFilter) {
     filteredProfiles = profiles.filter(p => p.type === typeFilter);
   }
   if (search) {
-    const fuse = new searchableFuse(filteredProfiles, {
+    const fuse = new Fuse(filteredProfiles, {
       keys: ['name', 'cellNo', 'chamberNo', 'advocateName', 'designation'],
       threshold: 0.3
     });
@@ -1395,10 +1399,8 @@ function renderProfiles() {
   }
 
   filteredProfiles.forEach(p => {
-    const delivered = files.filter(f => f.deliveredToName === p.name && p.name.length && p.type === f.deliveredToType));
-    .length;
-    const pending = files.filter(f => f.deliveredToName === p.name && p.name.length && p.type === f.deliveredToType && !f.returned);
-    .length);
+    const delivered = files.filter(f => f.deliveredToName === p.name && p.type === f.deliveredToType).length;
+    const pending = files.filter(f => f.deliveredToName === p.name && p.type === f.deliveredToType && !f.returned).length;
     const row = document.createElement('tr');
     row.innerHTML = `
       <td><img src="${p.photo || 'icon-192.png'}" alt="Profile Photo" style="width:50px; height:50px; border-radius:50%; border:1px solid #ccc;"></td>
@@ -1443,7 +1445,7 @@ function deleteProfile(name, type) {
       localStorage.setItem('profiles', JSON.stringify(profiles));
       syncLocalStorageToIndexedDB();
       showToast('Profile deleted successfully');
-      renderProfiles();
+      document.getElementById('renderProfiles');
     }
   });
 }
@@ -1465,7 +1467,9 @@ function importProfiles() {
       syncLocalStorageToIndexedDB();
       showToast('Profiles imported successfully');
       showProfileSearch();
+      document.getElementById('profileImport').value = '';
     } catch (error) {
+      console.error('Error loading profiles:', error);
       showToast('Failed to import profiles. Invalid file format.');
     }
   };
@@ -1536,13 +1540,13 @@ function restoreData() {
           if (existingIndex === -1) {
             profiles.push(newProfile);
           } else {
-            // Update profile if newer data is available
+            // Update profile if newer data
             profiles[existingIndex] = { ...profiles[existingIndex], ...newProfile };
           }
         });
       }
 
-      // Update userProfile (preserve PIN)
+      // Update userProfile
       if (data.userProfile) {
         userProfile = { ...userProfile, ...data.userProfile, pin: userProfile.pin };
         localStorage.setItem('userProfile', JSON.stringify(userProfile));
@@ -1551,13 +1555,14 @@ function restoreData() {
       // Merge analytics
       if (data.analytics) {
         analytics = { ...analytics, ...data.analytics };
-        localStorage.setItem('analytics', JSON.stringify(analytics));
       }
 
       localStorage.setItem('files', JSON.stringify(files));
       localStorage.setItem('profiles', JSON.stringify(profiles));
+      localStorage.setItem('analytics', JSON.stringify(analytics));
       syncLocalStorageToIndexedDB();
-      showToast('Data restored and merged successfully');
+      showToast('Data restored successfully');
+      document.getElementById('dataRestore').value = '';
       updateSavedProfile();
       updateDashboardCards();
       navigate('dashboard');
