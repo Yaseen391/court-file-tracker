@@ -5,11 +5,7 @@ let userProfile = JSON.parse(localStorage.getItem('userProfile')) || null;
 let currentReportData = [];
 let currentPage = 1;
 const itemsPerPage = 10;
-let analytics = JSON.parse(localStorage.getItem('analytics')) || {
-  filesEntered: 0,
-  searchesPerformed: 0,
-  backupsCreated: 0
-};
+let analytics = JSON.parse(localStorage.getItem('analytics')) || { filesEntered: 0, searchesPerformed: 0, backupsCreated: 0 };
 let chartInstance = null;
 let deferredPrompt;
 let backupFolderHandle = null; // Store folder handle for backups
@@ -154,6 +150,7 @@ async function performInitialBackup() {
     const writable = await fileHandle.createWritable();
     await writable.write(JSON.stringify(data, null, 2));
     await writable.close();
+    analytics露
     analytics.backupsCreated++;
     localStorage.setItem('analytics', JSON.stringify(analytics));
     syncLocalStorageToIndexedDB();
@@ -197,11 +194,7 @@ async function performDailyBackup() {
     const newProfiles = profiles.filter(p => !existingData.profiles || !existingData.profiles.some(ep => ep.name === p.name && ep.type === p.type));
     const mergedProfiles = [...(existingData.profiles || []), ...newProfiles];
 
-    const data = {
-      files: mergedFiles,
-      profiles: mergedProfiles,
-      analytics
-    };
+    const data = { files: mergedFiles, profiles: mergedProfiles, analytics };
 
     const fileHandle = await backupFolderHandle.getFileHandle('cft_data.json', { create: true });
     const writable = await fileHandle.createWritable();
@@ -344,9 +337,8 @@ function navigate(screenId) {
   if (screenId === 'dashboard') updateDashboardCards();
   if (screenId === 'return') filterPendingFiles();
   if (screenId === 'fileFetcher') renderProfiles();
-  if (window.innerWidth <= 768) {
-    document.getElementById('sidebar').classList.remove('active');
-    document.querySelector('.sidebar-overlay').classList.remove('active');
+  if (window.innerWidth < 768) {
+    toggleSidebar();
   }
 }
 
@@ -509,102 +501,96 @@ function setupPhotoAdjust(inputId, previewId, adjustContainerId) {
           document.getElementById('loadingIndicator').style.display = 'none';
         });
       };
-    };
-    reader.onerror = () => {
-      showToast('Error reading photo file');
-      document.getElementById('loadingIndicator').style.display = 'none';
-    };
-    reader.readAsDataURL(file);
-  });
+      reader.onerror = () => {
+        showToast('Error reading photo file');
+        document.getElementById('loadingIndicator').style.display = 'none';
+      };
+      reader.readAsDataURL(file);
+    });
 
-  function drawImage(orientation) {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    let imgWidth = img.width;
-    let imgHeight = img.height;
-    scaleFactor = Math.max(canvas.width / imgWidth, canvas.height / imgHeight);
-    imgWidth *= scaleFactor;
-    imgHeight *= scaleFactor;
+    function drawImage(orientation) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      let imgWidth = img.width;
+      let imgHeight = img.height;
+      scaleFactor = Math.max(canvas.width / imgWidth, canvas.height / imgHeight);
+      imgWidth *= scaleFactor;
+      imgHeight *= scaleFactor;
 
-    ctx.save();
-    ctx.translate(canvas.width / 2, canvas.height / 2);
-    if (orientation && orientation !== 1) {
-      switch (orientation) {
-        case 6:
-          ctx.rotate(Math.PI / 2);
-          break;
-        case 3:
-          ctx.rotate(Math.PI);
-          break;
-        case 8:
-          ctx.rotate(-Math.PI / 2);
-          break;
+      ctx.save();
+      ctx.translate(canvas.width / 2, canvas.height / 2);
+      if (orientation && orientation !== 1) {
+        switch (orientation) {
+          case 6: ctx.rotate(Math.PI / 2); break;
+          case 3: ctx.rotate(Math.PI); break;
+          case 8: ctx.rotate(-Math.PI / 2); break;
+        }
       }
+      ctx.translate(-canvas.width / 2, -canvas.height / 2);
+      ctx.drawImage(img, offsetX, offsetY, imgWidth, imgHeight);
+      ctx.restore();
     }
-    ctx.translate(-canvas.width / 2, -canvas.height / 2);
-    ctx.drawImage(img, offsetX, offsetY, imgWidth, imgHeight);
-    ctx.restore();
-  }
 
-  canvas.addEventListener('mousedown', (e) => {
-    e.preventDefault();
-    isDragging = true;
-    startX = e.offsetX - offsetX;
-    startY = e.offsetY - offsetY;
-  });
+    canvas.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      isDragging = true;
+      startX = e.offsetX - offsetX;
+      startY = e.offsetY - offsetY;
+    });
 
-  canvas.addEventListener('mousemove', (e) => {
-    if (isDragging) {
-      offsetX = e.offsetX - startX;
-      offsetY = e.offsetY - startY;
-      drawImage(1);
-    }
-  });
+    canvas.addEventListener('mousemove', (e) => {
+      if (isDragging) {
+        offsetX = e.offsetX - startX;
+        offsetY = e.offsetY - startY;
+        drawImage(1);
+      }
+    });
 
-  canvas.addEventListener('mouseup', () => {
-    isDragging = false;
-    let quality = 0.8;
-    let dataUrl = canvas.toDataURL('image/jpeg', quality);
-    while (dataUrl.length > 100 * 1024 && quality > 0.1) {
-      quality -= 0.1;
-      dataUrl = canvas.toDataURL('image/jpeg', quality);
-    }
-    input.adjustedPhoto = dataUrl;
-  });
+    canvas.addEventListener('mouseup', () => {
+      isDragging = false;
+      let quality = 0.8;
+      let dataUrl = canvas.toDataURL('image/jpeg', quality);
+      while (dataUrl.length > 100 * 1024 && quality > 0.1) {
+        quality -= 0.1;
+        dataUrl = canvas.toDataURL('image/jpeg', quality);
+      }
+      input.adjustedPhoto = dataUrl;
+    });
 
-  canvas.addEventListener('mouseleave', () => {
-    isDragging = false;
-  });
+    canvas.addEventListener('mouseleave', () => {
+      isDragging = false;
+    });
 
-  canvas.addEventListener('touchstart', (e) => {
-    e.preventDefault();
-    isDragging = true;
-    const touch = e.touches[0];
-    const rect = canvas.getBoundingClientRect();
-    startX = touch.clientX - rect.left - offsetX;
-    startY = touch.clientY - rect.top - offsetY;
-  });
-
-  canvas.addEventListener('touchmove', (e) => {
-    e.preventDefault();
-    if (isDragging) {
+    canvas.addEventListener('touchstart', (e) => {
+      e.preventDefault();
+      isDragging = true;
       const touch = e.touches[0];
       const rect = canvas.getBoundingClientRect();
-      offsetX = touch.clientX - rect.left - startX;
-      offsetY = touch.clientY - rect.top - startY;
-      drawImage(1);
-    }
-  });
+      startX = touch.clientX - rect.left - offsetX;
+      startY = touch.clientY - rect.top - offsetY;
+    });
 
-  canvas.addEventListener('touchend', () => {
-    isDragging = false;
-    let quality = 0.8;
-    let dataUrl = canvas.toDataURL('image/jpeg', quality);
-    while (dataUrl.length > 100 * 1024 && quality > 0.1) {
-      quality -= 0.1;
-      dataUrl = canvas.toDataURL('image/jpeg', quality);
-    }
-    input.adjustedPhoto = dataUrl;
-  });
+    canvas.addEventListener('touchmove', (e) => {
+      e.preventDefault();
+      if (isDragging) {
+        const touch = e.touches[0];
+        const rect = canvas.getBoundingClientRect();
+        offsetX = touch.clientX - rect.left - startX;
+        offsetY = touch.clientY - rect.top - startY;
+        drawImage(1);
+      }
+    });
+
+    canvas.addEventListener('touchend', () => {
+      isDragging = false;
+      let quality = 0.8;
+      let dataUrl = canvas.toDataURL('image/jpeg', quality);
+      while (dataUrl.length > 100 * 1024 && quality > 0.1) {
+        quality -= 0.1;
+        dataUrl = canvas.toDataURL('image/jpeg', quality);
+      }
+      input.adjustedPhoto = dataUrl;
+    });
+  }
 }
 
 function toggleSaveButton() {
@@ -667,12 +653,36 @@ function updateDashboardCards() {
   const tomorrowHearings = files.filter(f => new Date(f.date).toLocaleDateString('en-CA') === tomorrow).length;
   const overdue = files.filter(f => !f.returned && new Date(f.deliveredAt) < tenDaysAgo).length;
 
-  document.getElementById('cardDeliveries').innerHTML = `<span class="tooltip">Files delivered today</span><h3>${deliveries}</h3><p>Deliveries Today</p>`;
-  document.getElementById('cardReturns').innerHTML = `<span class="tooltip">Files returned today</span><h3>${returns}</h3><p>Returns Today</p>`;
-  document.getElementById('cardPending').innerHTML = `<span class="tooltip">Files not yet returned</span><h3>${pending}</h3><p>Pending Files</p>`;
-  document.getElementById('cardTomorrow').innerHTML = `<span class="tooltip">Hearings scheduled for tomorrow</span><h3>${tomorrowHearings}</h3><p>Tomorrow Hearings</p>`;
-  document.getElementById('cardOverdue').innerHTML = `<span class="tooltip">Files pending over 10 days</span><h3>${overdue}</h3><p>Overdue Files</p>`;
-  document.getElementById('cardSearchPrev').innerHTML = `<span class="tooltip">Search all previous records</span><h3>Search</h3><p>Previous Records</p>`;
+  document.getElementById('cardDeliveries').innerHTML = `
+    <h3>Files delivered today</h3>
+    <p>${deliveries}</p>
+    <span>Deliveries Today</span>
+  `;
+  document.getElementById('cardReturns').innerHTML = `
+    <h3>Files returned today</h3>
+    <p>${returns}</p>
+    <span>Returns Today</span>
+  `;
+  document.getElementById('cardPending').innerHTML = `
+    <h3>Files not yet returned</h3>
+    <p>${pending}</p>
+    <span>Pending Files</span>
+  `;
+  document.getElementById('cardTomorrow').innerHTML = `
+    <h3>Hearings scheduled for tomorrow</h3>
+    <p>${tomorrowHearings}</p>
+    <span>Tomorrow Hearings</span>
+  `;
+  document.getElementById('cardOverdue').innerHTML = `
+    <h3>Files pending over 10 days</h3>
+    <p>${overdue}</p>
+    <span>Overdue Files</span>
+  `;
+  document.getElementById('cardSearchPrev').innerHTML = `
+    <h3>Search all previous records</h3>
+    <p>Search</p>
+    <span>Previous Records</span>
+  `;
 
   if (chartInstance) {
     chartInstance.destroy();
@@ -692,22 +702,36 @@ function updateDashboardCards() {
     },
     options: {
       scales: {
-        y: {
-          beginAtZero: true,
-          stepSize: 1,
-          ticks: { precision: 0 }
-        }
+        y: { beginAtZero: true, stepSize: 1, ticks: { precision: 0 } }
       },
       plugins: { legend: { display: false } }
     }
   });
 
-  document.getElementById('cardDeliveries').onclick = () => { console.log('Clicked Deliveries'); showDashboardReport('deliveries'); };
-  document.getElementById('cardReturns').onclick = () => { console.log('Clicked Returns'); showDashboardReport('returns'); };
-  document.getElementById('cardPending').onclick = () => { console.log('Clicked Pending'); showDashboardReport('pending'); };
-  document.getElementById('cardTomorrow').onclick = () => { console.log('Clicked Tomorrow'); showDashboardReport('tomorrow'); };
-  document.getElementById('cardOverdue').onclick = () => { console.log('Clicked Overdue'); showDashboardReport('overdue'); };
-  document.getElementById('cardSearchPrev').onclick = () => { console.log('Clicked SearchPrev'); showDashboardReport('searchPrev'); };
+  document.getElementById('cardDeliveries').onclick = () => {
+    console.log('Clicked Deliveries');
+    showDashboardReport('deliveries');
+  };
+  document.getElementById('cardReturns').onclick = () => {
+    console.log('Clicked Returns');
+    showDashboardReport('returns');
+  };
+  document.getElementById('cardPending').onclick = () => {
+    console.log('Clicked Pending');
+    showDashboardReport('pending');
+  };
+  document.getElementById('cardTomorrow').onclick = () => {
+    console.log('Clicked Tomorrow');
+    showDashboardReport('tomorrow');
+  };
+  document.getElementById('cardOverdue').onclick = () => {
+    console.log('Clicked Overdue');
+    showDashboardReport('overdue');
+  };
+  document.getElementById('cardSearchPrev').onclick = () => {
+    console.log('Clicked SearchPrev');
+    showDashboardReport('searchPrev');
+  };
 }
 
 function showDashboardReport(type) {
@@ -821,7 +845,7 @@ function renderReportTable() {
       <td><a href="#" onclick="showProfileDetails('${f.deliveredToName}', '${f.deliveredToType}')">${f.deliveredToName} (${f.deliveredToType})</a></td>
       <td>${formatDate(f.deliveredAt, 'YYYY-MM-DD HH:mm:ss')}</td>
       <td>${f.returned ? formatDate(f.returnedAt, 'YYYY-MM-DD HH:mm:ss') : ''}</td>
-      <td class="time-span" data-delivered="${f.deliveredAt}" data-returned="${f.returned ? 'true' : 'false'}">${timeSpan}</td>
+      <td class="time-span" data-delivered="${f.deliveredAt}" data-returned="${f.returned}">${timeSpan}</td>
       <td>${f.courtName}</td>
       <td>${f.clerkName}</td>
       <td>${profileDetails}</td>
@@ -861,10 +885,14 @@ setInterval(updateDynamicTimeSpans, 1000);
 document.getElementById('dashboardReportTable').querySelectorAll('th').forEach((th, index) => {
   th.addEventListener('click', () => {
     const columns = ['cmsNo', 'title', 'caseType', 'nature', 'criminalDetails', 'dateType', 'swalFormNo', 'deliveredToName', 'deliveredAt', 'returnedAt', 'timeSpan', 'courtName', 'clerkName'];
-    if (index >= 1 && index <= 13) {
-      const newColumn = columns[index - 1];
-      sortDirection = sortColumn === newColumn ? -sortDirection : 1;
-      sortColumn = newColumn;
+    if (index >= 1 && index < columns.length + 1) {
+      const column = columns[index - 1];
+      if (sortColumn === column) {
+        sortDirection *= -1;
+      } else {
+        sortColumn = column;
+        sortDirection = 1;
+      }
       renderReportTable();
     }
   });
@@ -918,10 +946,10 @@ function showProfileDetails(name, type) {
   table.innerHTML = `
     <tr><th>Name</th><td>${profile.name || ''}</td></tr>
     <tr><th>Type</th><td>${profile.type || ''}</td></tr>
-    ${profile.cellNo ? `<tr><th>Cell No</th><td><a href="tel:${profile.cellNo}">${profile.cellNo}</a></td></tr>` : ''}
+    ${profile.cellNo ? `<tr><th>Cell No</th><td>${profile.cellNo}</td></tr>` : ''}
     ${profile.chamberNo ? `<tr><th>Chamber No</th><td>${profile.chamberNo}</td></tr>` : ''}
     ${profile.advocateName ? `<tr><th>Advocate Name</th><td>${profile.advocateName}</td></tr>` : ''}
-    ${profile.advocateCell ? `<tr><th>Advocate Cell</th><td><a href="tel:${profile.advocateCell}">${profile.advocateCell}</a></td></tr>` : ''}
+    ${profile.advocateCell ? `<tr><th>Advocate Cell</th><td>${profile.advocateCell}</td></tr>` : ''}
     ${profile.designation ? `<tr><th>Designation</th><td>${profile.designation}</td></tr>` : ''}
     ${profile.postedAt ? `<tr><th>Posted At</th><td>${profile.postedAt}</td></tr>` : ''}
     ${profile.type === 'other' && profile.cnic ? `<tr><th>ID/CNIC</th><td>${maskCNIC(profile.cnic)}</td></tr>` : ''}
@@ -973,20 +1001,20 @@ function printDashboardReport() {
   const printWindow = window.open('', '_blank');
   printWindow.document.write(`
     <html>
-      <head>
-        <title>${reportTitle}</title>
-        <style>
-          body { font-family: Arial, sans-serif; margin: 20px; }
-          table { width: 100%; border-collapse: collapse; }
-          th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
-          th { background-color: #f5f5f5; }
-          h2 { text-align: center; }
-        </style>
-      </head>
-      <body>
-        <h2>${reportTitle}</h2>
-        ${table}
-      </body>
+    <head>
+      <title>${reportTitle}</title>
+      <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+        th { background-color: #f5f5f5; }
+        h2 { text-align: center; }
+      </style>
+    </head>
+    <body>
+      <h2>${reportTitle}</h2>
+      ${table}
+    </body>
     </html>
   `);
   printWindow.document.close();
@@ -1034,7 +1062,11 @@ function exportDashboardReport(format) {
       startY: 20,
       theme: 'striped',
       styles: { fontSize: 8 },
-      columnStyles: { 0: { cellWidth: 10 }, 1: { cellWidth: 20 }, 2: { cellWidth: 30 } }
+      columnStyles: {
+        0: { cellWidth: 10 },
+        1: { cellWidth: 20 },
+        2: { cellWidth: 30 }
+      }
     });
     doc.save(`report_${formatDate(new Date(), 'YYYYMMDD_HHMMSS')}.pdf`);
   }
@@ -1157,10 +1189,7 @@ function suggestProfiles(input, inputId) {
   const suggestions = document.getElementById(inputId === 'deliveredTo' ? 'suggestions' : 'searchSuggestions');
   suggestions.innerHTML = '';
   if (!input) return;
-  const fuse = new Fuse(profiles, {
-    keys: ['name', 'cellNo', 'chamberNo'],
-    threshold: 0.3
-  });
+  const fuse = new Fuse(profiles, { keys: ['name', 'cellNo', 'chamberNo'], threshold: 0.3 });
   const results = fuse.search(input).slice(0, 5);
   results.forEach(result => {
     const li = document.createElement('li');
@@ -1197,7 +1226,7 @@ function filterPendingFiles() {
   filteredFiles.forEach(f => {
     const row = document.createElement('tr');
     row.innerHTML = `
-      <td><input type="checkbox" class="sc-btn" data-cms="${f.cmsNo}"></td>
+      <td><input type="checkbox" class="select-file" data-cms="${f.cmsNo}"></td>
       <td>${f.cmsNo}</td>
       <td>${f.title.replace('vs', 'Vs.')}</td>
       <td>${f.caseType}</td>
@@ -1226,7 +1255,7 @@ function returnFile(cmsNo) {
 }
 
 function bulkReturnFiles() {
-  const selected = document.querySelectorAll('.sc-btn:checked');
+  const selected = document.querySelectorAll('.select-file:checked');
   if (selected.length === 0) {
     showToast('Please select at least one file to return');
     return;
@@ -1269,30 +1298,40 @@ function showProfileSearch() {
 
 function toggleProfileFields() {
   const type = document.getElementById('profileType').value;
-  const fields = document.getElement('div');
+  const fields = document.getElementById('profileFields');
   fields.innerHTML = `
-    <label>Name: <span class="required">*</span><input type="text" id="profileName" required /></label>
-    <label>Cell No: <span class="required">*</span><input type="text" id="cellNo" required /></label>
+    <label>Name: <span class="required">*</span></label>
+    <input type="text" id="profileName" required>
+    <label>Cell No: <span class="required">*</span></label>
+    <input type="tel" id="cellNo" required>
   `;
   if (type === 'munshi') {
     fields.innerHTML += `
-      <label>Chamber No: <span class="required">*</span><input type="text" id="chamberNo" required /></label>
-      <label>Advocate Name: <span class="required">*</span><input type="text" id="advocateName" required /></label>
-      <label>Advocate Cell: <input type="text" id="advocateCell" /></label>
+      <label>Chamber No: <span class="required">*</span></label>
+      <input type="text" id="chamberNo" required>
+      <label>Advocate Name: <span class="required">*</span></label>
+      <input type="text" id="advocateName" required>
+      <label>Advocate Cell:</label>
+      <input type="tel" id="advocateCell">
     `;
   } else if (type === 'advocate') {
     fields.innerHTML += `
-      <label>Chamber No: <span class="required">*</span><input type="text" id="chamberNo" required /></label>
+      <label>Chamber No: <span class="required">*</span></label>
+      <input type="text" id="chamberNo" required>
     `;
-  } else if (type === 'delegate') {
+  } else if (type === 'colleague') {
     fields.innerHTML += `
-      <label>Designation: <input type="text" id="designation" /></label>
-      <label>Posted At: <input type="text" id="postedAt" /></label>
+      <label>Designation:</label>
+      <input type="text" id="designation">
+      <label>Posted At:</label>
+      <input type="text" id="postedAt">
     `;
   } else if (type === 'other') {
     fields.innerHTML += `
-      <label>ID/CNIC: <input type="text" id="cnic" /></label>
-      <label>Relation: <input type="text" id="relation" /></label>
+      <label>ID/CNIC:</label>
+      <input type="text" id="cnic">
+      <label>Relation:</label>
+      <input type="text" id="relation">
     `;
   }
   document.getElementById('photoRequired').style.display = type === 'advocate' ? 'none' : 'inline';
@@ -1379,36 +1418,30 @@ document.getElementById('profileForm').addEventListener('submit', (e) => {
 function renderProfiles() {
   const typeFilter = document.getElementById('profileFilterType').value;
   const search = document.getElementById('profileSearch').value.toLowerCase();
-  const tbody = document.querySelector('#profileTable tbody');
+  const tbody = document.getElementById('profileTable').querySelector('tbody');
   tbody.innerHTML = '';
   let filteredProfiles = profiles;
   if (typeFilter) {
     filteredProfiles = profiles.filter(p => p.type === typeFilter);
   }
   if (search) {
-    const fuse = new Fuse(filteredProfiles, {
-      keys: ['name', 'cellNo', 'chamberNo', 'advocateName', 'designation'],
-      threshold: 0.3
-    });
+    const fuse = new Fuse(filteredProfiles, { keys: ['name', 'cellNo', 'chamberNo', 'advocateName', 'designation'], threshold: 0.3 });
     filteredProfiles = fuse.search(search).map(result => result.item);
   }
-
   filteredProfiles.forEach(p => {
-    const delivered = files.filter(f => f.deliveredToName === p.name && p.type === f.deliveredToType).length;
-    const pending = files.filter(f => f.deliveredToName === p.name && p.type === f.deliveredToType && !f.returned).length;
+    const delivered = files.filter(f => f.deliveredToName === p.name && f.deliveredToType === p.type).length;
+    const pending = files.filter(f => f.deliveredToName === p.name && f.deliveredToType === p.type && !f.returned).length;
     const row = document.createElement('tr');
     row.innerHTML = `
-      <td><img src="${p.photo || 'icon-192.png'}" alt="Profile Photo" style="width:50px; height:50px; border-radius:50%; border:1px solid #ccc;"></td>
+      <td>￼</td>
       <td>${p.name}</td>
       <td>${p.type}</td>
       <td>${p.cellNo}</td>
       <td>${p.chamberNo || ''}</td>
       <td>${delivered}</td>
       <td>${pending}</td>
-      <td>
-        <button onclick="editProfile('${p.name}', '${p.type}')">Edit</button>
-        <button onclick="deleteProfile('${p.name}', '${p.type}')">Delete</button>
-      </td>
+      <td><button onclick="editProfile('${p.name}', '${p.type}')">Edit</button></td>
+      <td><button onclick="deleteProfile('${p.name}', '${p.type}')">Delete</button></td>
     `;
     tbody.appendChild(row);
   });
@@ -1483,7 +1516,7 @@ function backupData() {
   const data = {
     files,
     profiles,
-    userProfile: { ...userProfile, pin: '', cnic: maskCNIC(userProfile.cnic) },
+    userProfile: { ...userProfile, pin: null, cnic: maskCNIC(userProfile.cnic) },
     analytics
   };
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -1579,81 +1612,127 @@ function resetApp() {
       transaction.objectStore('data').clear();
       transaction.objectStore('folder').clear();
       showToast('App reset successfully');
+      navigate('admin');
       document.getElementById('setupMessage').style.display = 'block';
       document.getElementById('adminForm').style.display = 'block';
       document.getElementById('savedProfile').style.display = 'none';
-      document.getElementById('backupFolderModal').style.display = 'none';
-      navigate('admin');
-      updateDashboardCards();
     }
   });
 }
 
-function showToast(message, duration = 3000) {
-  const toast = document.createElement('div');
-  toast.className = 'toast';
-  toast.textContent = message;
-  Object.assign(toast.style, {
-    position: 'fixed',
-    bottom: '20px',
-    right: '20px',
-    backgroundColor: '#333',
-    color: '#fff',
-    padding: '10px 20px',
-    borderRadius: '5px',
-    boxShadow: '0 2px 5px rgba(0,0,0,0.2)',
-    zIndex: '1000',
-    opacity: '0',
-    transition: 'opacity 0.3s ease-in-out'
+function showAnalytics() {
+  navigate('analytics');
+  const ctx = document.getElementById('analyticsChart').getContext('2d');
+  if (chartInstance) {
+    chartInstance.destroy();
+    chartInstance = null;
+  }
+  chartInstance = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: ['Files Delivered', 'Searches Performed', 'Backups Created'],
+      datasets: [{
+        label: 'Analytics',
+        data: [analytics.filesEntered, analytics.searchesPerformed, analytics.backupsCreated],
+        backgroundColor: ['#0288d1', '#4caf50', '#d32f2f']
+      }]
+    },
+    options: {
+      scales: {
+        y: { beginAtZero: true, stepSize: 1, ticks: { precision: 0 } }
+      },
+      plugins: { legend: { display: false } }
+    }
   });
-  document.body.appendChild(toast);
-  setTimeout(() => {
-    toast.style.opacity = '1';
-  }, 100);
-  setTimeout(() => {
-    toast.style.opacity = '0';
-    setTimeout(() => {
-      document.body.removeChild(toast);
-    }, 300);
-  }, duration);
+
+  // Update analytics stats
+  document.getElementById('analyticsStats').innerHTML = `
+    <p>Total Files Delivered: ${analytics.filesEntered}</p>
+    <p>Total Searches Performed: ${analytics.searchesPerformed}</p>
+    <p>Total Backups Created: ${analytics.backupsCreated}</p>
+  `;
 }
 
-// Ensure all event listeners are set up correctly
-document.addEventListener('DOMContentLoaded', () => {
-  // File form event listeners
-  document.getElementById('cmsNo').addEventListener('input', autoFillCMS);
-  document.getElementById('caseType').addEventListener('change', toggleCriminalFields);
-  document.getElementById('copyAgency').addEventListener('change', toggleCopyAgency);
-  document.getElementById('deliveredTo').addEventListener('input', (e) => suggestProfiles(e.target.value, 'deliveredTo'));
-  document.getElementById('searchFileTaker').addEventListener('input', (e) => suggestProfiles(e.target.value, 'searchFileTaker'));
+function showToast(message) {
+  const toast = document.getElementById('toast');
+  toast.textContent = message;
+  toast.classList.add('show');
+  setTimeout(() => {
+    toast.classList.remove('show');
+  }, 3000);
+}
 
-  // Profile form event listeners
-  document.getElementById('profileType').addEventListener('change', toggleProfileFields);
-  document.getElementById('profileSearch').addEventListener('input', renderProfiles);
-  document.getElementById('profileFilterType').addEventListener('change', renderProfiles);
+// Additional Event Listeners for Form Interactions
+document.getElementById('caseType').addEventListener('change', toggleCriminalFields);
+document.getElementById('copyAgency').addEventListener('change', toggleCopyAgency);
+document.getElementById('cmsNo').addEventListener('input', autoFillCMS);
+document.getElementById('deliveredTo').addEventListener('input', (e) => suggestProfiles(e.target.value, 'deliveredTo'));
+document.getElementById('searchFileTaker').addEventListener('input', (e) => suggestProfiles(e.target.value, 'searchFileTaker'));
+document.getElementById('profileType').addEventListener('change', toggleProfileFields);
+document.getElementById('returnCms').addEventListener('input', filterPendingFiles);
+document.getElementById('returnTitle').addEventListener('input', filterPendingFiles);
+document.getElementById('profileFilterType').addEventListener('change', renderProfiles);
+document.getElementById('profileSearch').addEventListener('input', renderProfiles);
+document.getElementById('searchTitle').addEventListener('input', performDashboardSearch);
+document.getElementById('searchCms').addEventListener('input', performDashboardSearch);
+document.getElementById('searchFirNo').addEventListener('input', performDashboardSearch);
+document.getElementById('searchFirYear').addEventListener('input', performDashboardSearch);
+document.getElementById('searchPoliceStation').addEventListener('input', performDashboardSearch);
 
-  // Return screen event listeners
-  document.getElementById('returnCms').addEventListener('input', filterPendingFiles);
-  document.getElementById('returnTitle').addEventListener('input', filterPendingFiles);
+// Close modals on outside click
+document.getElementById('disclaimerModal').addEventListener('click', (e) => closeModalIfOutside(e, 'disclaimerModal'));
+document.getElementById('pinModal').addEventListener('click', (e) => closeModalIfOutside(e, 'pinModal'));
+document.getElementById('changePinModal').addEventListener('click', (e) => closeModalIfOutside(e, 'changePinModal'));
+document.getElementById('profileModal').addEventListener('click', (e) => closeModalIfOutside(e, 'profileModal'));
+document.getElementById('backupFolderModal').addEventListener('click', (e) => closeModalIfOutside(e, 'backupFolderModal'));
 
-  // Dashboard search event listeners
-  document.getElementById('searchTitle').addEventListener('input', performDashboardSearch);
-  document.getElementById('searchCms').addEventListener('input', performDashboardSearch);
-  document.getElementById('searchFirNo').addEventListener('input', performDashboardSearch);
-  document.getElementById('searchFirYear').addEventListener('input', performDashboardSearch);
-  document.getElementById('searchPoliceStation').addEventListener('input', performDashboardSearch);
+// Backup folder selection button
+document.getElementById('selectBackupFolderBtn').addEventListener('click', selectBackupFolder);
 
-  // Modal close event listeners
-  document.getElementById('disclaimerModal').addEventListener('click', (e) => closeModalIfOutside(e, 'disclaimerModal'));
-  document.getElementById('profileModal').addEventListener('click', (e) => closeModalIfOutside(e, 'profileModal'));
-  document.getElementById('pinModal').addEventListener('click', (e) => closeModalIfOutside(e, 'pinModal'));
-  document.getElementById('changePinModal').addEventListener('click', (e) => closeModalIfOutside(e, 'changePinModal'));
-  document.getElementById('backupFolderModal').addEventListener('click', (e) => closeModalIfOutside(e, 'backupFolderModal'));
+// Ensure sidebar is closed on page load for mobile
+if (window.innerWidth < 768) {
+  document.getElementById('sidebar').classList.remove('active');
+  document.querySelector('.sidebar-overlay').classList.remove('active');
+}
 
-  // Backup folder selection
-  document.getElementById('selectBackupFolderBtn').addEventListener('click', selectBackupFolder);
+// Handle page refresh navigation
+window.addEventListener('load', () => {
+  const lastScreen = localStorage.getItem('lastScreen') || 'dashboard';
+  if (userProfile && backupFolderHandle) {
+    navigate(lastScreen);
+  } else if (userProfile) {
+    document.getElementById('backupFolderModal').style.display = 'block';
+    navigate('admin');
+  } else {
+    navigate('admin');
+  }
+});
 
-  // Import/Export event listeners
-  document.getElementById('profileImport').addEventListener('change', importProfiles);
-  document.getElementById('dataRestore').addEventListener('change', restoreData);
+// Prevent sidebar from staying open on resize
+window.addEventListener('resize', () => {
+  if (window.innerWidth >= 768) {
+    document.getElementById('sidebar').classList.add('active');
+    document.querySelector('.sidebar-overlay').classList.remove('active');
+  } else {
+    document.getElementById('sidebar').classList.remove('active');
+    document.querySelector('.sidebar-overlay').classList.remove('active');
+  }
+});
+
+// Service Worker Registration
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('service-worker.js')
+    .then(() => console.log('Service Worker registered'))
+    .catch(error => console.error('Service Worker registration failed:', error));
+}
+
+// Handle visibility change for background sync
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') {
+    syncIndexedDBToLocalStorage();
+    updateDashboardCards();
+    if (document.getElementById('fileFetcher').classList.contains('active')) {
+      renderProfiles();
+    }
+  }
 });
