@@ -1,31 +1,31 @@
 {
   "name": "Court File Tracker",
   "short_name": "CFT",
-  "start_url": "/index.html",
-  "scope": "/",
+  "start_url": "/court-file-tracker/index.html",
+  "scope": "/court-file-tracker/",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#0288d1",
   "description": "A PWA for managing court files efficiently.",
   "icons": [
     {
-      "src": "/icon-192.png",
+      "src": "/court-file-tracker/icon-192.png",
       "sizes": "192x192",
       "type": "image/png"
     },
     {
-      "src": "/icon-512.png",
+      "src": "/court-file-tracker/icon-512.png",
       "sizes": "512x512",
       "type": "image/png"
     },
     {
-      "src": "/icon-192-maskable.png",
+      "src": "/court-file-tracker/icon-192-maskable.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "maskable"
     },
     {
-      "src": "/icon-512-maskable.png",
+      "src": "/court-file-tracker/icon-512-maskable.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable"
