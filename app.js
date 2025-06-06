@@ -92,10 +92,7 @@ function initGoogleDrive() {
         client_id: CLIENT_ID,
         scope: SCOPES,
         callback: (response) => {
-          if (response.error) {
-            console.error('Google sign-in error:', response.error);
-            showToast('Failed to sign in to Google Drive: ' + response.error);
-          } else if (response.access_token) {
+          if (response.access_token) {
             localStorage.setItem('gapi_token', JSON.stringify({
               access_token: response.access_token,
               expires_at: Date.now() + (response.expires_in * 1000)
@@ -103,14 +100,13 @@ function initGoogleDrive() {
             userProfile.googleDriveConnected = true;
             localStorage.setItem('userProfile', JSON.stringify(userProfile));
             syncLocalStorageToIndexedDB();
-            const googleDriveStatus = document.getElementById('googleDriveStatus');
-            if (googleDriveStatus) googleDriveStatus.textContent = 'Attached';
-            const backupToDriveBtn = document.getElementById('backupToDrive');
-            if (backupToDriveBtn) backupToDriveBtn.style.display = 'inline-block';
-            const restoreFromGoogleBtn = document.getElementById('restoreFromGoogle');
-            if (restoreFromGoogleBtn) restoreFromGoogleBtn.style.display = 'inline-block';
+            document.getElementById('backupToDrive').style.display = 'inline-block';
+            document.getElementById('restoreFromGoogle').style.display = 'inline-block';
             showToast('Signed in to Google Drive');
             processOfflineQueue();
+          } else {
+            console.error('Google sign-in failed:', response);
+            showToast('Failed to sign in to Google Drive. Please try again.');
           }
         }
       });
@@ -131,7 +127,7 @@ function signInWithGoogle() {
     initGoogleDrive();
     return;
   }
-  tokenClient.requestAccessToken({ prompt: 'select_account' });
+  tokenClient.requestAccessToken();
 }
 
 function isGoogleTokenValid() {
@@ -366,26 +362,20 @@ window.onload = () => {
   initIndexedDB();
   initGoogleDrive();
   if (userProfile) {
-    const setupMessage = document.getElementById('setupMessage');
-    const adminForm = document.getElementById('adminForm');
-    const savedProfile = document.getElementById('savedProfile');
-    if (setupMessage) setupMessage.style.display = 'none';
-    if (adminForm) adminForm.style.display = 'none';
-    if (savedProfile) savedProfile.style.display = 'block';
+    document.getElementById('setupMessage').style.display = 'none';
+    document.getElementById('adminForm').style.display = 'none';
+    document.getElementById('savedProfile').style.display = 'block';
     updateSavedProfile();
     if (userProfile.googleDriveConnected && isGoogleTokenValid()) {
-      const backupToDriveBtn = document.getElementById('backupToDrive');
-      if (backupToDriveBtn) backupToDriveBtn.style.display = 'inline-block';
-      const restoreFromGoogleBtn = document.getElementById('restoreFromGoogle');
-      if (restoreFromGoogleBtn) restoreFromGoogleBtn.style.display = 'inline-block';
+      document.getElementById('backupToDrive').style.display = 'inline-block';
+      document.getElementById('restoreFromGoogle').style.display = 'inline-block';
     } else {
       showToast('Please attach Google Drive to continue');
     }
   } else {
     navigate('admin');
   }
-  const agreeTerms = document.getElementById('agreeTerms');
-  if (agreeTerms) agreeTerms.addEventListener('change', toggleSaveButton);
+  document.getElementById('agreeTerms').addEventListener('change', toggleSaveButton);
   updateDashboardCards();
   setupPushNotifications();
   setupPhotoAdjust('userPhoto', 'userPhotoPreview', 'userPhotoAdjust');
@@ -401,8 +391,7 @@ let deferredPrompt;
 window.addEventListener('beforeinstallprompt', (e) => {
   e.preventDefault();
   deferredPrompt = e;
-  const installAppBtn = document.getElementById('installApp');
-  if (installAppBtn) installAppBtn.style.display = 'block';
+  document.getElementById('installApp').style.display = 'block';
 });
 
 function installApp() {
@@ -415,8 +404,7 @@ function installApp() {
         console.log('User dismissed the install prompt');
       }
       deferredPrompt = null;
-      const installAppBtn = document.getElementById('installApp');
-      if (installAppBtn) installAppBtn.style.display = 'none';
+      document.getElementById('installApp').style.display = 'none';
     });
   }
 }
