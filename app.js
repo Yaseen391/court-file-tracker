@@ -11,7 +11,7 @@ let analytics = JSON.parse(localStorage.getItem('analytics')) || {
   searchesPerformed: 0,
   backupsCreated: 0
 };
-let chartInstance = null; // Added for chart management
+let chartInstance = null;
 
 // IndexedDB Setup
 const dbName = 'CourtFileTrackerDB';
@@ -32,6 +32,7 @@ function initIndexedDB() {
 }
 
 function syncLocalStorageToIndexedDB() {
+  const key = 'cft-encryption-key'; // Replace with a secure key in production
   const data = {
     files: JSON.parse(localStorage.getItem('files')) || [],
     profiles: JSON.parse(localStorage.getItem('profiles')) || [],
@@ -39,6 +40,10 @@ function syncLocalStorageToIndexedDB() {
     offlineQueue: JSON.parse(localStorage.getItem('offlineQueue')) || [],
     analytics: JSON.parse(localStorage.getItem('analytics')) || analytics
   };
+  if (data.userProfile) {
+    data.userProfile.pin = data.userProfile.pin ? CryptoJS.AES.encrypt(data.userProfile.pin, key).toString() : '';
+    data.userProfile.cnic = data.userProfile.cnic ? CryptoJS.AES.encrypt(data.userProfile.cnic, key).toString() : '';
+  }
   const transaction = db.transaction(['data'], 'readwrite');
   const store = transaction.objectStore('data');
   Object.entries(data).forEach(([key, value]) => {
@@ -47,6 +52,7 @@ function syncLocalStorageToIndexedDB() {
 }
 
 function syncIndexedDBToLocalStorage() {
+  const key = 'cft-encryption-key'; // Replace with a secure key in production
   const transaction = db.transaction(['data'], 'readonly');
   const store = transaction.objectStore('data');
   const keys = ['files', 'profiles', 'userProfile', 'offlineQueue', 'analytics'];
@@ -54,12 +60,17 @@ function syncIndexedDBToLocalStorage() {
     const request = store.get(key);
     request.onsuccess = () => {
       if (request.result) {
-        localStorage.setItem(key, JSON.stringify(request.result.value));
-        if (key === 'files') files = request.result.value;
-        if (key === 'profiles') profiles = request.result.value;
-        if (key === 'userProfile') userProfile = request.result.value;
-        if (key === 'offlineQueue') offlineQueue = request.result.value;
-        if (key === 'analytics') analytics = request.result.value;
+        let value = request.result.value;
+        if (key === 'userProfile' && value) {
+          value.pin = value.pin ? CryptoJS.AES.decrypt(value.pin, key).toString(CryptoJS.enc.Utf8) : '';
+          value.cnic = value.cnic ? CryptoJS.AES.decrypt(value.cnic, key).toString(CryptoJS.enc.Utf8) : '';
+        }
+        localStorage.setItem(key, JSON.stringify(value));
+        if (key === 'files') files = value;
+        if (key === 'profiles') profiles = value;
+        if (key === 'userProfile') userProfile = value;
+        if (key === 'offlineQueue') offlineQueue = value;
+        if (key === 'analytics') analytics = value;
       }
     };
   });
@@ -86,11 +97,12 @@ function initGoogleDrive() {
               access_token: response.access_token,
               expires_at: Date.now() + (response.expires_in * 1000)
             }));
-            document.getElementById('backupToDrive').style.display = 'inline-block';
-            document.getElementById('restoreFromDrive').style.display = 'inline-block';
-            document.getElementById('shareBackup').style.display = 'inline-block';
-            showToast('Signed in to Google Drive');
+            userProfile.googleDriveConnected = true;
+            localStorage.setItem('userProfile', JSON.stringify(userProfile));
             syncLocalStorageToIndexedDB();
+            document.getElementById('backupToDrive').style.display = 'inline-block';
+            document.getElementById('restoreFromGoogle').style.display = 'inline-block';
+            showToast('Signed in to Google Drive');
             processOfflineQueue();
           } else {
             console.error('Google sign-in failed:', response);
@@ -115,7 +127,6 @@ function signInWithGoogle() {
     initGoogleDrive();
     return;
   }
-  console.log('Triggering Google Drive sign-in');
   tokenClient.requestAccessToken();
 }
 
@@ -128,11 +139,11 @@ function refreshGoogleToken() {
   if (!navigator.onLine || !tokenClient) return;
   const token = JSON.parse(localStorage.getItem('gapi_token'));
   if (token && token.expires_at < Date.now() + 60000) { // Refresh 1 minute before expiry
-    signInWithGoogle();
+    tokenClient.requestAccessToken({ prompt: '' }); // Silent refresh
   }
 }
 
-function backupToDrive() {
+async function backupToDrive() {
   if (!navigator.onLine) {
     offlineQueue.push({ action: 'backupToDrive', data: null });
     localStorage.setItem('offlineQueue', JSON.stringify(offlineQueue));
@@ -145,47 +156,64 @@ function backupToDrive() {
     signInWithGoogle();
     return;
   }
+  let folderId;
+  try {
+    const response = await gapi.client.drive.files.list({
+      q: "name='CFT' and mimeType='application/vnd.google-apps.folder'",
+      fields: 'files(id, name)',
+      spaces: 'drive'
+    });
+    const folder = response.result.files.find(f => f.name === 'CFT');
+    if (folder) {
+      folderId = folder.id;
+    } else {
+      const folderResponse = await gapi.client.drive.files.create({
+        resource: {
+          name: 'CFT',
+          mimeType: 'application/vnd.google-apps.folder'
+        },
+        fields: 'id'
+      });
+      folderId = folderResponse.result.id;
+    }
+  } catch (error) {
+    console.error('Folder search/create error:', error);
+    showToast('Failed to locate or create CFT folder');
+    return;
+  }
   const data = {
-    files: files.map(f => ({
-      ...f,
-      deliveredToName: f.deliveredToName,
-      deliveredToType: f.deliveredToType
-    })),
-    profiles: profiles.map(p => ({
-      ...p,
-      photo: p.photo || ''
-    })),
+    files: files.map(f => ({ ...f, deliveredToName: f.deliveredToName, deliveredToType: f.deliveredToType })),
+    profiles: profiles.map(p => ({ ...p, photo: p.photo || '' })),
     userProfile: userProfile ? { ...userProfile, pin: null, cnic: maskCNIC(userProfile.cnic) } : null,
     analytics
   };
-  console.log('Backup data:', data);
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   const metadata = {
-    name: `cft_backup_${formatDate(new Date(), 'YYYYMMDD_HHMMSS')}.json`,
+    name: `cft_data_${formatDate(new Date(), 'YYYYMMDD_HHMMSS')}.json`,
     mimeType: 'application/json',
-    parents: ['appDataFolder']
+    parents: [folderId]
   };
   const form = new FormData();
   form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
   form.append('file', blob);
-  gapi.client.request({
-    path: '/upload/drive/v3/files',
-    method: 'POST',
-    params: { uploadType: 'multipart' },
-    body: form
-  }).then((response) => {
-    console.log('Backup response:', response);
+  try {
+    await gapi.client.request({
+      path: '/upload/drive/v3/files',
+      method: 'POST',
+      params: { uploadType: 'multipart' },
+      body: form
+    });
     analytics.backupsCreated++;
     localStorage.setItem('analytics', JSON.stringify(analytics));
     syncLocalStorageToIndexedDB();
-    showToast('Backup uploaded to Google Drive');
-  }).catch((error) => {
+    showToast('Backup uploaded to Google Drive in CFT folder');
+  } catch (error) {
     console.error('Backup error:', error);
     showToast('Failed to upload backup. Please try again.');
-  });
+  }
 }
 
-function restoreFromDrive() {
+async function restoreFromDrive() {
   if (!navigator.onLine) {
     showToast('No internet connection. Please try again later.');
     return;
@@ -195,12 +223,25 @@ function restoreFromDrive() {
     signInWithGoogle();
     return;
   }
-  gapi.client.drive.files.list({
-    spaces: 'appDataFolder',
-    q: "name contains 'cft_backup_'",
-    fields: 'files(id, name)'
-  }).then((response) => {
-    const backupFiles = response.result.files;
+  document.getElementById('loadingIndicator').style.display = 'block';
+  try {
+    const folderResponse = await gapi.client.drive.files.list({
+      q: "name='CFT' and mimeType='application/vnd.google-apps.folder'",
+      fields: 'files(id, name)',
+      spaces: 'drive'
+    });
+    const folder = folderResponse.result.files.find(f => f.name === 'CFT');
+    if (!folder) {
+      showToast('CFT folder not found in Google Drive');
+      document.getElementById('loadingIndicator').style.display = 'none';
+      return;
+    }
+    const filesResponse = await gapi.client.drive.files.list({
+      q: `parents in '${folder.id}' and name contains 'cft_data_'`,
+      fields: 'files(id, name)',
+      spaces: 'drive'
+    });
+    const backupFiles = filesResponse.result.files;
     const select = document.getElementById('backupFiles');
     select.innerHTML = '<option value="">Select a backup</option>';
     backupFiles.forEach(file => {
@@ -209,74 +250,94 @@ function restoreFromDrive() {
       option.textContent = file.name;
       select.appendChild(option);
     });
-    document.getElementById('shareBackupModal').style.display = 'block';
-  }).catch((error) => {
+    document.getElementById('restoreFromGoogleModal').style.display = 'block';
+    document.getElementById('loadingIndicator').style.display = 'none';
+  } catch (error) {
     console.error('List files error:', error);
     showToast('Failed to list backups. Please try again.');
-  });
-
-  // Add event listener for backup selection
-  document.getElementById('backupFiles').addEventListener('change', (e) => {
-    const fileId = e.target.value;
-    if (fileId) {
-      gapi.client.drive.files.get({
-        fileId: fileId,
-        alt: 'media'
-      }).then((response) => {
-        const data = JSON.parse(response.body);
-        files = data.files || [];
-        profiles = data.profiles || [];
-        userProfile = data.userProfile ? { ...data.userProfile, pin: userProfile?.pin || '' } : userProfile;
-        analytics = data.analytics || analytics;
-        localStorage.setItem('files', JSON.stringify(files));
-        localStorage.setItem('profiles', JSON.stringify(profiles));
-        localStorage.setItem('userProfile', JSON.stringify(userProfile));
-        localStorage.setItem('analytics', JSON.stringify(analytics));
-        syncLocalStorageToIndexedDB();
-        showToast('Data restored successfully from Google Drive');
-        updateSavedProfile();
-        updateDashboardCards();
-        hideShareBackup();
-      }).catch((error) => {
-        console.error('Restore error:', error);
-        showToast('Failed to restore data. Please try again.');
-      });
-    }
-  });
+    document.getElementById('loadingIndicator').style.display = 'none';
+  }
 }
 
-function shareBackup() {
+async function restoreSelectedBackup() {
   const fileId = document.getElementById('backupFiles').value;
-  const email = document.getElementById('shareEmail').value;
-  if (!fileId || !email) {
-    showToast('Please select a backup and enter an email');
+  if (!fileId) {
+    showToast('Please select a backup file');
     return;
   }
-  gapi.client.drive.permissions.create({
-    fileId: fileId,
-    resource: {
-      type: 'user',
-      role: 'reader',
-      emailAddress: email
-    }
-  }).then(() => {
-    gapi.client.drive.files.get({
+  document.getElementById('loadingIndicator').style.display = 'block';
+  document.getElementById('restoreProgress').style.display = 'block';
+  document.getElementById('progressBar').style.width = '10%';
+  try {
+    const response = await gapi.client.drive.files.get({
       fileId: fileId,
-      fields: 'webViewLink'
-    }).then((response) => {
-      showToast(`Backup shared with ${email}. Link: ${response.result.webViewLink}`);
-      hideShareBackup();
+      alt: 'media'
     });
-  }).catch((error) => {
-    console.error('Share error:', error);
-    showToast('Failed to share backup. Please try again.');
-  });
+    document.getElementById('progressBar').style.width = '50%';
+    const data = JSON.parse(response.body);
+    const newFiles = data.files || [];
+    newFiles.forEach(newFile => {
+      const existingIndex = files.findIndex(f => 
+        f.cmsNo === newFile.cmsNo &&
+        f.deliveredToName === newFile.deliveredToName &&
+        f.deliveredToType === newFile.deliveredToType &&
+        f.deliveredAt === newFile.deliveredAt
+      );
+      if (existingIndex >= 0) {
+        if (newFile.returnedAt && (!files[existingIndex].returnedAt || new Date(newFile.returnedAt) > new Date(files[existingIndex].returnedAt))) {
+          files[existingIndex] = { ...files[existingIndex], ...newFile };
+        }
+      } else {
+        files.push(newFile);
+      }
+    });
+    const newProfiles = data.profiles || [];
+    newProfiles.forEach(newProfile => {
+      const existingIndex = profiles.findIndex(p => 
+        p.name === newProfile.name &&
+        p.type === newProfile.type &&
+        p.cellNo === newProfile.cellNo &&
+        (p.chamberNo || '') === (newProfile.chamberNo || '')
+      );
+      if (existingIndex >= 0) {
+        const existing = profiles[existingIndex];
+        const newFieldCount = Object.values(newProfile).filter(v => v).length;
+        const oldFieldCount = Object.values(existing).filter(v => v).length;
+        if (newFieldCount > oldFieldCount) {
+          profiles[existingIndex] = { ...existing, ...newProfile };
+        }
+      } else {
+        profiles.push(newProfile);
+      }
+    });
+    analytics.filesEntered = Math.max(analytics.filesEntered, data.analytics?.filesEntered || 0);
+    analytics.searchesPerformed = Math.max(analytics.searchesPerformed, data.analytics?.searchesPerformed || 0);
+    analytics.backupsCreated = Math.max(analytics.backupsCreated, data.analytics?.backupsCreated || 0);
+    userProfile = data.userProfile ? { ...data.userProfile, pin: userProfile?.pin || '', cnic: userProfile?.cnic || '' } : userProfile;
+    document.getElementById('progressBar').style.width = '80%';
+    localStorage.setItem('files', JSON.stringify(files));
+    localStorage.setItem('profiles', JSON.stringify(profiles));
+    localStorage.setItem('userProfile', JSON.stringify(userProfile));
+    localStorage.setItem('analytics', JSON.stringify(analytics));
+    syncLocalStorageToIndexedDB();
+    document.getElementById('progressBar').style.width = '100%';
+    showToast('Data restored successfully from Google Drive');
+    updateSavedProfile();
+    updateDashboardCards();
+    hideRestoreFromGoogle();
+  } catch (error) {
+    console.error('Restore error:', error);
+    showToast('Failed to restore data. Please try again.');
+  } finally {
+    document.getElementById('loadingIndicator').style.display = 'none';
+    document.getElementById('restoreProgress').style.display = 'none';
+  }
 }
 
-function hideShareBackup() {
-  document.getElementById('shareBackupModal').style.display = 'none';
+function hideRestoreFromGoogle() {
+  document.getElementById('restoreFromGoogleModal').style.display = 'none';
   document.getElementById('backupFiles').value = '';
-  document.getElementById('shareEmail').value = '';
+  document.getElementById('progressBar').style.width = '0%';
 }
 
 function maskCNIC(cnic) {
@@ -288,7 +349,7 @@ function maskCNIC(cnic) {
 
 function processOfflineQueue() {
   if (!navigator.onLine || !isGoogleTokenValid()) return;
-  offlineQueue.forEach(({ action, data }) => {
+  offlineQueue.forEach(({ action }) => {
     if (action === 'backupToDrive') backupToDrive();
   });
   offlineQueue = [];
@@ -305,11 +366,11 @@ window.onload = () => {
     document.getElementById('adminForm').style.display = 'none';
     document.getElementById('savedProfile').style.display = 'block';
     updateSavedProfile();
-    if (!isGoogleTokenValid()) {
-      showToast('Please sign in to Google Drive to continue');
-      signInWithGoogle();
+    if (userProfile.googleDriveConnected && isGoogleTokenValid()) {
+      document.getElementById('backupToDrive').style.display = 'inline-block';
+      document.getElementById('restoreFromGoogle').style.display = 'inline-block';
     } else {
-      navigate('dashboard');
+      showToast('Please attach Google Drive to continue');
     }
   } else {
     navigate('admin');
@@ -319,8 +380,34 @@ window.onload = () => {
   setupPushNotifications();
   setupPhotoAdjust('userPhoto', 'userPhotoPreview', 'userPhotoAdjust');
   setupPhotoAdjust('profilePhoto', 'photoPreview', 'photoAdjust');
-  setInterval(refreshGoogleToken, 60000); // Check token every minute
+  setInterval(refreshGoogleToken, 300000); // Check token every 5 minutes
+  setInterval(() => {
+    if (userProfile && userProfile.backupFolder) saveProgressiveBackup();
+  }, 86400000); // Auto-backup every 24 hours
 };
+
+// PWA Install Prompt
+let deferredPrompt;
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredPrompt = e;
+  document.getElementById('installApp').style.display = 'block';
+});
+
+function installApp() {
+  if (deferredPrompt) {
+    deferredPrompt.prompt();
+    deferredPrompt.userChoice.then((choiceResult) => {
+      if (choiceResult.outcome === 'accepted') {
+        console.log('User accepted the install prompt');
+      } else {
+        console.log('User dismissed the install prompt');
+      }
+      deferredPrompt = null;
+      document.getElementById('installApp').style.display = 'none';
+    });
+  }
+}
 
 function setupPushNotifications() {
   if ('Notification' in window && navigator.serviceWorker) {
@@ -383,21 +470,19 @@ document.getElementById('adminForm').addEventListener('submit', (e) => {
   e.preventDefault();
   document.getElementById('loadingIndicator').style.display = 'block';
   try {
-    console.log('Admin form submission started');
     setTimeout(() => {
       const userPhotoInput = document.getElementById('userPhoto');
-      let photo = userPhotoInput.adjustedPhoto;
-      if (!photo && userPhotoInput.files && userPhotoInput.files[0]) {
-        photo = userPhotoInput.files[0];
-      }
-
+      let photo = userPhotoInput.adjustedPhoto || (userPhotoInput.files && userPhotoInput.files[0]);
       if (!photo) {
-        console.error('No photo selected');
         showToast('Please upload a profile photo');
         document.getElementById('loadingIndicator').style.display = 'none';
         return;
       }
-
+      if (!userProfile?.googleDriveConnected) {
+        showToast('Please attach Google Drive before saving');
+        document.getElementById('loadingIndicator').style.display = 'none';
+        return;
+      }
       const processPhoto = (photoData) => {
         userProfile = {
           clerkName: document.getElementById('clerkName').value,
@@ -407,34 +492,27 @@ document.getElementById('adminForm').addEventListener('submit', (e) => {
           cnic: document.getElementById('cnic').value,
           pin: document.getElementById('pin').value,
           email: document.getElementById('email').value,
+          backupFolder: document.getElementById('backupFolder').value,
+          googleDriveConnected: userProfile?.googleDriveConnected || false,
           photo: photoData
         };
-        console.log('Saving userProfile:', userProfile);
         localStorage.setItem('userProfile', JSON.stringify(userProfile));
         syncLocalStorageToIndexedDB();
+        saveProgressiveBackup();
         document.getElementById('setupMessage').style.display = 'none';
         document.getElementById('adminForm').style.display = 'none';
         document.getElementById('savedProfile').style.display = 'block';
         updateSavedProfile();
-        showToast('Profile saved successfully! Please sign in to Google Drive.');
-        console.log('Triggering Google Drive sign-in');
-        signInWithGoogle();
+        showToast('Profile saved successfully!');
         document.getElementById('loadingIndicator').style.display = 'none';
         navigate('dashboard');
       };
-
       if (typeof photo === 'string' && photo.startsWith('data:')) {
-        console.log('Using adjusted data URL');
         processPhoto(photo);
       } else {
-        console.log('Reading raw file');
         const reader = new FileReader();
-        reader.onload = () => {
-          console.log('Photo read successfully');
-          processPhoto(reader.result);
-        };
-        reader.onerror = (error) => {
-          console.error('Error reading photo:', error);
+        reader.onload = () => processPhoto(reader.result);
+        reader.onerror = () => {
           showToast('Failed to read photo. Please try again.');
           document.getElementById('loadingIndicator').style.display = 'none';
         };
@@ -447,6 +525,29 @@ document.getElementById('adminForm').addEventListener('submit', (e) => {
     document.getElementById('loadingIndicator').style.display = 'none';
   }
 });
+
+function saveProgressiveBackup() {
+  const data = {
+    files: files.map(f => ({ ...f, deliveredToName: f.deliveredToName, deliveredToType: f.deliveredToType })),
+    profiles: profiles.map(p => ({ ...p, photo: p.photo || '' })),
+    userProfile: userProfile ? { ...userProfile, pin: null, cnic: maskCNIC(userProfile.cnic) } : null,
+    analytics
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const fileName = `${userProfile.backupFolder}/cft_data.json`;
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName;
+  a.click();
+  URL.revokeObjectURL(url);
+  if (navigator.onLine && userProfile.googleDriveConnected && isGoogleTokenValid()) {
+    backupToDrive();
+  }
+  analytics.backupsCreated++;
+  localStorage.setItem('analytics', JSON.stringify(analytics));
+  syncLocalStorageToIndexedDB();
+}
 
 function updateSavedProfile() {
   document.getElementById('savedClerkName').textContent = userProfile.clerkName;
@@ -473,11 +574,11 @@ function editUserProfile() {
   document.getElementById('cnic').value = userProfile.cnic;
   document.getElementById('pin').value = userProfile.pin;
   document.getElementById('email').value = userProfile.email;
+  document.getElementById('backupFolder').value = userProfile.backupFolder || '';
   document.getElementById('agreeTerms').checked = true;
   document.getElementById('saveProfileBtn').disabled = false;
 }
 
-// Photo Adjust Setup
 function setupPhotoAdjust(inputId, previewId, adjustContainerId) {
   const input = document.getElementById(inputId);
   const preview = document.getElementById(previewId);
@@ -497,17 +598,12 @@ function setupPhotoAdjust(inputId, previewId, adjustContainerId) {
 
   input.addEventListener('change', (e) => {
     const file = e.target.files[0];
-    if (!file) {
-      showToast('No file selected');
-      return;
-    }
-
+    if (!file) return;
     if (file.size > 2 * 1024 * 1024) {
       showToast('Image too large. Please select an image smaller than 2MB.');
       input.value = '';
       return;
     }
-
     document.getElementById('loadingIndicator').style.display = 'block';
     const reader = new FileReader();
     reader.onload = () => {
@@ -535,25 +631,18 @@ function setupPhotoAdjust(inputId, previewId, adjustContainerId) {
 
   function drawImage(orientation) {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    let imgWidth = img.width;
-    let imgHeight = img.height;
-    scaleFactor = Math.max(canvas.width / imgWidth, canvas.height / imgHeight);
-    imgWidth *= scaleFactor;
-    imgHeight *= scaleFactor;
-
+    let imgWidth = img.width * scaleFactor;
+    let imgHeight = img.height * scaleFactor;
+    scaleFactor = Math.max(canvas.width / img.width, canvas.height / img.height);
+    imgWidth = img.width * scaleFactor;
+    imgHeight = img.height * scaleFactor;
     ctx.save();
     ctx.translate(canvas.width / 2, canvas.height / 2);
-    if (orientation && orientation !== 1) {
+    if (orientation !== 1) {
       switch (orientation) {
-        case 6:
-          ctx.rotate(Math.PI / 2);
-          break;
-        case 3:
-          ctx.rotate(Math.PI);
-          break;
-        case 8:
-          ctx.rotate(-Math.PI / 2);
-          break;
+        case 6: ctx.rotate(Math.PI / 2); break;
+        case 3: ctx.rotate(Math.PI); break;
+        case 8: ctx.rotate(-Math.PI / 2); break;
       }
     }
     ctx.translate(-canvas.width / 2, -canvas.height / 2);
@@ -615,10 +704,6 @@ function toggleSaveButton() {
   document.getElementById('saveProfileBtn').disabled = !document.getElementById('agreeTerms').checked;
 }
 
-function showDisclaimerModal() {
-  document.getElementById('disclaimerModal').style.display = 'block';
-}
-
 function promptPin(callback) {
   document.getElementById('pinModal').style.display = 'block';
   document.getElementById('pinInput').value = '';
@@ -660,7 +745,6 @@ function hideChangePin() {
 }
 
 function updateDashboardCards() {
-  console.log('Updating dashboard cards');
   const today = formatDate(new Date()).split(' ')[0];
   const tomorrow = formatDate(new Date(Date.now() + 24 * 60 * 60 * 1000)).split(' ')[0];
   const tenDaysAgo = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000);
@@ -677,11 +761,7 @@ function updateDashboardCards() {
   document.getElementById('cardOverdue').innerHTML = `<span class="tooltip">Files pending over 10 days</span><h3>${overdue}</h3><p>Overdue Files</p>`;
   document.getElementById('cardSearchPrev').innerHTML = `<span class="tooltip">Search all previous records</span><h3>Search</h3><p>Previous Records</p>`;
 
-  if (chartInstance) {
-    chartInstance.destroy();
-    chartInstance = null;
-  }
-
+  if (chartInstance) chartInstance.destroy();
   const ctx = document.getElementById('statsChart').getContext('2d');
   chartInstance = new Chart(ctx, {
     type: 'bar',
@@ -694,27 +774,20 @@ function updateDashboardCards() {
       }]
     },
     options: {
-      scales: {
-        y: {
-          beginAtZero: true,
-          stepSize: 1,
-          ticks: { precision: 0 }
-        }
-      },
+      scales: { y: { beginAtZero: true, ticks: { precision: 0 } } },
       plugins: { legend: { display: false } }
     }
   });
 
-  document.getElementById('cardDeliveries').onclick = () => { console.log('Clicked Deliveries'); showDashboardReport('deliveries'); };
-  document.getElementById('cardReturns').onclick = () => { console.log('Clicked Returns'); showDashboardReport('returns'); };
-  document.getElementById('cardPending').onclick = () => { console.log('Clicked Pending'); showDashboardReport('pending'); };
-  document.getElementById('cardTomorrow').onclick = () => { console.log('Clicked Tomorrow'); showDashboardReport('tomorrow'); };
-  document.getElementById('cardOverdue').onclick = () => { console.log('Clicked Overdue'); showDashboardReport('overdue'); };
-  document.getElementById('cardSearchPrev').onclick = () => { console.log('Clicked SearchPrev'); showDashboardReport('searchPrev'); };
+  document.getElementById('cardDeliveries').onclick = () => showDashboardReport('deliveries');
+  document.getElementById('cardReturns').onclick = () => showDashboardReport('returns');
+  document.getElementById('cardPending').onclick = () => showDashboardReport('pending');
+  document.getElementById('cardTomorrow').onclick = () => showDashboardReport('tomorrow');
+  document.getElementById('cardOverdue').onclick = () => showDashboardReport('overdue');
+  document.getElementById('cardSearchPrev').onclick = () => showDashboardReport('searchPrev');
 }
 
 function showDashboardReport(type) {
-  console.log(`Showing report for type: ${type}`);
   document.getElementById('dashboardReportPanel').style.display = 'block';
   document.getElementById('loadingIndicator').style.display = 'block';
   document.getElementById('searchPrevRecords').style.display = type === 'searchPrev' ? 'block' : 'none';
@@ -727,42 +800,18 @@ function showDashboardReport(type) {
   let filteredFiles = files;
   let title = '';
   switch (type) {
-    case 'deliveries':
-      filteredFiles = files.filter(f => formatDate(f.deliveredAt).startsWith(today));
-      title = 'Deliveries Today';
-      break;
-    case 'returns':
-      filteredFiles = files.filter(f => f.returned && formatDate(f.returnedAt).startsWith(today));
-      title = 'Returns Today';
-      break;
-    case 'pending':
-      filteredFiles = files.filter(f => !f.returned);
-      title = 'Pending Files';
-      break;
-    case 'tomorrow':
-      filteredFiles = files.filter(f => formatDate(f.date).startsWith(tomorrow));
-      title = 'Tomorrow Hearings';
-      break;
-    case 'overdue':
-      filteredFiles = files.filter(f => !f.returned && new Date(f.deliveredAt) < tenDaysAgo);
-      title = 'Overdue Files';
-      break;
-    case 'searchPrev':
-      filteredFiles = files;
-      title = 'Search Previous Records';
-      break;
-    default:
-      console.error('Invalid report type:', type);
+    case 'deliveries': filteredFiles = files.filter(f => formatDate(f.deliveredAt).startsWith(today)); title = 'Deliveries Today'; break;
+    case 'returns': filteredFiles = files.filter(f => f.returned && formatDate(f.returnedAt).startsWith(today)); title = 'Returns Today'; break;
+    case 'pending': filteredFiles = files.filter(f => !f.returned); title = 'Pending Files'; break;
+    case 'tomorrow': filteredFiles = files.filter(f => formatDate(f.date).startsWith(tomorrow)); title = 'Tomorrow Hearings'; break;
+    case 'overdue': filteredFiles = files.filter(f => !f.returned && new Date(f.deliveredAt) < tenDaysAgo); title = 'Overdue Files'; break;
+    case 'searchPrev': filteredFiles = files; title = 'Search Previous Records'; break;
   }
 
-  console.log('Filtered files:', filteredFiles);
   currentReportData = filteredFiles;
   document.getElementById('reportTitle').textContent = title;
   renderReportTable();
-
-  setTimeout(() => {
-    document.getElementById('loadingIndicator').style.display = 'none';
-  }, 500);
+  setTimeout(() => document.getElementById('loadingIndicator').style.display = 'none', 500);
 }
 
 let sortColumn = null;
@@ -851,8 +900,7 @@ function getDynamicTimeSpan(deliveredAt, returnedAt = null) {
 }
 
 function updateDynamicTimeSpans() {
-  const spans = document.querySelectorAll('.time-span');
-  spans.forEach(span => {
+  document.querySelectorAll('.time-span').forEach(span => {
     if (span.dataset.returned === 'false') {
       span.textContent = getDynamicTimeSpan(span.dataset.delivered);
     }
@@ -903,9 +951,7 @@ function formatDate(date, format = 'YYYY-MM-DD') {
   const hours = String(d.getHours()).padStart(2, '0');
   const minutes = String(d.getMinutes()).padStart(2, '0');
   const seconds = String(d.getSeconds()).padStart(2, '0');
-  if (format === 'YYYY-MM-DD HH:mm:ss') {
-    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
-  }
+  if (format === 'YYYY-MM-DD HH:mm:ss') return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
   return `${year}-${month}-${day}`;
 }
 
@@ -1082,6 +1128,7 @@ document.getElementById('fileForm').addEventListener('submit', (e) => {
       localStorage.setItem('files', JSON.stringify(files));
       localStorage.setItem('analytics', JSON.stringify(analytics));
       syncLocalStorageToIndexedDB();
+      saveProgressiveBackup();
       document.getElementById('fileForm').reset();
       document.getElementById('criminalFields').style.display = 'none';
       document.getElementById('copyAgencyFields').style.display = 'none';
@@ -1118,14 +1165,10 @@ function autoFillCMS() {
     document.getElementById('copyAgency').checked = !!existing.swalFormNo;
     toggleCopyAgency();
     toggleCriminalFields();
-    fields.forEach(field => {
-      document.getElementById(field).disabled = true;
-    });
+    fields.forEach(field => document.getElementById(field).disabled = true);
     document.getElementById('copyAgency').disabled = true;
   } else {
-    fields.forEach(field => {
-      document.getElementById(field).disabled = false;
-    });
+    fields.forEach(field => document.getElementById(field).disabled = false);
     document.getElementById('copyAgency').disabled = false;
   }
   document.getElementById('dateType').disabled = false;
@@ -1143,10 +1186,7 @@ function suggestProfiles(input, inputId) {
   const suggestions = document.getElementById(inputId === 'deliveredTo' ? 'suggestions' : 'searchSuggestions');
   suggestions.innerHTML = '';
   if (!input) return;
-  const fuse = new Fuse(profiles, {
-    keys: ['name', 'cellNo', 'chamberNo'],
-    threshold: 0.3
-  });
+  const fuse = new Fuse(profiles, { keys: ['name', 'cellNo', 'chamberNo'], threshold: 0.3 });
   const results = fuse.search(input).slice(0, 5);
   results.forEach(result => {
     const li = document.createElement('li');
@@ -1162,9 +1202,7 @@ function suggestProfiles(input, inputId) {
     li.appendChild(text);
     li.onclick = () => {
       document.getElementById(inputId).value = result.item.name;
-      if (inputId === 'deliveredTo') {
-        document.getElementById('deliveredType').value = result.item.type;
-      }
+      if (inputId === 'deliveredTo') document.getElementById('deliveredType').value = result.item.type;
       suggestions.innerHTML = '';
     };
     suggestions.appendChild(li);
@@ -1200,6 +1238,7 @@ function returnFile(cmsNo) {
         file.returnedAt = new Date().toISOString();
         localStorage.setItem('files', JSON.stringify(files));
         syncLocalStorageToIndexedDB();
+        saveProgressiveBackup();
         showToast(`File ${cmsNo} returned successfully`);
         filterPendingFiles();
         updateDashboardCards();
@@ -1226,6 +1265,7 @@ function bulkReturnFiles() {
       });
       localStorage.setItem('files', JSON.stringify(files));
       syncLocalStorageToIndexedDB();
+      saveProgressiveBackup();
       showToast(`${selected.length} file(s) returned successfully`);
       filterPendingFiles();
       updateDashboardCards();
@@ -1282,48 +1322,41 @@ function toggleProfileFields() {
   document.getElementById('profilePhoto').required = type !== 'advocate';
 }
 
-// Profile Form Submission
 document.getElementById('profileForm').addEventListener('submit', (e) => {
   e.preventDefault();
   document.getElementById('loadingIndicator').style.display = 'block';
   try {
     const profileType = document.getElementById('profileType').value;
     const photoInput = document.getElementById('profilePhoto');
-    let photo = photoInput.adjustedPhoto;
-    if (!photo && photoInput.files && photoInput.files[0]) {
-      photo = photoInput.files[0];
-    }
-
+    let photo = photoInput.adjustedPhoto || (photoInput.files && photoInput.files[0]);
     if (!photo && profileType !== 'advocate') {
       showToast('Please upload a profile photo');
       document.getElementById('loadingIndicator').style.display = 'none';
       return;
     }
-
     const processPhoto = (photoData) => {
       const profile = {
-        type: document.getElementById('profileType').value,
+        type: profileType,
         name: document.getElementById('profileName').value,
         cellNo: document.getElementById('cellNo').value,
-        chamberNo: document.getElementById('chamberNo') ? document.getElementById('chamberNo').value : '',
-        advocateName: document.getElementById('advocateName') ? document.getElementById('advocateName').value : '',
-        advocateCell: document.getElementById('advocateCell') ? document.getElementById('advocateCell').value : '',
-        designation: document.getElementById('designation') ? document.getElementById('designation').value : '',
-        postedAt: document.getElementById('postedAt') ? document.getElementById('postedAt').value : '',
-        cnic: document.getElementById('cnic') ? document.getElementById('cnic').value : '',
-        relation: document.getElementById('relation') ? document.getElementById('relation').value : '',
+        chamberNo: document.getElementById('chamberNo')?.value || '',
+        advocateName: document.getElementById('advocateName')?.value || '',
+        advocateCell: document.getElementById('advocateCell')?.value || '',
+        designation: document.getElementById('designation')?.value || '',
+        postedAt: document.getElementById('postedAt')?.value || '',
+        cnic: document.getElementById('cnic')?.value || '',
+        relation: document.getElementById('relation')?.value || '',
         photo: photoData || ''
       };
-
       const existingIndex = profiles.findIndex(p => p.name === profile.name && p.type === profile.type);
       if (existingIndex >= 0) {
         profiles[existingIndex] = profile;
       } else {
         profiles.push(profile);
       }
-
       localStorage.setItem('profiles', JSON.stringify(profiles));
       syncLocalStorageToIndexedDB();
+      saveProgressiveBackup();
       document.getElementById('profileForm').reset();
       document.getElementById('profileFields').innerHTML = '';
       document.getElementById('photoAdjust').style.display = 'none';
@@ -1331,25 +1364,17 @@ document.getElementById('profileForm').addEventListener('submit', (e) => {
       document.getElementById('loadingIndicator').style.display = 'none';
       showProfileSearch();
     };
-
     if (photo && typeof photo === 'string' && photo.startsWith('data:')) {
-      console.log('Using adjusted data URL');
       processPhoto(photo);
     } else if (photo) {
-      console.log('Reading raw file');
       const reader = new FileReader();
-      reader.onload = () => {
-        console.log('Photo read successfully');
-        processPhoto(reader.result);
-      };
+      reader.onload = () => processPhoto(reader.result);
       reader.onerror = () => {
-        console.error('Error reading photo');
         showToast('Failed to read photo. Please try again.');
         document.getElementById('loadingIndicator').style.display = 'none';
       };
       reader.readAsDataURL(photo);
     } else {
-      console.log('No photo provided (Advocate profile)');
       processPhoto('');
     }
   } catch (error) {
@@ -1365,14 +1390,9 @@ function renderProfiles() {
   const tbody = document.getElementById('profileTable').querySelector('tbody');
   tbody.innerHTML = '';
   let filteredProfiles = profiles;
-  if (typeFilter) {
-    filteredProfiles = profiles.filter(p => p.type === typeFilter);
-  }
+  if (typeFilter) filteredProfiles = profiles.filter(p => p.type === typeFilter);
   if (search) {
-    const fuse = new Fuse(filteredProfiles, {
-      keys: ['name', 'cellNo', 'chamberNo', 'advocateName', 'designation'],
-      threshold: 0.3
-    });
+    const fuse = new Fuse(filteredProfiles, { keys: ['name', 'cellNo', 'chamberNo', 'advocateName', 'designation'], threshold: 0.3 });
     filteredProfiles = fuse.search(search).map(result => result.item);
   }
   filteredProfiles.forEach(p => {
@@ -1421,6 +1441,7 @@ function deleteProfile(name, type) {
       profiles = profiles.filter(p => p.name !== name || p.type !== type);
       localStorage.setItem('profiles', JSON.stringify(profiles));
       syncLocalStorageToIndexedDB();
+      saveProgressiveBackup();
       showToast('Profile deleted successfully');
       renderProfiles();
     }
@@ -1439,9 +1460,22 @@ function importProfiles() {
     try {
       const importedProfiles = JSON.parse(reader.result);
       if (!Array.isArray(importedProfiles)) throw new Error('Invalid profile data');
-      profiles = [...profiles, ...importedProfiles];
+      importedProfiles.forEach(newProfile => {
+        const existingIndex = profiles.findIndex(p => 
+          p.name === newProfile.name &&
+          p.type === newProfile.type &&
+          p.cellNo === newProfile.cellNo &&
+          (p.chamberNo || '') === (newProfile.chamberNo || '')
+        );
+        if (existingIndex >= 0) {
+          profiles[existingIndex] = { ...profiles[existingIndex], ...newProfile };
+        } else {
+          profiles.push(newProfile);
+        }
+      });
       localStorage.setItem('profiles', JSON.stringify(profiles));
       syncLocalStorageToIndexedDB();
+      saveProgressiveBackup();
       showToast('Profiles imported successfully');
       showProfileSearch();
     } catch (error) {
@@ -1491,15 +1525,51 @@ function restoreData() {
   reader.onload = () => {
     try {
       const data = JSON.parse(reader.result);
-      files = data.files || [];
-      profiles = data.profiles || [];
-      userProfile = data.userProfile ? { ...data.userProfile, pin: userProfile.pin } : userProfile;
-      analytics = data.analytics || analytics;
+      const newFiles = data.files || [];
+      newFiles.forEach(newFile => {
+        const existingIndex = files.findIndex(f => 
+          f.cmsNo === newFile.cmsNo &&
+          f.deliveredToName === newFile.deliveredToName &&
+          f.deliveredToType === newFile.deliveredToType &&
+          f.deliveredAt === newFile.deliveredAt
+        );
+        if (existingIndex >= 0) {
+          if (newFile.returnedAt && (!files[existingIndex].returnedAt || new Date(newFile.returnedAt) > new Date(files[existingIndex].returnedAt))) {
+            files[existingIndex] = { ...files[existingIndex], ...newFile };
+          }
+        } else {
+          files.push(newFile);
+        }
+      });
+      const newProfiles = data.profiles || [];
+      newProfiles.forEach(newProfile => {
+        const existingIndex = profiles.findIndex(p => 
+          p.name === newProfile.name &&
+          p.type === newProfile.type &&
+          p.cellNo === newProfile.cellNo &&
+          (p.chamberNo || '') === (newProfile.chamberNo || '')
+        );
+        if (existingIndex >= 0) {
+          const existing = profiles[existingIndex];
+          const newFieldCount = Object.values(newProfile).filter(v => v).length;
+          const oldFieldCount = Object.values(existing).filter(v => v).length;
+          if (newFieldCount > oldFieldCount) {
+            profiles[existingIndex] = { ...existing, ...newProfile };
+          }
+        } else {
+          profiles.push(newProfile);
+        }
+      });
+      analytics.filesEntered = Math.max(analytics.filesEntered, data.analytics?.filesEntered || 0);
+      analytics.searchesPerformed = Math.max(analytics.searchesPerformed, data.analytics?.searchesPerformed || 0);
+      analytics.backupsCreated = Math.max(analytics.backupsCreated, data.analytics?.backupsCreated || 0);
+      userProfile = data.userProfile ? { ...data.userProfile, pin: userProfile?.pin || '', cnic: userProfile?.cnic || '' } : userProfile;
       localStorage.setItem('files', JSON.stringify(files));
       localStorage.setItem('profiles', JSON.stringify(profiles));
       localStorage.setItem('userProfile', JSON.stringify(userProfile));
       localStorage.setItem('analytics', JSON.stringify(analytics));
       syncLocalStorageToIndexedDB();
+      saveProgressiveBackup();
       showToast('Data restored successfully');
       updateSavedProfile();
       updateDashboardCards();
@@ -1514,7 +1584,5 @@ function showToast(message) {
   const toast = document.getElementById('toast');
   toast.textContent = message;
   toast.style.display = 'block';
-  setTimeout(() => {
-    toast.style.display = 'none';
-  }, 3000);
+  setTimeout(() => toast.style.display = 'none', 3000);
 }
