@@ -15,6 +15,7 @@
       <h1>Court File Tracker</h1>
       <p>Smart Solutions for Efficient Record Management</p>
     </div>
+    <button id="installBtn" style="display:none; background:#0066cc; color:white; border:none; padding:5px 10px; border-radius:4px; cursor:pointer;">Install App</button>
     <div class="window-controls" style="display: none;">
       <button id="minimizeBtn" class="window-btn minimize-btn" title="Minimize">−</button>
       <button id="resizeBtn" class="window-btn resize-btn" title="Maximize/Restore">□</button>
@@ -318,10 +319,7 @@
           <h4>Data Management</h4>
           <button onclick="backupData()">Backup to Local</button>
           <button onclick="triggerRestore()">Restore from Local</button>
-          <button onclick="signInWithGoogle()">Sign in with Google</button>
-          <button id="backupToDrive" style="display:none;" onclick="backupToDrive()">Backup to Google Drive</button>
-          <button id="restoreFromDrive" style="display:none;" onclick="restoreFromDrive()">Restore from Google Drive</button>
-          <button id="shareBackup" style="display:none;" onclick="showShareBackup()">Share Backup</button>
+          <button id="restoreFromGoogle" style="display:none;" onclick="restoreFromDrive()">Restore From Google</button>
         </div>
         <input type="file" id="dataRestore" accept=".json" style="display:none;" onchange="restoreData()" />
         <form id="adminForm" style="display:block;">
@@ -337,6 +335,13 @@
           </label>
           <label>PIN (4 digits): <span class="required">*</span><input type="password" id="pin" maxlength="4" pattern="\d{4}" required /></label>
           <label>Email (for PIN recovery): <input type="email" id="email" placeholder="example@domain.com" /></label>
+          <label>Select Folder for Data Backup: <span class="required">*</span>
+            <input type="text" id="backupFolder" required placeholder="e.g., CFT (auto-created)" value="CFT" />
+          </label>
+          <label>Attach Google Drive to Save Data: <span class="required">*</span>
+            <button type="button" onclick="signInWithGoogle()">Attach</button>
+            <span id="googleDriveStatus" style="margin-left:10px;color:#0066cc;">Not attached</span>
+          </label>
           <label>Upload Photo: <span class="required">*</span><input type="file" id="userPhoto" accept="image/*" required /></label>
           <img id="userPhotoPreview" style="display: none; max-width: 200px;" />
           <div id="userPhotoAdjust"></div>
@@ -402,18 +407,18 @@
         </div>
       </div>
 
-      <!-- Share Backup Modal -->
-      <div id="shareBackupModal" class="modal" onclick="closeModalIfOutside(event, 'shareBackupModal')">
+      <!-- Restore From Google Modal -->
+      <div id="restoreFromGoogleModal" class="modal" onclick="closeModalIfOutside(event, 'restoreFromGoogleModal')">
         <div class="modal-content">
-          <h3>Share Backup</h3>
+          <h3>Restore From Google Drive</h3>
           <label>Select Backup:
             <select id="backupFiles" required></select>
           </label>
-          <label>Recipient Email:
-            <input type="email" id="shareEmail" placeholder="recipient@example.com" required />
-          </label>
-          <button onclick="shareBackup()">Share</button>
-          <button onclick="hideShareBackup()">Cancel</button>
+          <div id="restoreProgress" class="progress" style="display:none; margin: 10px 0;">
+            <div id="progressBar" style="width: 0%; height: 20px; background: #4caf50; border-radius: 4px;"></div>
+          </div>
+          <button onclick="restoreSelectedBackup()">Restore</button>
+          <button onclick="hideRestoreFromGoogle()">Cancel</button>
         </div>
       </div>
 
@@ -443,6 +448,22 @@
       e.preventDefault();
       deferredPrompt = e;
       console.log("PWA install prompt ready.");
+      document.getElementById('installBtn').style.display = 'inline-block';
+    });
+
+    document.getElementById('installBtn').addEventListener('click', () => {
+      if (deferredPrompt) {
+        deferredPrompt.prompt();
+        deferredPrompt.userChoice.then((choiceResult) => {
+          if (choiceResult.outcome === 'accepted') {
+            console.log('User accepted the install prompt');
+          } else {
+            console.log('User dismissed the install prompt');
+          }
+          deferredPrompt = null;
+          document.getElementById('installBtn').style.display = 'none';
+        });
+      }
     });
   </script>
 </body>
