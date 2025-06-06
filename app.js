@@ -1744,37 +1744,3 @@ window.addEventListener('resize', () => {
     toggleSidebar();
   }
 });
-
-// CSS for Toast
-const style = document.createElement('style');
-style.textContent = `
-  .toast {
-    position: fixed;
-    bottom: 20px;
-    right: 20px;
-    background: #333;
-    color: #fff;
-    padding: 10px 20px;
-    border-radius: 5px;
-    opacity: 0;
-    transition: opacity 0.3s ease;
-    z-index: 1000;
-  }
-  .toast.show {
-    opacity: 1;
-  }
-  .sidebar-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(0, 0, 0, 0.5);
-    z-index: 998;
-    display: none;
-  }
-  .sidebar-overlay.active {
-    display: block;
-  }
-`;
-document.head.appendChild(style);
