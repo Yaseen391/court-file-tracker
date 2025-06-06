@@ -435,7 +435,7 @@
   <script src="https://cdn.jsdelivr.net/npm/exif-js"></script>
   <script src="app.js"></script>
     <script>
-  if ('serviceWorker' in navigator) {
+  if ('serviceWorker' in navigator) 
     window.addEventListener('load', function () {
       navigator.serviceWorker.register('/court-file-tracker/service-worker.js')
         .then(() => console.log("Service Worker registered"))
