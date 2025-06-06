@@ -335,13 +335,13 @@
           </label>
           <label>PIN (4 digits): <span class="required">*</span><input type="password" id="pin" maxlength="4" pattern="\d{4}" required /></label>
           <label>Email (for PIN recovery): <input type="email" id="email" placeholder="example@domain.com" /></label>
-          <label>Select Folder for Data Backup: <span class="required">*</span>
-            <input type="text" id="backupFolder" required placeholder="e.g., CFT (auto-created)" value="CFT" />
-          </label>
+<label>Backup Folder Name (for Google Drive): <span class="required">*</span>
+  <input type="text" id="backupFolder" required placeholder="e.g., CFT" value="CFT" />
+</label>
           <label>Attach Google Drive to Save Data: <span class="required">*</span>
-            <button type="button" onclick="signInWithGoogle()">Attach</button>
-            <span id="googleDriveStatus" style="margin-left:10px;color:#0066cc;">Not attached</span>
-          </label>
+  <button type="button" id="attachGoogleDriveBtn" onclick="signInWithGoogle()">Attach</button>
+  <span id="googleDriveStatus" style="margin-left:10px;color:#0066cc;">Not attached</span>
+</label>
           <label>Upload Photo: <span class="required">*</span><input type="file" id="userPhoto" accept="image/*" required /></label>
           <img id="userPhotoPreview" style="display: none; max-width: 200px;" />
           <div id="userPhotoAdjust"></div>
@@ -428,6 +428,7 @@
   </div>
 
   <!-- External Libraries -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
   <script src="https://accounts.google.com/gsi/client"></script>
   <script src="https://apis.google.com/js/api.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
