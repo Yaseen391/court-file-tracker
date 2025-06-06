@@ -33,7 +33,7 @@ function initIndexedDB() {
   request.onsuccess = (event) => {
     db = event.target.result;
     syncLocalStorageToIndexedDB();
-    loadBackupFolder(); // Load stored folder handle
+    initializeApp(); // Call to check and load backup folder
   };
   request.onerror = () => console.error('IndexedDB error');
 }
@@ -77,18 +77,13 @@ async function loadBackupFolder() {
   request.onsuccess = async () => {
     if (request.result && request.result.handle) {
       try {
-        // Verify folder permission
+        // Only query permission, do not request it
         const permission = await request.result.handle.queryPermission({ mode: 'readwrite' });
         if (permission === 'granted') {
           backupFolderHandle = request.result.handle;
         } else {
-          // Request permission
-          if (await request.result.handle.requestPermission({ mode: 'readwrite' }) === 'granted') {
-            backupFolderHandle = request.result.handle;
-          } else {
-            console.warn('Permission to access backup folder denied');
-            backupFolderHandle = null;
-          }
+          console.warn('Folder permission not granted. Ask user to reselect.');
+          backupFolderHandle = null;
         }
       } catch (error) {
         console.error('Error loading backup folder:', error);
@@ -101,6 +96,7 @@ async function loadBackupFolder() {
     backupFolderHandle = null;
   };
 }
+
 async function selectBackupFolder() {
   try {
     if ('showDirectoryPicker' in window) {
@@ -112,6 +108,8 @@ async function selectBackupFolder() {
         const store = transaction.objectStore('folder');
         store.put({ id: 'backupFolder', handle: folderHandle });
         showToast('Backup folder selected successfully');
+        document.getElementById('selectFolderBtn').classList.add('hidden'); // Hide button after selection
+        document.getElementById('backupFolderModal').style.display = 'none'; // Close modal
       } else {
         showToast('Permission to access folder denied');
       }
@@ -124,10 +122,26 @@ async function selectBackupFolder() {
   }
 }
 
-function scheduleDailyBackup() {
-  performDailyBackup(); // Run immediately
-  setInterval(performDailyBackup, 60 * 60 * 1000); // Every hour
+async function initializeApp() {
+  await loadBackupFolder();
+  const transaction = db.transaction(['folder'], 'readonly');
+  const store = transaction.objectStore('folder');
+  const request = store.get('backupFolder');
+  request.onsuccess = () => {
+    if (!request.result || !backupFolderHandle) {
+      // Show button if no valid backup folder is set
+      document.getElementById('selectFolderBtn').classList.remove('hidden');
+    } else {
+      // Ensure button stays hidden if folder is already set
+      document.getElementById('selectFolderBtn').classList.add('hidden');
+    }
+  };
+  request.onerror = () => {
+    console.error('Error checking backup folder on init');
+    document.getElementById('selectFolderBtn').classList.remove('hidden');
+  };
 }
+
 async function performDailyBackup() {
   if (!backupFolderHandle) {
     console.warn('No backup folder selected for backup');
@@ -150,27 +164,18 @@ async function performDailyBackup() {
     console.error('Daily backup error:', error);
   }
 }
+
+function scheduleDailyBackup() {
+  performDailyBackup(); // Run immediately
+  setInterval(performDailyBackup, 60 * 60 * 1000); // Every hour
+}
+
 function maskCNIC(cnic) {
   if (!cnic) return '';
   const parts = cnic.split('-');
   if (parts.length !== 3) return '*****-*******-*';
   return `${parts[0].slice(0, 2)}***-${parts[1].slice(0, 3)}****-${parts[2]}`;
 }
-// Add these new functions
-function closeSidebar() {
-  document.getElementById('sidebar').classList.remove('active');
-  document.querySelector('.sidebar-overlay').style.display = 'none';
-  history.pushState(null, null, window.location.pathname);
-}
-
-function handleBackButton() {
-  if (document.getElementById('sidebar').classList.contains('active')) {
-    closeSidebar();
-    return true;
-  }
-  return false;
-}
-
 
 window.onload = () => {
   console.log('app.js loaded successfully');
@@ -183,19 +188,6 @@ window.onload = () => {
     navigate('dashboard');
   } else {
     navigate('admin');
-    // Add inside window.onload
-window.addEventListener('popstate', handleBackButton);
-document.addEventListener('click', (e) => {
-  if (!document.getElementById('sidebar').contains(e.target) && 
-      e.target.id !== 'menuBtn' &&
-      document.getElementById('sidebar').classList.contains('active')) {
-    closeSidebar();
-  }
-});
-
-// Add touch events
-document.querySelector('.sidebar-overlay').addEventListener('touchstart', closeSidebar);
-document.querySelector('.sidebar-overlay').addEventListener('click', closeSidebar);
   }
   document.getElementById('agreeTerms').addEventListener('change', toggleSaveButton);
   updateDashboardCards();
@@ -242,6 +234,7 @@ document.querySelector('.sidebar-overlay').addEventListener('click', closeSideba
     }
   });
 };
+
 function setupPushNotifications() {
   if ('Notification' in window && navigator.serviceWorker) {
     Notification.requestPermission().then(permission => {
@@ -289,23 +282,25 @@ function navigate(screenId) {
     document.querySelector('.sidebar-overlay').classList.remove('active');
   }
 }
+
 function toggleSidebar() {
   const sidebar = document.getElementById('sidebar');
+  const overlay = document.querySelector('.sidebar-overlay');
   sidebar.classList.toggle('active');
-  document.querySelector('.sidebar-overlay').style.display = 
-    sidebar.classList.contains('active') ? 'block' : 'none';
-  
-  if (sidebar.classList.contains('active')) {
-    history.pushState({ sidebar: 'open' }, '', '#sidebar');
-  } else {
-    history.back();
+  overlay.classList.toggle('active');
+}
+
+function closeModalIfOutside(event, modalId) {
+  const modalContent = document.querySelector(`#${modalId} .modal-content`);
+  if (!modalContent.contains(event.target)) {
+    document.getElementById(modalId).style.display = 'none';
   }
 }
 
 // Admin Form Submission
 document.getElementById('adminForm').addEventListener('submit', (e) => {
   e.preventDefault();
-  document.getElementById('loadingIndicator').style.display = 'block';
+  document.getElementById��('loadingIndicator').style.display = 'block';
   try {
     console.log('Admin form submission started');
     setTimeout(() => {
@@ -341,8 +336,10 @@ document.getElementById('adminForm').addEventListener('submit', (e) => {
         document.getElementById('savedProfile').style.display = 'block';
         updateSavedProfile();
         showToast('Profile saved successfully! Please select a backup folder.');
-document.getElementById('loadingIndicator').style.display = 'none';
-document.getElementById('backupFolderModal').style.display = 'block';
+        document.getElementById('loadingIndicator').style.display = 'none';
+        // Show folder selection button after admin setup
+        document.getElementById('selectFolderBtn').classList.remove('hidden');
+        document.getElementById('backupFolderModal').style.display = 'block';
       };
 
       if (typeof photo === 'string' && photo.startsWith('data:')) {
@@ -657,7 +654,7 @@ function showDashboardReport(type) {
 
   const today = new Date().toLocaleDateString('en-CA');
   const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toLocaleDateString('en-CA');
-  const tenDaysAgo = new Date(Date.now() - 10 * 24 * 60 * 1000);
+  const tenDaysAgo = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000);
 
   let filteredFiles = files;
   let title = '';
@@ -1444,14 +1441,13 @@ function restoreData() {
     try {
       const data = JSON.parse(reader.result);
 
-      // Merge files冥 files
+      // Merge files
       if (data.files) {
         data.files.forEach(newFile => {
           const existingIndex = files.findIndex(f => f.cmsNo === newFile.cmsNo);
           if (existingIndex === -1) {
             files.push(newFile);
           } else {
-            // Update existing file if newer
             if (new Date(newFile.deliveredAt) > new Date(files[existingIndex].deliveredAt)) {
               files[existingIndex] = newFile;
             }
@@ -1466,7 +1462,6 @@ function restoreData() {
           if (existingIndex === -1) {
             profiles.push(newProfile);
           } else {
-            // Update profile if newer data is available
             profiles[existingIndex] = { ...profiles[existingIndex], ...newProfile };
           }
         });
@@ -1516,6 +1511,7 @@ function resetApp() {
       document.getElementById('setupMessage').style.display = 'block';
       document.getElementById('adminForm').style.display = 'block';
       document.getElementById('savedProfile').style.display = 'none';
+      document.getElementById('selectFolderBtn').classList.remove('hidden'); // Show button again after reset
     }
   });
 }
@@ -1582,74 +1578,80 @@ document.addEventListener('keydown', (e) => {
     navigate('analytics');
   }
 });
-
 // Form Validation
 function validateInput(input, type) {
-  if (type === 'phone') {
-    const phoneRegex = /^\d{10,15}$/;
-    if (!phoneRegex.test(input.value)) {
-      input.setCustomValidity('Please enter a valid phone number (10-15 digits)');
-    } else {
-      input.setCustomValidity('');
-    }
-  } else if (type === 'cnic') {
+  if (type === 'cnic') {
     const cnicRegex = /^\d{5}-\d{7}-\d{1}$/;
-    if (input.value && !cnicRegex.test(input.value)) {
-      input.setCustomValidity('Please enter a valid CNIC (e.g., 12345-1234567-1)');
-    } else {
-      input.setCustomValidity('');
-    }
+    return cnicRegex.test(input);
+  } else if (type === 'mobile') {
+    const mobileRegex = /^\+?\d{10,12}$/;
+    return mobileRegex.test(input);
   } else if (type === 'email') {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (input.value && !emailRegex.test(input.value)) {
-      input.setCustomValidity('Please enter a valid email address');
-    } else {
-      input.setCustomValidity('');
-    }
+    return emailRegex.test(input);
+  } else if (type === 'pin') {
+    return input.length >= 4 && input.length <= 8;
   }
+  return true; // Default to true for other types
 }
 
-// Attach validation to inputs
-document.getElementById('mobile').addEventListener('input', () => validateInput(document.getElementById('mobile'), 'phone'));
-document.getElementById('cnic').addEventListener('input', () => validateInput(document.getElementById('cnic'), 'cnic'));
-document.getElementById('email').addEventListener('input', () => validateInput(document.getElementById('email'), 'email'));
-document.getElementById('cellNo').addEventListener('input', () => validateInput(document.getElementById('cellNo'), 'phone'));
-if (document.getElementById('advocateCell')) {
-  document.getElementById('advocateCell').addEventListener('input', () => validateInput(document.getElementById('advocateCell'), 'phone'));
-}
-
-// Periodic Data Sync
-setInterval(syncLocalStorageToIndexedDB, 300000); // Every 5 minutes
-
-// Accessibility Enhancements
-document.querySelectorAll('input, button, a').forEach(el => {
-  el.setAttribute('tabindex', '0');
-  el.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter' && el.tagName !== 'INPUT') {
-      el.click();
-    }
-  });
-});
-
-// Prevent accidental navigation
-window.addEventListener('beforeunload', (e) => {
-  if (files.length > 0 || profiles.length > 0) {
-    e.preventDefault();
-    e.returnValue = 'You have unsaved data. Are you sure you want to leave?';
+// Event Listeners for Form Inputs
+document.getElementById('cnic').addEventListener('input', (e) => {
+  if (!validateInput(e.target.value, 'cnic')) {
+    e.target.setCustomValidity('Please enter a valid CNIC (e.g., 12345-1234567-1)');
+  } else {
+    e.target.setCustomValidity('');
   }
 });
 
-// Dynamic Theme Support
-function applyTheme(theme) {
-  document.body.className = theme;
-localStorage.setItem('theme', theme);
-}
+document.getElementById('mobile').addEventListener('input', (e) => {
+  if (!validateInput(e.target.value, 'mobile')) {
+    e.target.setCustomValidity('Please enter a valid mobile number (10-12 digits)');
+  } else {
+    e.target.setCustomValidity('');
+  }
+});
+
+document.getElementById('email').addEventListener('input', (e) => {
+  if (!validateInput(e.target.value, 'email')) {
+    e.target.setCustomValidity('Please enter a valid email address');
+  } else {
+    e.target.setCustomValidity('');
+  }
+});
+
+document.getElementById('pin').addEventListener('input', (e) => {
+  if (!validateInput(e.target.value, 'pin')) {
+    e.target.setCustomValidity('PIN must be 4-8 characters long');
+  } else {
+    e.target.setCustomValidity('');
+  }
+});
+
+// Backup Folder Selection Button Listener
+document.getElementById('selectFolderBtn').addEventListener('click', () => {
+  selectBackupFolder();
+});
+
+// Modal Close Listeners
+document.getElementById('disclaimerModal').addEventListener('click', (e) => {
+  closeModalIfOutside(e, 'disclaimerModal');
+});
+
+document.getElementById('pinModal').addEventListener('click', (e) => {
+  closeModalIfOutside(e, 'pinModal');
+});
+
+document.getElementById('changePinModal').addEventListener('click', (e) => {
+  closeModalIfOutside(e, 'changePinModal');
+});
+
+document.getElementById('backupFolderModal').addEventListener('click', (e) => {
+  closeModalIfOutside(e, 'backupFolderModal');
+});
 
 // Toast Notification
-function showToast(message, duration = 3000) {
-  // Remove any existing toasts
-  document.querySelectorAll('.toast').forEach(toast => toast.remove());
-
+function showToast(message) {
   const toast = document.createElement('div');
   toast.className = 'toast';
   toast.textContent = message;
@@ -1661,93 +1663,118 @@ function showToast(message, duration = 3000) {
       setTimeout(() => {
         toast.remove();
       }, 300);
-    }, duration);
+    }, 3000);
   }, 100);
 }
-// Handle Theme Toggle
-// Theme toggle removed as element does not exist
-// Initialize Theme
-const savedTheme = localStorage.getItem('theme') || 'light';
-applyTheme(savedTheme);
 
-// Handle Backup Folder Selection
-document.getElementById('selectBackupFolderBtn').addEventListener('click', selectBackupFolder);
-
-// Handle Manual Backup
-document.getElementById('backupBtn').addEventListener('click', backupData);
-
-// Handle Restore
-document.getElementById('restoreBtn').addEventListener('click', triggerRestore);
-
-// Handle Reset
-document.getElementById('resetBtn').addEventListener('click', resetApp);
-
-// Form Input Handlers
+// Auto-fill and Suggestions for File Form
+document.getElementById('cmsNo').addEventListener('input', autoFillCMS);
 document.getElementById('caseType').addEventListener('change', toggleCriminalFields);
 document.getElementById('copyAgency').addEventListener('change', toggleCopyAgency);
-document.getElementById('cmsNo').addEventListener('input', autoFillCMS);
-document.getElementById('deliveredTo').addEventListener('input', (e) => suggestProfiles(e.target.value, 'deliveredTo'));
-document.getElementById('profileType').addEventListener('change', toggleProfileFields);
-document.getElementById('profileSearch').addEventListener('input', renderProfiles);
-document.getElementById('profileFilterType').addEventListener('change', renderProfiles);
+document.getElementById('deliveredTo').addEventListener('input', (e) => {
+  suggestProfiles(e.target.value, 'deliveredTo');
+});
+
+// Profile Search Suggestions
+document.getElementById('searchFileTaker').addEventListener('input', (e) => {
+  suggestProfiles(e.target.value, 'searchFileTaker');
+});
+
+// Return File Filters
 document.getElementById('returnCms').addEventListener('input', filterPendingFiles);
 document.getElementById('returnTitle').addEventListener('input', filterPendingFiles);
+
+// Profile Filters
+document.getElementById('profileFilterType').addEventListener('change', renderProfiles);
+document.getElementById('profileSearch').addEventListener('input', renderProfiles);
+
+// Profile Type Change
+document.getElementById('profileType').addEventListener('change', toggleProfileFields);
+
+// Bulk Return Button
 document.getElementById('bulkReturnBtn').addEventListener('click', bulkReturnFiles);
-document.getElementById('profileImportBtn').addEventListener('click', triggerImport);
-document.getElementById('profileExportBtn').addEventListener('click', exportProfiles);
-document.getElementById('profileImport').addEventListener('change', importProfiles);
-document.getElementById('dataRestore').addEventListener('change', restoreData);
-document.getElementById('searchPrevRecords').addEventListener('submit', (e) => {
-  e.preventDefault();
-  performDashboardSearch();
-});
-document.getElementById('printReportBtn').addEventListener('click', printDashboardReport);
+
+// Dashboard Search Button
+document.getElementById('searchPrevBtn').addEventListener('click', performDashboardSearch);
+
+// Export Buttons
 document.getElementById('exportCsvBtn').addEventListener('click', () => exportDashboardReport('csv'));
 document.getElementById('exportPdfBtn').addEventListener('click', () => exportDashboardReport('pdf'));
-document.getElementById('closeReportPanel').addEventListener('click', () => {
-  document.getElementById('dashboardReportPanel').style.display = 'none';
-});
-document.getElementById('changePinForm').addEventListener('submit', (e) => {
-  e.preventDefault();
-  changePin();
-});
-document.getElementById('cancelPinChange').addEventListener('click', hideChangePin);
 
-// Modal Close Handlers
-document.getElementById('disclaimerModal').addEventListener('click', (e) => closeModalIfOutside(e, 'disclaimerModal'));
-document.getElementById('pinModal').addEventListener('click', (e) => closeModalIfOutside(e, 'pinModal'));
-document.getElementById('changePinModal').addEventListener('click', (e) => closeModalIfOutside(e, 'changePinModal'));
-document.getElementById('profileModal').addEventListener('click', (e) => closeModalIfOutside(e, 'profileModal'));
+// Print Button
+document.getElementById('printReportBtn').addEventListener('click', printDashboardReport);
+
+// Backup and Restore Buttons
+document.getElementById('backupBtn').addEventListener('click', backupData);
+document.getElementById('restoreBtn').addEventListener('click', triggerRestore);
+document.getElementById('dataRestore').addEventListener('change', restoreData);
+
+// Reset App Button
+document.getElementById('resetBtn').addEventListener('click', resetApp);
+
+// Import/Export Profiles
+document.getElementById('importProfileBtn').addEventListener('click', triggerImport);
+document.getElementById('exportProfileBtn').addEventListener('click', exportProfiles);
+document.getElementById('profileImport').addEventListener('change', importProfiles);
 
 // Service Worker Registration
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker
-      .register('/service-worker.js')
-      .then((registration) => {
-        console.log('Service Worker registered with scope:', registration.scope);
-      })
-      .catch((error) => {
-        console.error('Service Worker registration failed:', error);
-      });
+    navigator.serviceWorker.register('sw.js').then(registration => {
+      console.log('Service Worker registered with scope:', registration.scope);
+    }).catch(error => {
+      console.error('Service Worker registration failed:', error);
+    });
   });
 }
 
-// Handle Visibility Change
+// Handle visibility change for performance
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible') {
-    syncIndexedDBToLocalStorage();
+  if (document.visibilityState === 'hidden') {
+    console.log('App is in background');
+  } else {
+    console.log('App is in foreground');
     updateDashboardCards();
   }
 });
 
-// Ensure canvas is properly disposed on page unload
-window.addEventListener('unload', () => {
-  if (chartInstance) {
-    chartInstance.destroy();
-    chartInstance = null;
+// Ensure sidebar closes on resize
+window.addEventListener('resize', () => {
+  if (window.innerWidth > 768 && document.getElementById('sidebar').classList.contains('active')) {
+    toggleSidebar();
   }
 });
 
-// Log App Initialization
-console.log('Court File Tracker PWA initialized');
+// CSS for Toast
+const style = document.createElement('style');
+style.textContent = `
+  .toast {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    background: #333;
+    color: #fff;
+    padding: 10px 20px;
+    border-radius: 5px;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    z-index: 1000;
+  }
+  .toast.show {
+    opacity: 1;
+  }
+  .sidebar-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 998;
+    display: none;
+  }
+  .sidebar-overlay.active {
+    display: block;
+  }
+`;
+document.head.appendChild(style);
