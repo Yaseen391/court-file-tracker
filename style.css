@@ -19,9 +19,7 @@ h1, h2, h3 {
   display: flex;
   align-items: center;
   gap: 12px;
-  position: sticky;
-  top: 0;
-z-index: 1100;
+  position: relative;
   box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
@@ -92,41 +90,25 @@ z-index: 1100;
 /* App Layout */
 .app-container {
   display: flex;
-  min-height: 100vh;
-  position: relative;
+  min-height: calc(100vh - 60px);
 }
 
-/* Update sidebar styles */
+/* Sidebar */
 .sidebar {
+  width: 220px;
+  background-color: #003366;
+  color: white;
+  display: flex;
+  flex-direction: column;
+  padding: 15px;
+  min-height: calc(100vh - 60px);
   position: fixed;
   top: 60px;
   left: 0;
-  height: calc(100vh - 60px);
-  transform: translateX(-100%);
   transition: transform 0.3s ease;
-  z-index: 1000;
-  overflow-y: auto;
+  z-index: 200;
 }
-
-.sidebar.active {
-  transform: translateX(0);
-}
-
-.sidebar-overlay {
-  position: fixed;
-  top: 60px;
-  left: 0;
-  width: 100%;
-  height: calc(100% - 60px);
-  background: rgba(0, 0, 0, 0.5);
-  z-index: 900;
-  display: none;
-  touch-action: none;
-}
-
-.sidebar.active + .sidebar-overlay {
-  display: block;
-}.sidebar-logo {
+.sidebar-logo {
   display: block;
   width: 60px;
   height: 60px;
@@ -160,12 +142,27 @@ z-index: 1100;
   background-color: #00509e;
 }
 
+/* Sidebar Overlay */
+.sidebar-overlay {
+  display: none;
+  position: fixed;
+  top: 60px;
+  left: 0;
+  width: 100%;
+  height: calc(100% - 60px);
+  background: rgba(0, 0, 0, 0.3);
+  z-index: 100;
+  touch-action: none; /* Prevent scrolling on touch */
+}
+.sidebar.active + .sidebar-overlay {
+  display: block;
+}
+
 /* Main Content */
 main {
   padding: 20px;
-  flex: 1;
-  margin-left: 220px;
-  transition: margin-left 0.3s;
+  flex-grow: 1;
+  background: #f9f9f9;
 }
 
 /* Screens */
@@ -743,10 +740,12 @@ input[type="checkbox"] {
   }
 }
 
-@media (min-width: 768px) {
+@media (min-width: 1024px) {
   main {
-    margin-left: 0;
-  
+    max-width: 1000px;
+    margin: auto;
+    padding-left: 40px;
+    padding-right: 40px;
   }
 
   .window-controls {
