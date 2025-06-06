@@ -15,7 +15,7 @@
       <h1>Court File Tracker</h1>
       <p>Smart Solutions for Efficient Record Management</p>
     </div>
-    <button id="installBtn" style="display:none; background:#0066cc; color:white; border:none; padding:5px 10px; border-radius:4px; cursor:pointer;">Install App</button>
+    <button id="installApp" style="display:none; background:#0066cc; color:white; border:none; padding:5px 10px; border-radius:4px; cursor:pointer;" onclick="installApp()">Install App</button>
     <div class="window-controls" style="display: none;">
       <button id="minimizeBtn" class="window-btn minimize-btn" title="Minimize">−</button>
       <button id="resizeBtn" class="window-btn resize-btn" title="Maximize/Restore">□</button>
@@ -319,6 +319,7 @@
           <h4>Data Management</h4>
           <button onclick="backupData()">Backup to Local</button>
           <button onclick="triggerRestore()">Restore from Local</button>
+          <button id="backupToDrive" style="display:none;" onclick="backupToDrive()">Backup to Google Drive</button>
           <button id="restoreFromGoogle" style="display:none;" onclick="restoreFromDrive()">Restore From Google</button>
         </div>
         <input type="file" id="dataRestore" accept=".json" style="display:none;" onchange="restoreData()" />
@@ -335,13 +336,13 @@
           </label>
           <label>PIN (4 digits): <span class="required">*</span><input type="password" id="pin" maxlength="4" pattern="\d{4}" required /></label>
           <label>Email (for PIN recovery): <input type="email" id="email" placeholder="example@domain.com" /></label>
-<label>Backup Folder Name (for Google Drive): <span class="required">*</span>
-  <input type="text" id="backupFolder" required placeholder="e.g., CFT" value="CFT" />
-</label>
+          <label>Backup Folder Name (for Google Drive): <span class="required">*</span>
+            <input type="text" id="backupFolder" required placeholder="e.g., CFT" value="CFT" />
+          </label>
           <label>Attach Google Drive to Save Data: <span class="required">*</span>
-  <button type="button" id="attachGoogleDriveBtn" onclick="signInWithGoogle()">Attach</button>
-  <span id="googleDriveStatus" style="margin-left:10px;color:#0066cc;">Not attached</span>
-</label>
+            <button type="button" id="attachGoogleDriveBtn" onclick="signInWithGoogle()">Attach</button>
+            <span id="googleDriveStatus" style="margin-left:10px;color:#0066cc;">Not attached</span>
+          </label>
           <label>Upload Photo: <span class="required">*</span><input type="file" id="userPhoto" accept="image/*" required /></label>
           <img id="userPhotoPreview" style="display: none; max-width: 200px;" />
           <div id="userPhotoAdjust"></div>
@@ -429,7 +430,6 @@
 
   <!-- External Libraries -->
   <script src="https://accounts.google.com/gsi/client" async defer></script>
-  <script src="https://accounts.google.com/gsi/client"></script>
   <script src="https://apis.google.com/js/api.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/fuse.js/6.6.2/fuse.min.js"></script>
@@ -443,29 +443,6 @@
           .then(() => console.log("Service Worker registered"));
       });
     }
-
-    let deferredPrompt;
-    window.addEventListener('beforeinstallprompt', (e) => {
-      e.preventDefault();
-      deferredPrompt = e;
-      console.log("PWA install prompt ready.");
-      document.getElementById('installBtn').style.display = 'inline-block';
-    });
-
-    document.getElementById('installBtn').addEventListener('click', () => {
-      if (deferredPrompt) {
-        deferredPrompt.prompt();
-        deferredPrompt.userChoice.then((choiceResult) => {
-          if (choiceResult.outcome === 'accepted') {
-            console.log('User accepted the install prompt');
-          } else {
-            console.log('User dismissed the install prompt');
-          }
-          deferredPrompt = null;
-          document.getElementById('installBtn').style.display = 'none';
-        });
-      }
-    });
   </script>
 </body>
 </html>
