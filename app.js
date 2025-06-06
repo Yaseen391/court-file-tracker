@@ -32,7 +32,7 @@ function initIndexedDB() {
 }
 
 function syncLocalStorageToIndexedDB() {
-  const key = 'cft-encryption-key'; // TODO: Replace with secure key management in production
+  const key = 'cft-encryption-key'; // Replace with a secure key in production
   const data = {
     files: JSON.parse(localStorage.getItem('files')) || [],
     profiles: JSON.parse(localStorage.getItem('profiles')) || [],
@@ -52,7 +52,7 @@ function syncLocalStorageToIndexedDB() {
 }
 
 function syncIndexedDBToLocalStorage() {
-  const key = 'cft-encryption-key'; // TODO: Replace with secure key management in production
+  const key = 'cft-encryption-key'; // Replace with a secure key in production
   const transaction = db.transaction(['data'], 'readonly');
   const store = transaction.objectStore('data');
   const keys = ['files', 'profiles', 'userProfile', 'offlineQueue', 'analytics'];
@@ -83,11 +83,6 @@ const SCOPES = 'https://www.googleapis.com/auth/drive.file';
 let tokenClient;
 
 function initGoogleDrive() {
-  if (!gapi || !google) {
-    console.error('Google API scripts not loaded');
-    showToast('Google API scripts failed to load. Please check your internet connection.');
-    return;
-  }
   gapi.load('client', () => {
     gapi.client.init({
       apiKey: API_KEY,
@@ -98,11 +93,9 @@ function initGoogleDrive() {
         scope: SCOPES,
         callback: (response) => {
           if (response.error) {
-            console.error('Google sign-in error:', response.error, response.error_subtype);
-            showToast(`Failed to sign in to Google Drive: ${response.error}`);
-            return;
-          }
-          if (response.access_token) {
+            console.error('Google sign-in error:', response.error);
+            showToast('Failed to sign in to Google Drive: ' + response.error);
+          } else if (response.access_token) {
             localStorage.setItem('gapi_token', JSON.stringify({
               access_token: response.access_token,
               expires_at: Date.now() + (response.expires_in * 1000)
@@ -119,15 +112,11 @@ function initGoogleDrive() {
             showToast('Signed in to Google Drive');
             processOfflineQueue();
           }
-        },
-        error_callback: (error) => {
-          console.error('OAuth initialization error:', error);
-          showToast('Failed to initialize Google sign-in. Please try again.');
         }
       });
     }).catch((error) => {
       console.error('Google API init error:', error);
-      showToast('Failed to initialize Google Drive: ' + (error.details || 'Unknown error'));
+      showToast('Failed to initialize Google Drive. Please try again.');
     });
   });
 }
@@ -138,19 +127,11 @@ function signInWithGoogle() {
     return;
   }
   if (!tokenClient) {
-    showToast('Google Drive not initialized. Initializing now...');
+    showToast('Google Drive not initialized. Please try again.');
     initGoogleDrive();
-    setTimeout(() => {
-      if (tokenClient) tokenClient.requestAccessToken({ prompt: 'select_account' });
-    }, 1000);
     return;
   }
-  try {
-    tokenClient.requestAccessToken({ prompt: 'select_account' });
-  } catch (error) {
-    console.error('Sign-in request error:', error);
-    showToast('Failed to request Google sign-in. Please try again.');
-  }
+  tokenClient.requestAccessToken({ prompt: 'select_account' });
 }
 
 function isGoogleTokenValid() {
@@ -162,12 +143,7 @@ function refreshGoogleToken() {
   if (!navigator.onLine || !tokenClient) return;
   const token = JSON.parse(localStorage.getItem('gapi_token'));
   if (token && token.expires_at < Date.now() + 60000) { // Refresh 1 minute before expiry
-    try {
-      tokenClient.requestAccessToken({ prompt: '' }); // Silent refresh
-    } catch (error) {
-      console.error('Token refresh error:', error);
-      showToast('Failed to refresh Google Drive token. Please sign in again.');
-    }
+    tokenClient.requestAccessToken({ prompt: '' }); // Silent refresh
   }
 }
 
@@ -180,7 +156,7 @@ async function backupToDrive() {
     return;
   }
   if (!isGoogleTokenValid()) {
-    showToast('Google Drive session expired. Please sign in again.');
+    showToast('Please sign in to Google Drive');
     signInWithGoogle();
     return;
   }
@@ -205,8 +181,8 @@ async function backupToDrive() {
       folderId = folderResponse.result.id;
     }
   } catch (error) {
-    console.error('Folder search/create error:', error.result?.error || error);
-    showToast('Failed to locate or create CFT folder: ' + (error.result?.error?.message || 'Unknown error'));
+    console.error('Folder search/create error:', error);
+    showToast('Failed to locate or create CFT folder');
     return;
   }
   const data = {
@@ -236,8 +212,8 @@ async function backupToDrive() {
     syncLocalStorageToIndexedDB();
     showToast('Backup uploaded to Google Drive in CFT folder');
   } catch (error) {
-    console.error('Backup error:', error.result?.error || error);
-    showToast('Failed to upload backup: ' + (error.result?.error?.message || 'Unknown error'));
+    console.error('Backup error:', error);
+    showToast('Failed to upload backup. Please try again.');
   }
 }
 
@@ -281,8 +257,8 @@ async function restoreFromDrive() {
     document.getElementById('restoreFromGoogleModal').style.display = 'block';
     document.getElementById('loadingIndicator').style.display = 'none';
   } catch (error) {
-    console.error('List files error:', error.result?.error || error);
-    showToast('Failed to list backups: ' + (error.result?.error?.message || 'Unknown error'));
+    console.error('List files error:', error);
+    showToast('Failed to list backups. Please try again.');
     document.getElementById('loadingIndicator').style.display = 'none';
   }
 }
@@ -354,8 +330,8 @@ async function restoreSelectedBackup() {
     updateDashboardCards();
     hideRestoreFromGoogle();
   } catch (error) {
-    console.error('Restore error:', error.result?.error || error);
-    showToast('Failed to restore data: ' + (error.result?.error?.message || 'Unknown error'));
+    console.error('Restore error:', error);
+    showToast('Failed to restore data. Please try again.');
   } finally {
     document.getElementById('loadingIndicator').style.display = 'none';
     document.getElementById('restoreProgress').style.display = 'none';
@@ -388,13 +364,7 @@ function processOfflineQueue() {
 window.onload = () => {
   console.log('app.js loaded successfully');
   initIndexedDB();
-  setTimeout(() => {
-    if (!gapi || !google) {
-      showToast('Google API scripts not loaded. Some features may not work.');
-    } else {
-      initGoogleDrive();
-    }
-  }, 5000); // Check for Google API script loading
+  initGoogleDrive();
   if (userProfile) {
     const setupMessage = document.getElementById('setupMessage');
     const adminForm = document.getElementById('adminForm');
@@ -408,6 +378,8 @@ window.onload = () => {
       if (backupToDriveBtn) backupToDriveBtn.style.display = 'inline-block';
       const restoreFromGoogleBtn = document.getElementById('restoreFromGoogle');
       if (restoreFromGoogleBtn) restoreFromGoogleBtn.style.display = 'inline-block';
+    } else {
+      showToast('Please attach Google Drive to continue');
     }
   } else {
     navigate('admin');
@@ -420,9 +392,7 @@ window.onload = () => {
   setupPhotoAdjust('profilePhoto', 'photoPreview', 'photoAdjust');
   setInterval(refreshGoogleToken, 300000); // Check token every 5 minutes
   setInterval(() => {
-    if (userProfile && userProfile.backupFolder && (files.length || profiles.length)) {
-      saveProgressiveBackup(); // Only backup if data exists
-    }
+    if (userProfile && userProfile.backupFolder) saveProgressiveBackup();
   }, 86400000); // Auto-backup every 24 hours
 };
 
@@ -475,6 +445,11 @@ function checkOverdueFiles() {
 }
 
 function navigate(screenId) {
+  if (userProfile && !isGoogleTokenValid() && screenId !== 'admin') {
+    showToast('Please sign in to Google Drive to access this section');
+    signInWithGoogle();
+    return;
+  }
   document.querySelectorAll('.screen').forEach(screen => screen.classList.remove('active'));
   document.getElementById(screenId).classList.add('active');
   document.querySelectorAll('.sidebar button').forEach(btn => btn.classList.remove('active'));
@@ -516,7 +491,9 @@ document.getElementById('adminForm').addEventListener('submit', (e) => {
         return;
       }
       if (!userProfile?.googleDriveConnected) {
-        showToast('Google Drive not attached. Some features will be limited.');
+        showToast('Please attach Google Drive before saving');
+        document.getElementById('loadingIndicator').style.display = 'none';
+        return;
       }
       const processPhoto = (photoData) => {
         userProfile = {
@@ -562,7 +539,6 @@ document.getElementById('adminForm').addEventListener('submit', (e) => {
 });
 
 function saveProgressiveBackup() {
-  if (!files.length && !profiles.length) return; // Skip backup if no data
   const data = {
     files: files.map(f => ({ ...f, deliveredToName: f.deliveredToName, deliveredToType: f.deliveredToType })),
     profiles: profiles.map(p => ({ ...p, photo: p.photo || '' })),
@@ -570,7 +546,7 @@ function saveProgressiveBackup() {
     analytics
   };
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-  const fileName = `${userProfile.backupFolder || 'CFT'}/cft_data.json`;
+  const fileName = `${userProfile.backupFolder}/cft_data.json`;
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -747,11 +723,6 @@ function promptPin(callback) {
   window.submitPin = () => {
     const pin = document.getElementById('pinInput').value;
     document.getElementById('pinModal').style.display = 'none';
-    if (!userProfile || !userProfile.pin) {
-      showToast('No user profile found. Please set up your profile first.');
-      callback(false);
-      return;
-    }
     if (pin === userProfile.pin) {
       callback(true);
     } else {
@@ -897,7 +868,7 @@ function renderReportTable() {
       profile.chamberNo ? `Chamber No: ${profile.chamberNo}` : '',
       profile.advocateName ? `Advocate Name: ${profile.advocateName}` : '',
       profile.advocateCell ? `Advocate Cell: ${profile.advocateCell}` : '',
-      profile.designation ? `Designation: ${profile.desigation}` : '',
+      profile.designation ? `Designation: ${profile.designation}` : '',
       profile.postedAt ? `Posted At: ${profile.postedAt}` : '',
       profile.cnic ? `ID/CNIC: ${maskCNIC(profile.cnic)}` : '',
       profile.relation ? `Relation: ${profile.relation}` : ''
@@ -935,24 +906,24 @@ function getDynamicTimeSpan(deliveredAt, returnedAt = null) {
   const hours = Math.floor(minutes / 60);
   const days = Math.floor(hours / 24);
   const months = Math.floor(days / 30);
-  if (months >= 1) return `${months}m ${days % 30}d ${hours % 24}h ${minutes % 60}m`;
-  if (days >= 1) return `${days}d ${hours % 24}h ${minutes % 60}m`;
-  return `${hours}h ${minutes % 60}m`;
+  if (months >= 1) return `${months}m ${days % 30}d ${hours % 24}h ${minutes % 60}m ${seconds % 60}s`;
+  if (days >= 1) return `${days}d ${hours % 24}h ${minutes % 60}m ${seconds % 60}s`;
+  return `${hours}h ${minutes % 60}m ${seconds % 60}s`;
 }
 
 function updateDynamicTimeSpans() {
-  document.querySelectorAll('.time-span:not([style*="display: none"])').forEach(span => {
+  document.querySelectorAll('.time-span').forEach(span => {
     if (span.dataset.returned === 'false') {
       span.textContent = getDynamicTimeSpan(span.dataset.delivered);
     }
   });
 }
 
-setInterval(updateDynamicTimeSpans, 60000); // Reduced frequency to every minute
+setInterval(updateDynamicTimeSpans, 1000);
 
 document.getElementById('dashboardReportTable').querySelectorAll('th').forEach((th, index) => {
   th.addEventListener('click', () => {
-    const columns = ['id', 'cmsNo', 'title', 'caseType', 'nature', 'criminalDetails', 'dateType', 'swalFormNo', 'deliveredToName', 'deliveredAt', 'returnedAt', 'timeSpan', 'courtName', 'clerkName'];
+    const columns = ['cmsNo', 'title', 'caseType', 'nature', 'criminalDetails', 'dateType', 'swalFormNo', 'deliveredToName', 'deliveredAt', 'returnedAt', 'timeSpan', 'courtName', 'clerkName'];
     if (index >= 1 && index <= 13) {
       const newColumn = columns[index - 1];
       sortDirection = sortColumn === newColumn ? -sortDirection : 1;
@@ -982,9 +953,9 @@ document.getElementById('nextPage').onclick = () => {
   }
 };
 
-function formatDate(dateStr, format = 'YYYY-MM-DD') {
-  if (!dateStr) return '';
-  const d = new Date(dateStr);
+function formatDate(date, format = 'YYYY-MM-DD') {
+  if (!date) return '';
+  const d = new Date(date);
   d.setHours(d.getHours() + 5);
   const year = d.getFullYear();
   const month = String(d.getMonth() + 1).padStart(2, '0');
@@ -998,8 +969,8 @@ function formatDate(dateStr, format = 'YYYY-MM-DD') {
 
 function showProfileDetails(name, type) {
   const profile = profiles.find(p => p.name === name && p.type === type) || {};
-  document.getElementById('profileModal').TitleTextContent = `${name} (${type})`;
-  const table = document.getElementById('profileModal');
+  document.getElementById('profileModalTitle').textContent = `${name} (${type})`;
+  const table = document.getElementById('profileModalTable');
   table.innerHTML = `
     <tr><th>Name</th><td>${profile.name || ''}</td></tr>
     <tr><th>Type</th><td>${profile.type || ''}</td></tr>
@@ -1237,25 +1208,25 @@ function suggestProfiles(input, inputId) {
     img.style.height = '40px';
     img.style.borderRadius = '50%';
     img.style.border = '1px solid #ccc';
-    li.appendChild(img));
+    li.appendChild(img);
     const text = document.createElement('span');
     text.textContent = `${result.item.name} (${result.item.type})`;
     li.appendChild(text);
     li.onclick = () => {
-      document.querySelectorById(inputId).value = result.item.name;
+      document.getElementById(inputId).value = result.item.name;
       if (inputId === 'deliveredTo') document.getElementById('deliveredType').value = result.item.type;
       suggestions.innerHTML = '';
     };
-    suggestions.appendChildLi;
+    suggestions.appendChild(li);
   });
 }
 
 function filterPendingFiles() {
-  const cm = document.querySelectorById('searchFieldId');
-  const titl = document.querySelector('.inputTitle').toLowerCase();
-  const tBody = tbody.getElementById('pendingFilesTable').querySelector('tbody');
-  tBody.innerHTML = '';
-  const filteredFiles = files.filter(f => !f.returned && (!cm || f.cmsNo.toString().includes(cm)) && (!titl || f.title.toLowerCase().includes(titl)));
+  const cms = document.getElementById('returnCms').value;
+  const title = document.getElementById('returnTitle').value.toLowerCase();
+  const tbody = document.getElementById('pendingFilesTable').querySelector('tbody');
+  tbody.innerHTML = '';
+  const filteredFiles = files.filter(f => !f.returned && (!cms || f.cmsNo.toString().includes(cms)) && (!title || f.title.toLowerCase().includes(title)));
   filteredFiles.forEach(f => {
     const row = document.createElement('tr');
     row.innerHTML = `
@@ -1266,7 +1237,7 @@ function filterPendingFiles() {
       <td>${f.deliveredToName} (${f.deliveredToType})</td>
       <td><button onclick="returnFile('${f.cmsNo}')">Return</button></td>
     `;
-    tBody.appendChild(row);
+    tbody.appendChild(row);
   });
 }
 
