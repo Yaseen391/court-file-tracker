@@ -14,6 +14,27 @@ let chartInstance = null;
 let deferredPrompt;
 let backupFolderHandle = null; // Store folder handle for backups
 
+
+// Auto-save to JSON after changes
+async function autoSaveToFile() {
+  if (!backupFolderHandle) return;
+  try {
+    const data = {
+      files,
+      profiles,
+      analytics
+    };
+    const fileHandle = await backupFolderHandle.getFileHandle('cft_autosave.json', { create: true });
+    const writable = await fileHandle.createWritable();
+    await writable.write(JSON.stringify(data, null, 2));
+    await writable.close();
+    console.log('Auto-saved to cft_autosave.json');
+  } catch (error) {
+    console.error('Auto-save failed:', error);
+  }
+}
+
+
 // IndexedDB Setup
 const dbName = 'CourtFileTrackerDB';
 const dbVersion = 2; // Updated version for new folder store
@@ -33,6 +54,7 @@ function initIndexedDB() {
   request.onsuccess = (event) => {
     db = event.target.result;
     syncLocalStorageToIndexedDB();
+  autoSaveToFile();
     loadBackupFolder(); // Load stored folder handle
   };
   request.onerror = () => console.error('IndexedDB error');
@@ -156,6 +178,7 @@ async function performDailyBackup() {
     analytics.backupsCreated++;
     localStorage.setItem('analytics', JSON.stringify(analytics));
     syncLocalStorageToIndexedDB();
+  autoSaveToFile();
     showToast(`Daily backup created: ${fileName}`);
   } catch (error) {
     console.error('Daily backup error:', error);
@@ -188,6 +211,17 @@ window.onload = () => {
   setupPhotoAdjust('userPhoto', 'userPhotoPreview', 'userPhotoAdjust');
   setupPhotoAdjust('profilePhoto', 'photoPreview', 'photoAdjust');
   scheduleDailyBackup();
+
+  
+// Sidebar tap outside and swipe close
+document.querySelector('.sidebar-overlay').addEventListener('click', () => {
+  document.getElementById('sidebar').classList.remove('active');
+  document.querySelector('.sidebar-overlay').classList.remove('active');
+});
+window.addEventListener('popstate', () => {
+  document.getElementById('sidebar').classList.remove('active');
+  document.querySelector('.sidebar-overlay').classList.remove('active');
+});
 
   // Add touch event listener for sidebar overlay
   const overlay = document.querySelector('.sidebar-overlay');
@@ -302,6 +336,7 @@ document.getElementById('adminForm').addEventListener('submit', (e) => {
         console.log('Saving userProfile:', userProfile);
         localStorage.setItem('userProfile', JSON.stringify(userProfile));
         syncLocalStorageToIndexedDB();
+  autoSaveToFile();
         document.getElementById('setupMessage').style.display = 'none';
         document.getElementById('adminForm').style.display = 'none';
         document.getElementById('savedProfile').style.display = 'block';
@@ -548,6 +583,7 @@ function changePin() {
     userProfile.pin = newPin;
     localStorage.setItem('userProfile', JSON.stringify(userProfile));
     syncLocalStorageToIndexedDB();
+  autoSaveToFile();
     showToast('PIN changed successfully');
     hideChangePin();
   } else {
@@ -850,9 +886,13 @@ function performDashboardSearch() {
   analytics.searchesPerformed++;
   localStorage.setItem('analytics', JSON.stringify(analytics));
   syncLocalStorageToIndexedDB();
+  autoSaveToFile();
   const searchTitle = document.getElementById('searchTitle').value.toLowerCase();
   const searchCms = document.getElementById('searchCms').value;
-  const searchFileTaker = document.getElementById('searchFileTaker').value.toLowerCase();
+  
+const fileTakerElement = document.getElementById('searchFileTaker');
+const searchFileTaker = fileTakerElement && fileTakerElement.value ? fileTakerElement.value.toLowerCase() : '';
+
   const searchFirNo = document.getElementById('searchFirNo').value.toLowerCase();
   const searchFirYear = document.getElementById('searchFirYear').value;
   const searchPoliceStation = document.getElementById('searchPoliceStation').value.toLowerCase();
@@ -996,6 +1036,7 @@ document.getElementById('fileForm').addEventListener('submit', (e) => {
       localStorage.setItem('files', JSON.stringify(files));
       localStorage.setItem('analytics', JSON.stringify(analytics));
       syncLocalStorageToIndexedDB();
+  autoSaveToFile();
       document.getElementById('fileForm').reset();
       document.getElementById('criminalFields').style.display = 'none';
       document.getElementById('copyAgencyFields').style.display = 'none';
@@ -1117,6 +1158,7 @@ function returnFile(cmsNo) {
         file.returnedAt = new Date().toISOString();
         localStorage.setItem('files', JSON.stringify(files));
         syncLocalStorageToIndexedDB();
+  autoSaveToFile();
         showToast(`File ${cmsNo} returned successfully`);
         filterPendingFiles();
         updateDashboardCards();
@@ -1143,6 +1185,7 @@ function bulkReturnFiles() {
       });
       localStorage.setItem('files', JSON.stringify(files));
       syncLocalStorageToIndexedDB();
+  autoSaveToFile();
       showToast(`${selected.length} file(s) returned successfully`);
       filterPendingFiles();
       updateDashboardCards();
@@ -1241,6 +1284,7 @@ document.getElementById('profileForm').addEventListener('submit', (e) => {
 
       localStorage.setItem('profiles', JSON.stringify(profiles));
       syncLocalStorageToIndexedDB();
+  autoSaveToFile();
       document.getElementById('profileForm').reset();
       document.getElementById('profileFields').innerHTML = '';
       document.getElementById('photoAdjust').style.display = 'none';
@@ -1338,6 +1382,7 @@ function deleteProfile(name, type) {
       profiles = profiles.filter(p => p.name !== name || p.type !== type);
       localStorage.setItem('profiles', JSON.stringify(profiles));
       syncLocalStorageToIndexedDB();
+  autoSaveToFile();
       showToast('Profile deleted successfully');
       renderProfiles();
     }
@@ -1359,6 +1404,7 @@ function importProfiles() {
       profiles = [...profiles, ...importedProfiles];
       localStorage.setItem('profiles', JSON.stringify(profiles));
       syncLocalStorageToIndexedDB();
+  autoSaveToFile();
       showToast('Profiles imported successfully');
       showProfileSearch();
     } catch (error) {
@@ -1395,6 +1441,7 @@ function backupData() {
   analytics.backupsCreated++;
   localStorage.setItem('analytics', JSON.stringify(analytics));
   syncLocalStorageToIndexedDB();
+  autoSaveToFile();
   showToast('Backup created successfully');
 }
 
@@ -1409,8 +1456,18 @@ function restoreData() {
   reader.onload = () => {
     try {
       const data = JSON.parse(reader.result);
-      if (data.files) files = data.files;
-      if (data.profiles) profiles = data.profiles;
+      
+if (data.files) {
+  const existingCmsNos = new Set(files.map(f => f.cmsNo));
+  const newFiles = data.files.filter(f => !existingCmsNos.has(f.cmsNo));
+  files = [...files, ...newFiles];
+}
+if (data.profiles) {
+  const existingProfiles = new Set(profiles.map(p => p.name + p.type));
+  const newProfiles = data.profiles.filter(p => !existingProfiles.has(p.name + p.type));
+  profiles = [...profiles, ...newProfiles];
+}
+
       if (data.userProfile) {
         userProfile = { ...userProfile, ...data.userProfile, pin: userProfile.pin };
         localStorage.setItem('userProfile', JSON.stringify(userProfile));
@@ -1422,6 +1479,7 @@ function restoreData() {
       localStorage.setItem('files', JSON.stringify(files));
       localStorage.setItem('profiles', JSON.stringify(profiles));
       syncLocalStorageToIndexedDB();
+  autoSaveToFile();
       showToast('Data restored successfully');
       updateSavedProfile();
       updateDashboardCards();
@@ -1689,3 +1747,13 @@ window.addEventListener('unload', () => {
 
 // Log App Initialization
 console.log('Court File Tracker PWA initialized');
+
+
+document.querySelectorAll('.modal').forEach(modal => {
+  modal.addEventListener('show', () => {
+    document.body.style.overflow = 'hidden';
+  });
+  modal.addEventListener('hide', () => {
+    document.body.style.overflow = '';
+  });
+});
