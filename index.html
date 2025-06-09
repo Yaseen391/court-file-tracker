@@ -436,7 +436,6 @@
       });
     }
 
-    let deferredPrompt;
     window.addEventListener('beforeinstallprompt', (e) => {
       e.preventDefault();
       deferredPrompt = e;
@@ -454,5 +453,6 @@
     });
   }
 </script>
+    <button id="installBtn" style="display:none;">Install App</button>
 </body>
 </html>
