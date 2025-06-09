@@ -1,60 +1,72 @@
-const CACHE_NAME = 'court-file-tracker-v2';
-const OFFLINE_URL = 'offline.html';
-const ASSETS_TO_CACHE = [
+const CACHE_NAME = 'cft-cache-v3'; // Updated cache name to force re-cache
+const STATIC_ASSETS = [
   '/',
-  'index.html',
-  'offline.html',
-  'style.css',
-  'app.js',
-  'manifest.json',
-  'icon-192.png',
-  'icon-512.png',
-  'icon-192-maskable.png',
-  'icon-512-maskable.png',
-  'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
-  'https://cdnjs.cloudflare.com/ajax/libs/fuse.js/6.6.2/fuse.min.js',
+  '/index.html',
+  '/style.css',
+  '/app.js',
+  '/icon-192.png',
+  '/icon-512.png',
+  '/icon-192-maskable.png',
+  '/icon-512-maskable.png',
+  '/manifest.json',
+  '/offline.html',
+  'https://cdnjs.cloudflare.com/ajax/libs/croppie/2.6.5/croppie.min.css',
+  'https://cdnjs.cloudflare.com/ajax/libs/croppie/2.6.5/croppie.min.js',
   'https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js',
+  'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
+  'https://cdn.jsdelivr.net/npm/fuse.js@6.6.2/dist/fuse.min.js',
   'https://cdn.jsdelivr.net/npm/exif-js'
 ];
 
-// Install Service Worker and cache essential assets
+// Install Event: Cache static assets
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS_TO_CACHE))
+    caches.open(CACHE_NAME).then((cache) => {
+      return cache.addAll(STATIC_ASSETS).catch((error) => {
+        console.error('Cache addAll failed:', error);
+      });
+    })
   );
   self.skipWaiting();
 });
 
-// Activate SW, clear old caches if present
+// Activate Event: Clean up old caches
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((cacheNames) => 
-      Promise.all(
-        cacheNames
-          .filter((name) => name !== CACHE_NAME)
-          .map((name) => caches.delete(name))
-      )
-    )
+    caches.keys().then((cacheNames) => {
+      return Promise.all(
+        cacheNames.map((cacheName) => {
+          if (cacheName !== CACHE_NAME) {
+            return caches.delete(cacheName);
+          }
+        })
+      );
+    })
   );
   self.clients.claim();
 });
 
-// Network first, fallback to cache, then to offline.html
+// Fetch Event: Cache-first for static assets
 self.addEventListener('fetch', (event) => {
-  if (event.request.method !== 'GET') return;
-
   event.respondWith(
-    fetch(event.request)
-      .then((response) => {
-        // Save a copy in cache if valid
-        const clone = response.clone();
-        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+    caches.match(event.request).then((response) => {
+      if (response) {
         return response;
-      })
-      .catch(() =>
-        caches.match(event.request).then((resp) =>
-          resp || caches.match(OFFLINE_URL)
-        )
-      )
+      }
+      return fetch(event.request).then((networkResponse) => {
+        if (event.request.method === 'GET' && !event.request.url.includes('/api')) {
+          return caches.open(CACHE_NAME).then((cache) => {
+            cache.put(event.request, networkResponse.clone());
+            return networkResponse;
+          });
+        }
+        return networkResponse;
+      });
+    }).catch(() => {
+      if (event.request.mode === 'navigate') {
+        return caches.match('/offline.html');
+      }
+      return new Response('Offline: Please check your internet connection.', { status: 503 });
+    })
   );
 });
