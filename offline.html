@@ -2,21 +2,25 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Court File Tracker – Offline</title>
-  <style>
-    body { background: #e3f2fd; color: #333; text-align: center; font-family: Arial, sans-serif; margin: 0; }
-    .offline-container { max-width: 400px; margin: 10vh auto; padding: 2em; background: #fff; border-radius: 12px; box-shadow: 0 4px 24px rgba(0,0,0,0.07); }
-    img { width: 96px; margin-bottom: 1em; }
-    h1 { font-size: 2em; color: #1565c0; }
-    p { font-size: 1.15em; }
-  </style>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Offline - Court File Tracker</title>
+  <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <div class="offline-container">
-    <img src="icon-192.png" alt="Court File Tracker">
-    <h1>Offline Mode</h1>
-    <p>You are currently offline.<br />Any changes will be saved when you reconnect.<br />You can still browse your records!</p>
+  <div class="app-container">
+    <header class="topbar">
+      <div class="top-title">
+        <h1>Court File Tracker</h1>
+        <p>Smart Solutions for Efficient Record Management</p>
+      </div>
+    </header>
+    <main>
+      <section class="screen active">
+        <h2>Offline</h2>
+        <p>You are currently offline. Please connect to the internet to access all features.</p>
+        <p>Some cached data may be available in the Dashboard or File Fetcher sections.</p>
+      </section>
+    </main>
   </div>
 </body>
 </html>
