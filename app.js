@@ -193,6 +193,7 @@ function maskCNIC(cnic) {
   return `${parts[0].slice(0, 2)}***-${parts[1].slice(0, 3)}****-${parts[2]}`;
 }
 
+
 window.onload = () => {
   console.log('app.js loaded successfully');
   initIndexedDB();
@@ -205,19 +206,6 @@ window.onload = () => {
   } else {
     navigate('admin');
   }
-  document.getElementById('installBtn').addEventListener('click', () => {
-    if (deferredPrompt) {
-      deferredPrompt.prompt();
-      deferredPrompt.userChoice.then((choiceResult) => {
-        if (choiceResult.outcome === 'accepted') {
-          showToast('App installation started');
-        }
-        deferredPrompt = null;
-        document.getElementById('installBtn').style.display = 'none';
-      });
-    }
-  });
-};
   document.getElementById('agreeTerms').addEventListener('change', toggleSaveButton);
   updateDashboardCards();
   setupPushNotifications();
@@ -225,6 +213,34 @@ window.onload = () => {
   setupPhotoAdjust('profilePhoto', 'photoPreview', 'photoAdjust');
   scheduleDailyBackup();
 
+  const overlay = document.querySelector('.sidebar-overlay');
+  overlay.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    toggleSidebar();
+  });
+
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredPrompt = e;
+    document.getElementById('installBtn').style.display = 'block';
+  });
+
+  // ✅ Safe installBtn handler
+  const installBtn = document.getElementById('installBtn');
+  if (installBtn) {
+    installBtn.addEventListener('click', () => {
+      if (deferredPrompt) {
+        deferredPrompt.prompt();
+        deferredPrompt.userChoice.then((choiceResult) => {
+          if (choiceResult.outcome === 'accepted') {
+            showToast('App installation started');
+          }
+          deferredPrompt = null;
+          installBtn.style.display = 'none';
+        });
+      }
+    });
+  }
   
 // Sidebar tap outside and swipe close
 document.querySelector('.sidebar-overlay').addEventListener('click', () => {
