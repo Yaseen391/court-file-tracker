@@ -4,7 +4,7 @@
   "start_url": "index.html",
   "display": "standalone",
   "background_color": "#ffffff",
-  "theme_color": "#0288d1",
+  "theme_color": "#0d47a1",
   "description": "Track court files with ease and backup to local storage.",
   "icons": [
     {
@@ -18,7 +18,7 @@
       "type": "image/png"
     },
     {
-      "src": "icon-192-maskable .png",
+      "src": "icon-192-maskable.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "maskable"
