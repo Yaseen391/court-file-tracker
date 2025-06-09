@@ -1,4 +1,4 @@
-const CACHE_NAME = 'cft-cache-v3'; // Updated cache name to force re-cache
+const CACHE_NAME = 'cft-cache-v4';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
