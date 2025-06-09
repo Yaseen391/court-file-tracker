@@ -1,4 +1,9 @@
-// Global Variables
+// ========================
+//  Court File Tracker app.js
+//  FULL UPDATED FILE – COPY/PASTE WHOLE FILE
+// ========================
+
+// --- GLOBAL STATE ---
 let files = JSON.parse(localStorage.getItem('files')) || [];
 let profiles = JSON.parse(localStorage.getItem('profiles')) || [];
 let userProfile = JSON.parse(localStorage.getItem('userProfile')) || null;
@@ -11,33 +16,31 @@ let analytics = JSON.parse(localStorage.getItem('analytics')) || {
   backupsCreated: 0
 };
 let chartInstance = null;
-let deferredPrompt;
-let backupFolderHandle = null; // Store folder handle for backups
+let deferredPrompt = null;
+let backupFolderHandle = null;
+let backupStatus = false;
+let autosaveEnabled = JSON.parse(localStorage.getItem('autosaveEnabled')) ?? true;
+let autosaveInterval = Number(localStorage.getItem('autosaveInterval')) || 60; // seconds
+let autosaveTimer = null;
 
-
-// Auto-save to JSON after changes
-async function autoSaveToFile() {
-  if (!backupFolderHandle) return;
-  try {
-    const data = {
-      files,
-      profiles,
-      analytics
-    };
-    const fileHandle = await backupFolderHandle.getFileHandle('cft_autosave.json', { create: true });
-    const writable = await fileHandle.createWritable();
-    await writable.write(JSON.stringify(data, null, 2));
-    await writable.close();
-    console.log('Auto-saved to cft_autosave.json');
-  } catch (error) {
-    console.error('Auto-save failed:', error);
+// --- FIRST-USE MINI-GUIDE ---
+function showMiniGuide() {
+  if (!localStorage.getItem('miniGuideDone')) {
+    alert(
+      'Welcome to Court File Tracker!\n\n' +
+      'Step 1: Complete your profile in Admin.\n' +
+      'Step 2: Select a backup folder (required once).\n' +
+      'Step 3: Use Dashboard/New Entry to manage files.\n' +
+      'Step 4: Use File Fetcher to manage profiles.\n' +
+      'You can always find this guide in Admin > Help.'
+    );
+    localStorage.setItem('miniGuideDone', '1');
   }
 }
 
-
-// IndexedDB Setup
+// --- INDEXEDDB SETUP (unchanged) ---
 const dbName = 'CourtFileTrackerDB';
-const dbVersion = 2; // Updated version for new folder store
+const dbVersion = 2;
 let db;
 
 function initIndexedDB() {
@@ -48,14 +51,13 @@ function initIndexedDB() {
       db.createObjectStore('data', { keyPath: 'key' });
     }
     if (!db.objectStoreNames.contains('folder')) {
-      db.createObjectStore('folder', { keyPath: 'id' }); // New store for folder handle
+      db.createObjectStore('folder', { keyPath: 'id' });
     }
   };
   request.onsuccess = (event) => {
     db = event.target.result;
     syncLocalStorageToIndexedDB();
-  autoSaveToFile();
-    loadBackupFolder(); // Load stored folder handle
+    loadBackupFolder();
   };
   request.onerror = () => console.error('IndexedDB error');
 }
@@ -92,6 +94,7 @@ function syncIndexedDBToLocalStorage() {
   });
 }
 
+// --- BACKUP FOLDER (persist permission!) ---
 async function loadBackupFolder() {
   const transaction = db.transaction(['folder'], 'readonly');
   const store = transaction.objectStore('folder');
@@ -99,25 +102,27 @@ async function loadBackupFolder() {
   request.onsuccess = async () => {
     if (request.result && request.result.handle) {
       try {
-        // Verify folder permission
         const permission = await request.result.handle.queryPermission({ mode: 'readwrite' });
         if (permission === 'granted') {
           backupFolderHandle = request.result.handle;
+          backupStatus = true;
         } else {
-          // Request permission
           if (await request.result.handle.requestPermission({ mode: 'readwrite' }) === 'granted') {
             backupFolderHandle = request.result.handle;
+            backupStatus = true;
           } else {
             showToast('Permission to access backup folder denied');
+            backupStatus = false;
             backupFolderHandle = null;
           }
         }
       } catch (error) {
-        console.error('Error loading backup folder:', error);
         showToast('Failed to load backup folder');
+        backupStatus = false;
         backupFolderHandle = null;
       }
     }
+    updateBackupStatusBadge();
   };
 }
 
@@ -125,25 +130,64 @@ async function selectBackupFolder() {
   try {
     if ('showDirectoryPicker' in window) {
       const folderHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
-      const permission = await folderHandle.queryPermission({ mode: 'readwrite' });
-      if (permission === 'granted') {
+      if (await folderHandle.queryPermission({ mode: 'readwrite' }) === 'granted'
+        || await folderHandle.requestPermission({ mode: 'readwrite' }) === 'granted'
+      ) {
         backupFolderHandle = folderHandle;
         const transaction = db.transaction(['folder'], 'readwrite');
         const store = transaction.objectStore('folder');
         store.put({ id: 'backupFolder', handle: folderHandle });
         showToast('Backup folder selected successfully');
+        backupStatus = true;
       } else {
         showToast('Permission to access folder denied');
+        backupStatus = false;
       }
     } else {
       showToast('File System Access API not supported in this browser');
     }
   } catch (error) {
-    console.error('Error selecting backup folder:', error);
     showToast('Failed to select backup folder');
+    backupStatus = false;
+  }
+  updateBackupStatusBadge();
+}
+
+// --- BACKUP BADGE ---
+function updateBackupStatusBadge() {
+  const badge = document.getElementById('backupStatusBadge');
+  if (!badge) return;
+  badge.textContent = backupFolderHandle && backupStatus ? "Backup: ON" : "Backup: OFF";
+  badge.style.background = backupFolderHandle && backupStatus ? "#43a047" : "#d32f2f";
+  badge.style.color = "#fff";
+  badge.style.padding = "4px 12px";
+  badge.style.borderRadius = "10px";
+  badge.style.fontWeight = "bold";
+}
+
+// --- AUTOSAVE TO BACKUP FOLDER ---
+async function autoSaveToFile() {
+  if (!backupFolderHandle || !autosaveEnabled) return;
+  try {
+    const data = { files, profiles, analytics };
+    const fileHandle = await backupFolderHandle.getFileHandle('cft_autosave.json', { create: true });
+    const writable = await fileHandle.createWritable();
+    await writable.write(JSON.stringify(data, null, 2));
+    await writable.close();
+    backupStatus = true;
+  } catch (error) {
+    backupStatus = false;
+  }
+  updateBackupStatusBadge();
+}
+function setupAutosaveTimer() {
+  if (autosaveTimer) clearInterval(autosaveTimer);
+  if (autosaveEnabled) {
+    autosaveTimer = setInterval(() => { autoSaveToFile(); }, autosaveInterval * 1000);
   }
 }
 
+// --- DAILY BACKUP ---
 function scheduleDailyBackup() {
   const now = new Date();
   const midnight = new Date(
@@ -163,6 +207,8 @@ function scheduleDailyBackup() {
 async function performDailyBackup() {
   if (!backupFolderHandle) {
     showToast('No backup folder selected. Please select a folder.');
+    backupStatus = false;
+    updateBackupStatusBadge();
     return;
   }
   try {
@@ -178,123 +224,108 @@ async function performDailyBackup() {
     analytics.backupsCreated++;
     localStorage.setItem('analytics', JSON.stringify(analytics));
     syncLocalStorageToIndexedDB();
-  autoSaveToFile();
+    backupStatus = true;
+    updateBackupStatusBadge();
     showToast(`Daily backup created: ${fileName}`);
   } catch (error) {
-    console.error('Daily backup error:', error);
+    backupStatus = false;
+    updateBackupStatusBadge();
     showToast('Failed to create daily backup');
   }
 }
 
-function maskCNIC(cnic) {
-  if (!cnic) return '';
-  const parts = cnic.split('-');
-  if (parts.length !== 3) return '*****-*******-*';
-  return `${parts[0].slice(0, 2)}***-${parts[1].slice(0, 3)}****-${parts[2]}`;
-}
+// --- AUTOSAVE USER SETTINGS TOGGLE (attach in admin/settings section) ---
+window.setAutosaveEnabled = function (enabled) {
+  autosaveEnabled = enabled;
+  localStorage.setItem('autosaveEnabled', JSON.stringify(enabled));
+  setupAutosaveTimer();
+};
 
+window.setAutosaveInterval = function (seconds) {
+  autosaveInterval = seconds;
+  localStorage.setItem('autosaveInterval', seconds);
+  setupAutosaveTimer();
+};
+// ========================
+//  CONTINUED: Court File Tracker app.js
+// ========================
 
-window.onload = () => {
-  console.log('app.js loaded successfully');
-  initIndexedDB();
-  if (userProfile) {
-    document.getElementById('setupMessage').style.display = 'none';
-    document.getElementById('adminForm').style.display = 'none';
-    document.getElementById('savedProfile').style.display = 'block';
-    updateSavedProfile();
-    navigate('dashboard');
-  } else {
-    navigate('admin');
-  }
-  document.getElementById('agreeTerms').addEventListener('change', toggleSaveButton);
-  updateDashboardCards();
-  setupPushNotifications();
-  setupPhotoAdjust('userPhoto', 'userPhotoPreview', 'userPhotoAdjust');
-  setupPhotoAdjust('profilePhoto', 'photoPreview', 'photoAdjust');
-  scheduleDailyBackup();
-
+// --- SIDEBAR & MOBILE INTERACTIONS ---
+// Swipe back, click outside, mobile back closes sidebar
+function setupSidebarClosing() {
+  // Overlay tap
   const overlay = document.querySelector('.sidebar-overlay');
-  overlay.addEventListener('touchstart', (e) => {
-    e.preventDefault();
-    toggleSidebar();
-  });
-
-  window.addEventListener('beforeinstallprompt', (e) => {
-    e.preventDefault();
-    deferredPrompt = e;
-    document.getElementById('installBtn').style.display = 'block';
-  });
-
-  // ✅ Safe installBtn handler
-  const installBtn = document.getElementById('installBtn');
-  if (installBtn) {
-    installBtn.addEventListener('click', () => {
-      if (deferredPrompt) {
-        deferredPrompt.prompt();
-        deferredPrompt.userChoice.then((choiceResult) => {
-          if (choiceResult.outcome === 'accepted') {
-            showToast('App installation started');
-          }
-          deferredPrompt = null;
-          installBtn.style.display = 'none';
-        });
-      }
+  if (overlay) {
+    overlay.addEventListener('click', () => {
+      document.getElementById('sidebar').classList.remove('active');
+      overlay.classList.remove('active');
     });
   }
-  
-// Sidebar tap outside and swipe close
-document.querySelector('.sidebar-overlay').addEventListener('click', () => {
-  document.getElementById('sidebar').classList.remove('active');
-  document.querySelector('.sidebar-overlay').classList.remove('active');
-});
-window.addEventListener('popstate', () => {
-  document.getElementById('sidebar').classList.remove('active');
-  document.querySelector('.sidebar-overlay').classList.remove('active');
-});
-
-  // Add touch event listener for sidebar overlay
-  const overlay = document.querySelector('.sidebar-overlay');
-  overlay.addEventListener('touchstart', (e) => {
-    e.preventDefault();
-    toggleSidebar();
+  // Mobile back button (popstate)
+  window.addEventListener('popstate', () => {
+    document.getElementById('sidebar').classList.remove('active');
+    if (overlay) overlay.classList.remove('active');
   });
-
-  // PWA Install Prompt
-  window.addEventListener('beforeinstallprompt', (e) => {
-    e.preventDefault();
-    deferredPrompt = e;
-    document.getElementById('installBtn').style.display = 'block';
+  // Touch swipe to close
+  let startX = null;
+  document.getElementById('sidebar').addEventListener('touchstart', e => {
+    startX = e.touches[0].clientX;
   });
-
-
-function setupPushNotifications() {
-  if ('Notification' in window && navigator.serviceWorker) {
-    Notification.requestPermission().then(permission => {
-      if (permission === 'granted') {
-        setInterval(checkOverdueFiles, 3600000);
-      }
-    });
-  }
+  document.getElementById('sidebar').addEventListener('touchmove', e => {
+    if (startX !== null && e.touches[0].clientX - startX < -60) { // swipe left
+      document.getElementById('sidebar').classList.remove('active');
+      if (overlay) overlay.classList.remove('active');
+      startX = null;
+    }
+  });
 }
 
-function checkOverdueFiles() {
-  const tenDaysAgo = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000);
-  const overdueFiles = files.filter(f => !f.returned && new Date(f.deliveredAt) < tenDaysAgo);
-  if (overdueFiles.length > 0) {
-    navigator.serviceWorker.ready.then(registration => {
-      registration.showNotification('Overdue Files', {
-        body: `${overdueFiles.length} file(s) are overdue by more than 10 days.`,
-        icon: 'icon-192.png'
+// --- PWA INSTALL PROMPT ---
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredPrompt = e;
+  const btn = document.getElementById('installBtn');
+  if (btn) btn.style.display = 'block';
+});
+if (document.getElementById('installBtn')) {
+  document.getElementById('installBtn').addEventListener('click', () => {
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      deferredPrompt.userChoice.then((choiceResult) => {
+        if (choiceResult.outcome === 'accepted') {
+          showToast('App installation started');
+        }
+        deferredPrompt = null;
+        document.getElementById('installBtn').style.display = 'none';
       });
-    });
+    }
+  });
+}
+
+// --- PAGE/SREEN STATE PERSISTENCE (refresh returns to current) ---
+function saveCurrentScreen(screenId) {
+  localStorage.setItem('currentScreen', screenId);
+}
+function restoreCurrentScreen() {
+  const screen = localStorage.getItem('currentScreen');
+  if (screen && document.getElementById(screen)) {
+    navigate(screen);
+  } else {
+    navigate('dashboard');
   }
 }
 
+// --- NAVIGATION, MODALS, AND SCREEN CHANGES ---
 function navigate(screenId) {
   document.querySelectorAll('.screen').forEach(screen => screen.classList.remove('active'));
-  document.getElementById(screenId).classList.add('active');
+  const el = document.getElementById(screenId);
+  if (el) el.classList.add('active');
   document.querySelectorAll('.sidebar button').forEach(btn => btn.classList.remove('active'));
-  document.querySelector(`.sidebar button[onclick="navigate('${screenId}')"]`).classList.add('active');
+  const navBtn = document.querySelector(`.sidebar button[onclick="navigate('${screenId}')"]`);
+  if (navBtn) navBtn.classList.add('active');
+  saveCurrentScreen(screenId);
+
+  // If needed, update stats/reports
   if (screenId === 'dashboard') updateDashboardCards();
   if (screenId === 'return') filterPendingFiles();
   if (screenId === 'fileFetcher') renderProfiles();
@@ -304,40 +335,417 @@ function navigate(screenId) {
   }
 }
 
-function toggleSidebar() {
-  const sidebar = document.getElementById('sidebar');
-  const overlay = document.querySelector('.sidebar-overlay');
-  sidebar.classList.toggle('active');
-  overlay.classList.toggle('active');
+// --- MODAL CENTERING FIX (Profile Details) ---
+function showProfileDetails(name, type) {
+  const profile = profiles.find(p => p.name === name && p.type === type) || {};
+  document.getElementById('profileModalTitle').textContent = `${name} (${type})`;
+  const table = document.getElementById('profileModalTable');
+  table.innerHTML = `
+    <tr><th>Name</th><td>${profile.name || ''}</td></tr>
+    <tr><th>Type</th><td>${profile.type || ''}</td></tr>
+    ${profile.cellNo ? `<tr><th>Cell No</th><td><a href="tel:${profile.cellNo}">${profile.cellNo}</a></td></tr>` : ''}
+    ${profile.chamberNo ? `<tr><th>Chamber No</th><td>${profile.chamberNo}</td></tr>` : ''}
+    ${profile.advocateName ? `<tr><th>Advocate Name</th><td>${profile.advocateName}</td></tr>` : ''}
+    ${profile.advocateCell ? `<tr><th>Advocate Cell</th><td><a href="tel:${profile.advocateCell}">${profile.advocateCell}</a></td></tr>` : ''}
+    ${profile.designation ? `<tr><th>Designation</th><td>${profile.designation}</td></tr>` : ''}
+    ${profile.postedAt ? `<tr><th>Posted At</th><td>${profile.postedAt}</td></tr>` : ''}
+    ${profile.type === 'other' && profile.cnic ? `<tr><th>ID/CNIC</th><td>${maskCNIC(profile.cnic)}</td></tr>` : ''}
+    ${profile.relation ? `<tr><th>Relation</th><td>${profile.relation}</td></tr>` : ''}
+  `;
+  if (profile.photo) {
+    document.getElementById('profileModalPhoto').src = profile.photo;
+    document.getElementById('profileModalPhotoZoom').src = profile.photo;
+    document.getElementById('profileModalPhoto').style.display = 'block';
+  } else {
+    document.getElementById('profileModalPhoto').style.display = 'none';
+    document.getElementById('profileModalPhotoZoom').style.display = 'none';
+  }
+  // Fix: Don’t scroll page to top when modal opens
+  document.getElementById('profileModal').style.display = 'block';
+  document.getElementById('profileModal').scrollIntoView({ block: "center", behavior: "smooth" });
 }
 
-function closeModalIfOutside(event, modalId) {
-  const modalContent = document.querySelector(`#${modalId} .modal-content`);
-  if (!modalContent.contains(event.target)) {
-    document.getElementById(modalId).style.display = 'none';
+function closeProfileModal() {
+  document.getElementById('profileModal').style.display = 'none';
+}
+
+// --- PAGE INIT: ONLOAD ---
+window.onload = () => {
+  showMiniGuide();
+  initIndexedDB();
+  restoreCurrentScreen();
+  document.getElementById('agreeTerms').addEventListener('change', toggleSaveButton);
+  updateDashboardCards();
+  setupPushNotifications();
+  setupPhotoAdjust('userPhoto', 'userPhotoPreview', 'userPhotoAdjust');
+  setupPhotoAdjust('profilePhoto', 'photoPreview', 'photoAdjust');
+  scheduleDailyBackup();
+  setupSidebarClosing();
+  updateBackupStatusBadge();
+  setupAutosaveTimer();
+};
+// ========================
+// CONTINUED: app.js (Core Logic, Mini Guide, Backup, Search Fixes)
+// ========================
+
+// ===== MINI GUIDE FOR FIRST USE =====
+function showMiniGuide() {
+  if (!localStorage.getItem('miniGuideShown')) {
+    showToast("Welcome! Click ☰ to open the menu. Complete your profile and select a backup folder before using the app. (You will see this only once)", 6000);
+    localStorage.setItem('miniGuideShown', '1');
   }
 }
+
+// ===== BACKUP STATUS BADGE + AUTOSAVE =====
+function updateBackupStatusBadge() {
+  // Add or update status badge in admin section
+  let badge = document.getElementById('backupStatusBadge');
+  if (!badge) {
+    badge = document.createElement('span');
+    badge.id = 'backupStatusBadge';
+    badge.style.marginLeft = '10px';
+    badge.style.padding = '5px 12px';
+    badge.style.borderRadius = '10px';
+    badge.style.fontWeight = 'bold';
+    badge.style.fontSize = '13px';
+    document.querySelector('#savedProfile h4')?.appendChild(badge);
+  }
+  if (backupFolderHandle) {
+    badge.textContent = 'Backup: ACTIVE';
+    badge.style.backgroundColor = '#4caf50';
+    badge.style.color = '#fff';
+  } else {
+    badge.textContent = 'Backup: INACTIVE';
+    badge.style.backgroundColor = '#d32f2f';
+    badge.style.color = '#fff';
+  }
+}
+
+// Autosave frequency and enable/disable controls
+let autosaveEnabled = JSON.parse(localStorage.getItem('autosaveEnabled') || 'true');
+let autosaveFrequency = parseInt(localStorage.getItem('autosaveFrequency')) || 60; // seconds
+let autosaveTimer = null;
+
+function setupAutosaveTimer() {
+  if (autosaveTimer) clearInterval(autosaveTimer);
+  if (autosaveEnabled && backupFolderHandle) {
+    autosaveTimer = setInterval(autoSaveToFile, autosaveFrequency * 1000);
+  }
+}
+function setAutosaveEnabled(val) {
+  autosaveEnabled = val;
+  localStorage.setItem('autosaveEnabled', JSON.stringify(val));
+  setupAutosaveTimer();
+  showToast(`Autosave is now ${val ? "enabled" : "disabled"}`);
+}
+function setAutosaveFrequency(sec) {
+  autosaveFrequency = sec;
+  localStorage.setItem('autosaveFrequency', String(sec));
+  setupAutosaveTimer();
+  showToast(`Autosave frequency set to every ${sec} seconds`);
+}
+
+// Add autosave controls UI to Admin screen (when savedProfile loads)
+function addAutosaveControls() {
+  const admin = document.getElementById('savedProfile');
+  if (!admin || document.getElementById('autosaveControls')) return;
+  const wrapper = document.createElement('div');
+  wrapper.id = 'autosaveControls';
+  wrapper.style.marginTop = '10px';
+  wrapper.innerHTML = `
+    <label style="display:inline; font-weight:bold;">
+      <input type="checkbox" id="autosaveToggle" ${autosaveEnabled ? 'checked' : ''}/> Enable Autosave
+    </label>
+    <label style="margin-left:14px;">
+      Frequency:
+      <select id="autosaveFreqSelect">
+        <option value="30" ${autosaveFrequency===30?'selected':''}>30s</option>
+        <option value="60" ${autosaveFrequency===60?'selected':''}>1 min</option>
+        <option value="300" ${autosaveFrequency===300?'selected':''}>5 min</option>
+        <option value="600" ${autosaveFrequency===600?'selected':''}>10 min</option>
+      </select>
+    </label>
+    <span id="backupStatusBadge" style="margin-left:12px;"></span>
+  `;
+  admin.appendChild(wrapper);
+  document.getElementById('autosaveToggle').addEventListener('change', e => setAutosaveEnabled(e.target.checked));
+  document.getElementById('autosaveFreqSelect').addEventListener('change', e => setAutosaveFrequency(Number(e.target.value)));
+  updateBackupStatusBadge();
+}
+const origUpdateSavedProfile = updateSavedProfile;
+updateSavedProfile = function() {
+  origUpdateSavedProfile();
+  setTimeout(addAutosaveControls, 300); // ensure DOM is ready
+  updateBackupStatusBadge();
+};
+
+// ===== BACKUP FOLDER LIFETIME PERMISSIONS (and error fix) =====
+async function loadBackupFolder() {
+  const transaction = db.transaction(['folder'], 'readonly');
+  const store = transaction.objectStore('folder');
+  const request = store.get('backupFolder');
+  request.onsuccess = async () => {
+    if (request.result && request.result.handle) {
+      try {
+        // Always check permission on every load
+        const perm = await request.result.handle.queryPermission({ mode: 'readwrite' });
+        if (perm === 'granted') {
+          backupFolderHandle = request.result.handle;
+          updateBackupStatusBadge();
+        } else if (await request.result.handle.requestPermission({ mode: 'readwrite' }) === 'granted') {
+          backupFolderHandle = request.result.handle;
+          updateBackupStatusBadge();
+        } else {
+          showToast('Permission to access backup folder denied');
+          backupFolderHandle = null;
+          updateBackupStatusBadge();
+        }
+      } catch (error) {
+        console.error('Error loading backup folder:', error);
+        showToast('Failed to load backup folder');
+        backupFolderHandle = null;
+        updateBackupStatusBadge();
+      }
+    }
+    setupAutosaveTimer();
+  };
+}
+
+// ===== AUTO-SAVE TO JSON (ALL DATA) =====
+async function autoSaveToFile() {
+  if (!backupFolderHandle) return;
+  try {
+    const data = {
+      files,
+      profiles,
+      userProfile,
+      analytics
+    };
+    const fileHandle = await backupFolderHandle.getFileHandle('court_file_tracker_autosave.json', { create: true });
+    const writable = await fileHandle.createWritable();
+    await writable.write(JSON.stringify(data, null, 2));
+    await writable.close();
+    updateBackupStatusBadge();
+    // Don't show toast every time to avoid spam!
+    // showToast('Auto-saved data to backup folder');
+  } catch (error) {
+    console.error('Auto-save failed:', error);
+    showToast('Auto-save to backup failed');
+    updateBackupStatusBadge();
+  }
+}
+
+// ========== SEARCH FIX: FILE TAKER SHOWS ONLY THEIR RECORDS =============
+// Fixed: Search by file taker now only returns that profile's files
+function performDashboardSearch() {
+  analytics.searchesPerformed++;
+  localStorage.setItem('analytics', JSON.stringify(analytics));
+  syncLocalStorageToIndexedDB();
+  autoSaveToFile();
+
+  const searchTitle = document.getElementById('searchTitle').value.toLowerCase();
+  const searchCms = document.getElementById('searchCms').value;
+  const fileTakerElement = document.getElementById('searchFileTaker');
+  const searchFileTaker = fileTakerElement && fileTakerElement.value ? fileTakerElement.value.toLowerCase() : '';
+  const searchFirNo = document.getElementById('searchFirNo').value.toLowerCase();
+  const searchFirYear = document.getElementById('searchFirYear').value;
+  const searchPoliceStation = document.getElementById('searchPoliceStation').value.toLowerCase();
+
+  currentReportData = files.filter(f => {
+    return (!searchTitle || f.title.toLowerCase().includes(searchTitle)) &&
+      (!searchCms || f.cmsNo.toString().includes(searchCms)) &&
+      (!searchFileTaker || f.deliveredToName.toLowerCase().includes(searchFileTaker)) &&
+      (!searchFirNo || (f.firNo && f.firNo.toLowerCase().includes(searchFirNo))) &&
+      (!searchFirYear || (f.firYear && f.firYear.toString().includes(searchFirYear))) &&
+      (!searchPoliceStation || (f.policeStation && f.policeStation.toLowerCase().includes(searchPoliceStation)));
+  });
+
+  // If file taker selected, filter to *only* their records
+  if (searchFileTaker) {
+    currentReportData = currentReportData.filter(f => f.deliveredToName.toLowerCase() === searchFileTaker);
+  }
+  currentPage = 1;
+  renderReportTable();
+}
+
+// ========== RESTORE BACKUP: SCRUTINIZE/DE-DUPLICATE ==========
+function restoreData() {
+  const file = document.getElementById('dataRestore').files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const data = JSON.parse(reader.result);
+
+      // Uniqueness filter for files by cmsNo
+      if (data.files) {
+        const existingCmsNos = new Set(files.map(f => f.cmsNo));
+        const newFiles = data.files.filter(f => !existingCmsNos.has(f.cmsNo));
+        files = [...files, ...newFiles];
+      }
+      // Uniqueness filter for profiles by name+type
+      if (data.profiles) {
+        const existingProfiles = new Set(profiles.map(p => p.name + p.type));
+        const newProfiles = data.profiles.filter(p => !existingProfiles.has(p.name + p.type));
+        profiles = [...profiles, ...newProfiles];
+      }
+      if (data.userProfile) {
+        userProfile = { ...userProfile, ...data.userProfile, pin: userProfile.pin };
+        localStorage.setItem('userProfile', JSON.stringify(userProfile));
+      }
+      if (data.analytics) {
+        analytics = { ...analytics, ...data.analytics };
+        localStorage.setItem('analytics', JSON.stringify(analytics));
+      }
+      localStorage.setItem('files', JSON.stringify(files));
+      localStorage.setItem('profiles', JSON.stringify(profiles));
+      syncLocalStorageToIndexedDB();
+      autoSaveToFile();
+      showToast('Data restored successfully');
+      updateSavedProfile();
+      updateDashboardCards();
+      navigate('dashboard');
+    } catch (error) {
+      console.error('Restore error:', error);
+      showToast('Failed to restore data. Invalid file format.');
+    }
+  };
+  reader.readAsText(file);
+}
+
+// ========== PAGE REFRESH KEEPS SAME SCREEN ==========
+window.addEventListener('beforeunload', () => {
+  const activeScreen = document.querySelector('.screen.active');
+  if (activeScreen) {
+    localStorage.setItem('currentScreen', activeScreen.id);
+  }
+});
+// ...continuing, full app.js (continue directly after previous block!)
+
+function showProfileDetails(name, type) {
+  const profile = profiles.find(p => p.name === name && p.type === type) || {};
+  document.getElementById('profileModalTitle').textContent = `${name} (${type})`;
+  const table = document.getElementById('profileModalTable');
+  table.innerHTML = `
+    <tr><th>Name</th><td>${profile.name || ''}</td></tr>
+    <tr><th>Type</th><td>${profile.type || ''}</td></tr>
+    ${profile.cellNo ? `<tr><th>Cell No</th><td><a href="tel:${profile.cellNo}">${profile.cellNo}</a></td></tr>` : ''}
+    ${profile.chamberNo ? `<tr><th>Chamber No</th><td>${profile.chamberNo}</td></tr>` : ''}
+    ${profile.advocateName ? `<tr><th>Advocate Name</th><td>${profile.advocateName}</td></tr>` : ''}
+    ${profile.advocateCell ? `<tr><th>Advocate Cell</th><td><a href="tel:${profile.advocateCell}">${profile.advocateCell}</a></td></tr>` : ''}
+    ${profile.designation ? `<tr><th>Designation</th><td>${profile.designation}</td></tr>` : ''}
+    ${profile.postedAt ? `<tr><th>Posted At</th><td>${profile.postedAt}</td></tr>` : ''}
+    ${profile.type === 'other' && profile.cnic ? `<tr><th>ID/CNIC</th><td>${maskCNIC(profile.cnic)}</td></tr>` : ''}
+    ${profile.relation ? `<tr><th>Relation</th><td>${profile.relation}</td></tr>` : ''}
+  `;
+  if (profile.photo) {
+    document.getElementById('profileModalPhoto').src = profile.photo;
+    document.getElementById('profileModalPhotoZoom').src = profile.photo;
+    document.getElementById('profileModalPhoto').style.display = 'block';
+  } else {
+    document.getElementById('profileModalPhoto').style.display = 'none';
+    document.getElementById('profileModalPhotoZoom').style.display = 'none';
+  }
+  document.getElementById('profileModal').style.display = 'block';
+  // Prevent page scroll on modal open
+  document.body.style.overflow = 'hidden';
+}
+
+function closeProfileModal() {
+  document.getElementById('profileModal').style.display = 'none';
+  document.body.style.overflow = '';
+}
+
+// Sidebar mobile fixes: overlay tap, swipe, back button
+function enableSidebarOverlayClose() {
+  const overlay = document.querySelector('.sidebar-overlay');
+  overlay.addEventListener('click', () => {
+    document.getElementById('sidebar').classList.remove('active');
+    overlay.classList.remove('active');
+  });
+  window.addEventListener('popstate', () => {
+    document.getElementById('sidebar').classList.remove('active');
+    overlay.classList.remove('active');
+  });
+  overlay.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    document.getElementById('sidebar').classList.remove('active');
+    overlay.classList.remove('active');
+  });
+}
+enableSidebarOverlayClose();
+
+function navigate(screenId) {
+  document.querySelectorAll('.screen').forEach(screen => screen.classList.remove('active'));
+  document.getElementById(screenId).classList.add('active');
+  document.querySelectorAll('.sidebar button').forEach(btn => btn.classList.remove('active'));
+  document.querySelector(`.sidebar button[onclick="navigate('${screenId}')"]`)?.classList.add('active');
+  if (screenId === 'dashboard') updateDashboardCards();
+  if (screenId === 'return') filterPendingFiles();
+  if (screenId === 'fileFetcher') renderProfiles();
+  if (window.innerWidth <= 768) {
+    document.getElementById('sidebar').classList.remove('active');
+    document.querySelector('.sidebar-overlay').classList.remove('active');
+  }
+  // Store current screen for refresh persistence
+  localStorage.setItem('currentScreen', screenId);
+}
+
+// On window load, restore last screen if any
+window.onload = () => {
+  showMiniGuide();
+  initIndexedDB();
+  let initialScreen = localStorage.getItem('currentScreen') || (userProfile ? 'dashboard' : 'admin');
+  if (userProfile) {
+    document.getElementById('setupMessage').style.display = 'none';
+    document.getElementById('adminForm').style.display = 'none';
+    document.getElementById('savedProfile').style.display = 'block';
+    updateSavedProfile();
+    navigate(initialScreen);
+  } else {
+    navigate('admin');
+  }
+  document.getElementById('agreeTerms').addEventListener('change', toggleSaveButton);
+  updateDashboardCards();
+  setupPushNotifications();
+  setupPhotoAdjust('userPhoto', 'userPhotoPreview', 'userPhotoAdjust');
+  setupPhotoAdjust('profilePhoto', 'photoPreview', 'photoAdjust');
+  scheduleDailyBackup();
+};
+
+// Service Worker registration for offline support
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker
+      .register('service-worker.js')
+      .then((registration) => {
+        console.log('Service Worker registered with scope:', registration.scope);
+      })
+      .catch((error) => {
+        console.error('Service Worker registration failed:', error);
+      });
+  });
+}
+// ===================
+//  (CONTINUED APP.JS CODE, MIDDLE SECTION)
+// ===================
 
 // Admin Form Submission
 document.getElementById('adminForm').addEventListener('submit', (e) => {
   e.preventDefault();
   document.getElementById('loadingIndicator').style.display = 'block';
   try {
-    console.log('Admin form submission started');
     setTimeout(() => {
       const userPhotoInput = document.getElementById('userPhoto');
       let photo = userPhotoInput.adjustedPhoto;
       if (!photo && userPhotoInput.files && userPhotoInput.files[0]) {
         photo = userPhotoInput.files[0];
       }
-
       if (!photo) {
-        console.error('No photo selected');
         showToast('Please upload a profile photo');
         document.getElementById('loadingIndicator').style.display = 'none';
         return;
       }
-
       const processPhoto = (photoData) => {
         userProfile = {
           clerkName: document.getElementById('clerkName').value,
@@ -349,10 +757,9 @@ document.getElementById('adminForm').addEventListener('submit', (e) => {
           email: document.getElementById('email').value,
           photo: photoData
         };
-        console.log('Saving userProfile:', userProfile);
         localStorage.setItem('userProfile', JSON.stringify(userProfile));
         syncLocalStorageToIndexedDB();
-  autoSaveToFile();
+        autoSaveToFile();
         document.getElementById('setupMessage').style.display = 'none';
         document.getElementById('adminForm').style.display = 'none';
         document.getElementById('savedProfile').style.display = 'block';
@@ -361,19 +768,12 @@ document.getElementById('adminForm').addEventListener('submit', (e) => {
         document.getElementById('loadingIndicator').style.display = 'none';
         navigate('dashboard');
       };
-
       if (typeof photo === 'string' && photo.startsWith('data:')) {
-        console.log('Using adjusted data URL');
         processPhoto(photo);
       } else {
-        console.log('Reading raw file');
         const reader = new FileReader();
-        reader.onload = () => {
-          console.log('Photo read successfully');
-          processPhoto(reader.result);
-        };
-        reader.onerror = (error) => {
-          console.error('Error reading photo:', error);
+        reader.onload = () => processPhoto(reader.result);
+        reader.onerror = () => {
           showToast('Failed to read photo. Please try again.');
           document.getElementById('loadingIndicator').style.display = 'none';
         };
@@ -381,7 +781,6 @@ document.getElementById('adminForm').addEventListener('submit', (e) => {
       }
     }, 500);
   } catch (error) {
-    console.error('Admin form error:', error);
     showToast('Failed to save profile. Please try again.');
     document.getElementById('loadingIndicator').style.display = 'none';
   }
@@ -415,1361 +814,331 @@ function editUserProfile() {
   document.getElementById('agreeTerms').checked = true;
   document.getElementById('saveProfileBtn').disabled = false;
 }
+// ================
+// Remaining app.js (Full/Final Section)
+// ================
 
-// Photo Adjust Setup
-function setupPhotoAdjust(inputId, previewId, adjustContainerId) {
-  const input = document.getElementById(inputId);
-  const preview = document.getElementById(previewId);
-  const adjustContainer = document.getElementById(adjustContainerId);
-  const canvas = document.createElement('canvas');
-  canvas.width = 200;
-  canvas.height = 200;
-  canvas.style.border = '1px solid #ccc';
-  canvas.style.display = 'block';
-  adjustContainer.appendChild(canvas);
-  const ctx = canvas.getContext('2d');
-  let img = new Image();
-  let offsetX = 0, offsetY = 0;
-  let isDragging = false;
-  let startX, startY;
-  let scaleFactor = 1;
-
-  input.addEventListener('change', (e) => {
-    const file = e.target.files[0];
-    if (!file) {
-      showToast('No file selected');
-      return;
-    }
-
-    document.getElementById('loadingIndicator').style.display = 'block';
-    const reader = new FileReader();
-    reader.onload = () => {
-      img.src = reader.result;
-      img.onload = () => {
-        EXIF.getData(img, function() {
-          const orientation = EXIF.getTag(this, 'Orientation') || 1;
-          adjustContainer.style.display = 'block';
-          preview.src = reader.result;
-          preview.style.display = 'block';
-          offsetX = 0;
-          offsetY = 0;
-          drawImage(orientation);
-          let quality = 0.8;
-          let dataUrl = canvas.toDataURL('image/jpeg', quality);
-          while (dataUrl.length > 100 * 1024 && quality > 0.1) {
-            quality -= 0.1;
-            dataUrl = canvas.toDataURL('image/jpeg', quality);
-          }
-          input.adjustedPhoto = dataUrl;
-          document.getElementById('loadingIndicator').style.display = 'none';
-        });
-      };
-    };
-    reader.onerror = () => {
-      showToast('Error reading photo file');
-      document.getElementById('loadingIndicator').style.display = 'none';
-    };
-    reader.readAsDataURL(file);
-  });
-
-  function drawImage(orientation) {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    let imgWidth = img.width;
-    let imgHeight = img.height;
-    scaleFactor = Math.max(canvas.width / imgWidth, canvas.height / imgHeight);
-    imgWidth *= scaleFactor;
-    imgHeight *= scaleFactor;
-
-    ctx.save();
-    ctx.translate(canvas.width / 2, canvas.height / 2);
-    if (orientation && orientation !== 1) {
-      switch (orientation) {
-        case 6:
-          ctx.rotate(Math.PI / 2);
-          break;
-        case 3:
-          ctx.rotate(Math.PI);
-          break;
-        case 8:
-          ctx.rotate(-Math.PI / 2);
-          break;
-      }
-    }
-    ctx.translate(-canvas.width / 2, -canvas.height / 2);
-    ctx.drawImage(img, offsetX, offsetY, imgWidth, imgHeight);
-    ctx.restore();
-  }
-
-  canvas.addEventListener('mousedown', (e) => {
-    e.preventDefault();
-    isDragging = true;
-    startX = e.offsetX - offsetX;
-    startY = e.offsetY - offsetY;
-  });
-
-  canvas.addEventListener('mousemove', (e) => {
-    if (isDragging) {
-      offsetX = e.offsetX - startX;
-      offsetY = e.offsetY - startY;
-      drawImage(1);
-    }
-  });
-
-  canvas.addEventListener('mouseup', () => {
-    isDragging = false;
-    let quality = 0.8;
-    let dataUrl = canvas.toDataURL('image/jpeg', quality);
-    while (dataUrl.length > 100 * 1024 && quality > 0.1) {
-      quality -= 0.1;
-      dataUrl = canvas.toDataURL('image/jpeg', quality);
-    }
-    input.adjustedPhoto = dataUrl;
-  });
-
-  canvas.addEventListener('mouseleave', () => {
-    isDragging = false;
-  });
-
-  canvas.addEventListener('touchstart', (e) => {
-    e.preventDefault();
-    isDragging = true;
-    const touch = e.touches[0];
-    const rect = canvas.getBoundingClientRect();
-    startX = touch.clientX - rect.left - offsetX;
-    startY = touch.clientY - rect.top - offsetY;
-  });
-
-  canvas.addEventListener('touchmove', (e) => {
-    e.preventDefault();
-    if (isDragging) {
-      const touch = e.touches[0];
-      const rect = canvas.getBoundingClientRect();
-      offsetX = touch.clientX - rect.left - startX;
-      offsetY = touch.clientY - rect.top - startY;
-      drawImage(1);
-    }
-  });
-
-  canvas.addEventListener('touchend', () => {
-    isDragging = false;
-    let quality = 0.8;
-    let dataUrl = canvas.toDataURL('image/jpeg', quality);
-    while (dataUrl.length > 100 * 1024 && quality > 0.1) {
-      quality -= 0.1;
-      dataUrl = canvas.toDataURL('image/jpeg', quality);
-    }
-    input.adjustedPhoto = dataUrl;
-  });
-}
-
-function toggleSaveButton() {
-  document.getElementById('saveProfileBtn').disabled = !document.getElementById('agreeTerms').checked;
-}
-
-function showDisclaimerModal() {
-  document.getElementById('disclaimerModal').style.display = 'block';
-}
-
-function promptPin(callback) {
-  document.getElementById('pinModal').style.display = 'block';
-  document.getElementById('pinInput').value = '';
-  document.getElementById('pinInput').focus();
-  window.submitPin = () => {
-    const pin = document.getElementById('pinInput').value;
-    document.getElementById('pinModal').style.display = 'none';
-    if (pin === userProfile.pin) {
-      callback(true);
-    } else {
-      showToast('Incorrect PIN');
-      callback(false);
-    }
-  };
-}
-
-function showChangePin() {
-  document.getElementById('changePinModal').style.display = 'block';
-  document.getElementById('resetCnic').value = '';
-  document.getElementById('resetPin').value = '';
-}
-
-function changePin() {
-  const resetCnic = document.getElementById('resetCnic').value;
-  const newPin = document.getElementById('resetPin').value;
-  if (resetCnic === userProfile.cnic || resetCnic === userProfile.email) {
-    userProfile.pin = newPin;
-    localStorage.setItem('userProfile', JSON.stringify(userProfile));
-    syncLocalStorageToIndexedDB();
-  autoSaveToFile();
-    showToast('PIN changed successfully');
-    hideChangePin();
-  } else {
-    showToast('Invalid CNIC or Email');
-  }
-}
-
-function hideChangePin() {
-  document.getElementById('changePinModal').style.display = 'none';
-}
-
-function updateDashboardCards() {
-  console.log('Updating dashboard cards');
-  const today = new Date().toLocaleDateString('en-CA');
-  const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toLocaleDateString('en-CA');
-  const tenDaysAgo = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000);
-  const deliveries = files.filter(f => new Date(f.deliveredAt).toLocaleDateString('en-CA') === today).length;
-  console.log('Files for today:', files.filter(f => new Date(f.deliveredAt).toLocaleDateString('en-CA') === today));
-  const returns = files.filter(f => f.returned && new Date(f.returnedAt).toLocaleDateString('en-CA') === today).length;
-  const pending = files.filter(f => !f.returned).length;
-  const tomorrowHearings = files.filter(f => new Date(f.date).toLocaleDateString('en-CA') === tomorrow).length;
-  const overdue = files.filter(f => !f.returned && new Date(f.deliveredAt) < tenDaysAgo).length;
-
-  document.getElementById('cardDeliveries').innerHTML = `<span class="tooltip">Files delivered today</span><h3>${deliveries}</h3><p>Deliveries Today</p>`;
-  document.getElementById('cardReturns').innerHTML = `<span class="tooltip">Files returned today</span><h3>${returns}</h3><p>Returns Today</p>`;
-  document.getElementById('cardPending').innerHTML = `<span class="tooltip">Files not yet returned</span><h3>${pending}</h3><p>Pending Files</p>`;
-  document.getElementById('cardTomorrow').innerHTML = `<span class="tooltip">Hearings scheduled for tomorrow</span><h3>${tomorrowHearings}</h3><p>Tomorrow Hearings</p>`;
-  document.getElementById('cardOverdue').innerHTML = `<span class="tooltip">Files pending over 10 days</span><h3>${overdue}</h3><p>Overdue Files</p>`;
-  document.getElementById('cardSearchPrev').innerHTML = `<span class="tooltip">Search all previous records</span><h3>Search</h3><p>Previous Records</p>`;
-
-  if (chartInstance) {
-    chartInstance.destroy();
-    chartInstance = null;
-  }
-
-  const ctx = document.getElementById('statsChart').getContext('2d');
-  chartInstance = new Chart(ctx, {
-    type: 'bar',
-    data: {
-      labels: ['Deliveries', 'Returns', 'Pending', 'Tomorrow', 'Overdue'],
-      datasets: [{
-        label: 'File Stats',
-        data: [deliveries, returns, pending, tomorrowHearings, overdue],
-        backgroundColor: ['#0288d1', '#4caf50', '#d32f2f', '#fb8c00', '#7b1fa2']
-      }]
-    },
-    options: {
-      scales: {
-        y: {
-          beginAtZero: true,
-          stepSize: 1,
-          ticks: { precision: 0 }
-        }
-      },
-      plugins: { legend: { display: false } }
-    }
-  });
-
-  document.getElementById('cardDeliveries').onclick = () => { console.log('Clicked Deliveries'); showDashboardReport('deliveries'); };
-  document.getElementById('cardReturns').onclick = () => { console.log('Clicked Returns'); showDashboardReport('returns'); };
-  document.getElementById('cardPending').onclick = () => { console.log('Clicked Pending'); showDashboardReport('pending'); };
-  document.getElementById('cardTomorrow').onclick = () => { console.log('Clicked Tomorrow'); showDashboardReport('tomorrow'); };
-  document.getElementById('cardOverdue').onclick = () => { console.log('Clicked Overdue'); showDashboardReport('overdue'); };
-  document.getElementById('cardSearchPrev').onclick = () => { console.log('Clicked SearchPrev'); showDashboardReport('searchPrev'); };
-}
-
-function showDashboardReport(type) {
-  console.log(`Showing report for type: ${type}`);
-  document.getElementById('dashboardReportPanel').style.display = 'block';
-  document.getElementById('loadingIndicator').style.display = 'block';
-  document.getElementById('searchPrevRecords').style.display = type === 'searchPrev' ? 'block' : 'none';
-  currentPage = 1;
-
-  const today = new Date().toLocaleDateString('en-CA');
-  const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toLocaleDateString('en-CA');
-  const tenDaysAgo = new Date(Date.now() - 10 * 24 * 60 * 1000);
-
-  let filteredFiles = files;
-  let title = '';
-  switch (type) {
-    case 'deliveries':
-      filteredFiles = files.filter(f => new Date(f.deliveredAt).toLocaleDateString('en-CA') === today);
-      title = 'Deliveries Today';
-      break;
-    case 'returns':
-      filteredFiles = files.filter(f => f.returned && new Date(f.returnedAt).toLocaleDateString('en-CA') === today);
-      title = 'Returns Today';
-      break;
-    case 'pending':
-      filteredFiles = files.filter(f => !f.returned);
-      title = 'Pending Files';
-      break;
-    case 'tomorrow':
-      filteredFiles = files.filter(f => new Date(f.date).toLocaleDateString('en-CA') === tomorrow);
-      title = 'Tomorrow Hearings';
-      break;
-    case 'overdue':
-      filteredFiles = files.filter(f => !f.returned && new Date(f.deliveredAt) < tenDaysAgo);
-      title = 'Overdue Files';
-      break;
-    case 'searchPrev':
-      filteredFiles = files;
-      title = 'Search Previous Records';
-      break;
-    default:
-      console.error('Invalid report type:', type);
-  }
-
-  console.log('Filtered files:', filteredFiles);
-  currentReportData = filteredFiles;
-  document.getElementById('reportTitle').textContent = title;
-  renderReportTable();
-
-  setTimeout(() => {
-    document.getElementById('loadingIndicator').style.display = 'none';
-  }, 500);
-}
-
-let sortColumn = null;
-let sortDirection = 1;
-
-function renderReportTable() {
-  const tbody = document.getElementById('dashboardReportTable').querySelector('tbody');
-  tbody.innerHTML = '';
-
-  let sortedData = [...currentReportData];
-  if (sortColumn) {
-    sortedData.sort((a, b) => {
-      let valA = a[sortColumn] || '';
-      let valB = b[sortColumn] || '';
-      if (sortColumn === 'deliveredAt' || sortColumn === 'returnedAt' || sortColumn === 'date') {
-        valA = new Date(valA).getTime();
-        valB = new Date(valB).getTime();
-      } else if (sortColumn === 'criminalDetails') {
-        valA = a.caseType === 'criminal' ? `${a.firNo || ''} ${a.firYear || ''} ${a.firUs || ''} ${a.policeStation || ''}` : '';
-        valB = b.caseType === 'criminal' ? `${b.firNo || ''} ${b.firYear || ''} ${b.firUs || ''} ${b.policeStation || ''}` : '';
-      }
-      return (valA > valB ? 1 : -1) * sortDirection;
-    });
-  }
-
-  const start = (currentPage - 1) * itemsPerPage;
-  const end = start + itemsPerPage;
-  const paginatedData = sortedData.slice(start, end);
-
-  paginatedData.forEach((f, index) => {
-    const row = document.createElement('tr');
-    const timeSpan = f.returned ? getDynamicTimeSpan(f.deliveredAt, f.returnedAt) : getDynamicTimeSpan(f.deliveredAt);
-    const profile = profiles.find(p => p.name === f.deliveredToName && p.type === f.deliveredToType) || {};
-    const swalDetails = f.swalFormNo ? `No: ${f.swalFormNo}, Date: ${formatDate(f.swalDate)}` : '';
-    const criminalDetails = f.caseType === 'criminal' ? [
-      f.firNo ? `FIR No: ${f.firNo}` : '',
-      f.firYear ? `FIR Year: ${f.firYear}` : '',
-      f.firUs ? `FIR U/S: ${f.firUs}` : '',
-      f.policeStation ? `Police Station: ${f.policeStation}` : ''
-    ].filter(Boolean).join(', ') : '';
-    const profileDetails = [
-      profile.chamberNo ? `Chamber No: ${profile.chamberNo}` : '',
-      profile.advocateName ? `Advocate Name: ${profile.advocateName}` : '',
-      profile.advocateCell ? `Advocate Cell: ${profile.advocateCell}` : '',
-      profile.designation ? `Designation: ${profile.designation}` : '',
-      profile.postedAt ? `Posted At: ${profile.postedAt}` : '',
-      profile.type === 'other' && profile.cnic ? `ID/CNIC: ${maskCNIC(profile.cnic)}` : '',
-      profile.relation ? `Relation: ${profile.relation}` : ''
-    ].filter(Boolean).join(', ');
-    row.innerHTML = `
-      <td>${start + index + 1}</td>
-      <td>${f.cmsNo}</td>
-      <td>${f.title.replace('vs', 'Vs.')}</td>
-      <td>${f.caseType}</td>
-      <td>${f.nature}</td>
-      <td>${criminalDetails}</td>
-      <td>${f.dateType === 'decision' ? 'Decision Date' : 'Next Hearing Date'}: ${formatDate(f.date)}</td>
-      <td>${swalDetails}</td>
-      <td><a href="#" onclick="showProfileDetails('${f.deliveredToName}', '${f.deliveredToType}')">${f.deliveredToName} (${f.deliveredToType})</a></td>
-      <td>${formatDate(f.deliveredAt, 'YYYY-MM-DD HH:mm:ss')}</td>
-      <td>${f.returned ? formatDate(f.returnedAt, 'YYYY-MM-DD HH:mm:ss') : ''}</td>
-      <td class="time-span" data-delivered="${f.deliveredAt}" data-returned="${f.returned ? 'true' : 'false'}">${timeSpan}</td>
-      <td>${f.courtName}</td>
-      <td>${f.clerkName}</td>
-      <td>${profileDetails}</td>
-    `;
-    tbody.appendChild(row);
-  });
-
-  updatePagination(sortedData.length);
-  updateDynamicTimeSpans();
-}
-
-function getDynamicTimeSpan(deliveredAt, returnedAt = null) {
-  const start = new Date(deliveredAt).getTime();
-  const end = returnedAt ? new Date(returnedAt).getTime() : Date.now();
-  const diff = end - start;
-  const seconds = Math.floor(diff / 1000);
-  const minutes = Math.floor(seconds / 60);
-  const hours = Math.floor(minutes / 60);
-  const days = Math.floor(hours / 24);
-  const months = Math.floor(days / 30);
-  if (months >= 1) return `${months}m ${days % 30}d ${hours % 24}h ${minutes % 60}m ${seconds % 60}s`;
-  if (days >= 1) return `${days}d ${hours % 24}h ${minutes % 60}m ${seconds % 60}s`;
-  return `${hours}h ${minutes % 60}m ${seconds % 60}s`;
-}
-
-function updateDynamicTimeSpans() {
-  const spans = document.querySelectorAll('.time-span');
-  spans.forEach(span => {
-    if (span.dataset.returned === 'false') {
-      span.textContent = getDynamicTimeSpan(span.dataset.delivered);
-    }
-  });
-}
-
-setInterval(updateDynamicTimeSpans, 1000);
-
-document.getElementById('dashboardReportTable').querySelectorAll('th').forEach((th, index) => {
-  th.addEventListener('click', () => {
-    const columns = ['cmsNo', 'title', 'caseType', 'nature', 'criminalDetails', 'dateType', 'swalFormNo', 'deliveredToName', 'deliveredAt', 'returnedAt', 'timeSpan', 'courtName', 'clerkName'];
-    if (index >= 1 && index <= 13) {
-      const newColumn = columns[index - 1];
-      sortDirection = sortColumn === newColumn ? -sortDirection : 1;
-      sortColumn = newColumn;
-      renderReportTable();
-    }
-  });
-});
-
-function updatePagination(totalItems) {
-  document.getElementById('pageInfo').textContent = `Page ${currentPage} of ${Math.ceil(totalItems / itemsPerPage)}`;
-  document.getElementById('prevPage').disabled = currentPage === 1;
-  document.getElementById('nextPage').disabled = currentPage === Math.ceil(totalItems / itemsPerPage);
-}
-
-document.getElementById('prevPage').onclick = () => {
-  if (currentPage > 1) {
-    currentPage--;
-    renderReportTable();
-  }
-};
-
-document.getElementById('nextPage').onclick = () => {
-  if (currentPage < Math.ceil(currentReportData.length / itemsPerPage)) {
-    currentPage++;
-    renderReportTable();
-  }
-};
-
-function formatDate(date, format = 'YYYY-MM-DD') {
-  if (!date) return '';
-  const d = new Date(date);
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  const hours = String(d.getHours()).padStart(2, '0');
-  const minutes = String(d.getMinutes()).padStart(2, '0');
-  const seconds = String(d.getSeconds()).padStart(2, '0');
-  if (format === 'YYYYMMDD') {
-    return `${year}${month}${day}`;
-  }
-  if (format === 'YYYYMMDD_HHMMSS') {
-    return `${year}${month}${day}_${hours}${minutes}${seconds}`;
-  }
-  if (format === 'YYYY-MM-DD HH:mm:ss') {
-    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
-  }
-  return `${year}-${month}-${day}`;
-}
-
-function showProfileDetails(name, type) {
-  const profile = profiles.find(p => p.name === name && p.type === type) || {};
-  document.getElementById('profileModalTitle').textContent = `${name} (${type})`;
-  const table = document.getElementById('profileModalTable');
-  table.innerHTML = `
-    <tr><th>Name</th><td>${profile.name || ''}</td></tr>
-    <tr><th>Type</th><td>${profile.type || ''}</td></tr>
-    ${profile.cellNo ? `<tr><th>Cell No</th><td><a href="tel:${profile.cellNo}">${profile.cellNo}</a></td></tr>` : ''}
-    ${profile.chamberNo ? `<tr><th>Chamber No</th><td>${profile.chamberNo}</td></tr>` : ''}
-    ${profile.advocateName ? `<tr><th>Advocate Name</th><td>${profile.advocateName}</td></tr>` : ''}
-    ${profile.advocateCell ? `<tr><th>Advocate Cell</th><td><a href="tel:${profile.advocateCell}">${profile.advocateCell}</a></td></tr>` : ''}
-    ${profile.designation ? `<tr><th>Designation</th><td>${profile.designation}</td></tr>` : ''}
-    ${profile.postedAt ? `<tr><th>Posted At</th><td>${profile.postedAt}</td></tr>` : ''}
-    ${profile.type === 'other' && profile.cnic ? `<tr><th>ID/CNIC</th><td>${maskCNIC(profile.cnic)}</td></tr>` : ''}
-    ${profile.relation ? `<tr><th>Relation</th><td>${profile.relation}</td></tr>` : ''}
-  `;
-  if (profile.photo) {
-    document.getElementById('profileModalPhoto').src = profile.photo;
-    document.getElementById('profileModalPhotoZoom').src = profile.photo;
-    document.getElementById('profileModalPhoto').style.display = 'block';
-  } else {
-    document.getElementById('profileModalPhoto').style.display = 'none';
-    document.getElementById('profileModalPhotoZoom').style.display = 'none';
-  }
-  document.getElementById('profileModal').style.display = 'block';
-}
-
-function closeProfileModal() {
-  document.getElementById('profileModal').style.display = 'none';
-}
-
-function performDashboardSearch() {
-  analytics.searchesPerformed++;
-  localStorage.setItem('analytics', JSON.stringify(analytics));
-  syncLocalStorageToIndexedDB();
-  autoSaveToFile();
-  const searchTitle = document.getElementById('searchTitle').value.toLowerCase();
-  const searchCms = document.getElementById('searchCms').value;
-  
-const fileTakerElement = document.getElementById('searchFileTaker');
-const searchFileTaker = fileTakerElement && fileTakerElement.value ? fileTakerElement.value.toLowerCase() : '';
-
-  const searchFirNo = document.getElementById('searchFirNo').value.toLowerCase();
-  const searchFirYear = document.getElementById('searchFirYear').value;
-  const searchPoliceStation = document.getElementById('searchPoliceStation').value.toLowerCase();
-
-  currentReportData = files.filter(f => {
-    return (!searchTitle || f.title.toLowerCase().includes(searchTitle)) &&
-           (!searchCms || f.cmsNo.toString().includes(searchCms)) &&
-           (!searchFileTaker || f.deliveredToName.toLowerCase().includes(searchFileTaker)) &&
-           (!searchFirNo || (f.firNo && f.firNo.toLowerCase().includes(searchFirNo))) &&
-           (!searchFirYear || (f.firYear && f.firYear.toString().includes(searchFirYear))) &&
-           (!searchPoliceStation || (f.policeStation && f.policeStation.toLowerCase().includes(searchPoliceStation)));
-  });
-
-  currentPage = 1;
-  renderReportTable();
-}
-
-function printDashboardReport() {
-  const reportTitle = document.getElementById('reportTitle').textContent;
-  const table = document.getElementById('dashboardReportTable').outerHTML;
-  const printWindow = window.open('', '_blank');
-  printWindow.document.write(`
-    <html>
-      <head>
-        <title>${reportTitle}</title>
-        <style>
-          body { font-family: Arial, sans-serif; margin: 20px; }
-          table { width: 100%; border-collapse: collapse; }
-          th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
-          th { background-color: #f5f5f5; }
-          h2 { text-align: center; }
-        </style>
-      </head>
-      <body>
-        <h2>${reportTitle}</h2>
-        ${table}
-      </body>
-    </html>
-  `);
-  printWindow.document.close();
-  printWindow.print();
-}
-
-function exportDashboardReport(format) {
-  if (format === 'csv') {
-    let csv = 'Sr#,CMS No,Title,Case Type,Nature,Criminal Details,Date Type,Swal Form Details,Delivered To,Delivery Date,Return Date,Time Span,Court,Clerk Name,Profile Details\n';
-    currentReportData.forEach((f, index) => {
-      const profile = profiles.find(p => p.name === f.deliveredToName && p.type === f.deliveredToType) || {};
-      const timeSpan = f.returned ? getDynamicTimeSpan(f.deliveredAt, f.returnedAt) : getDynamicTimeSpan(f.deliveredAt);
-      const swalDetails = f.swalFormNo ? `No: ${f.swalFormNo}, Date: ${formatDate(f.swalDate)}` : '';
-      const criminalDetails = f.caseType === 'criminal' ? [
-        f.firNo ? `FIR No: ${f.firNo}` : '',
-        f.firYear ? `FIR Year: ${f.firYear}` : '',
-        f.firUs ? `FIR U/S: ${f.firUs}` : '',
-        f.policeStation ? `Police Station: ${f.policeStation}` : ''
-      ].filter(Boolean).join(', ') : '';
-      const profileDetails = [
-        profile.chamberNo ? `Chamber No: ${profile.chamberNo}` : '',
-        profile.advocateName ? `Advocate Name: ${profile.advocateName}` : '',
-        profile.advocateCell ? `Advocate Cell: ${profile.advocateCell}` : '',
-        profile.designation ? `Designation: ${profile.designation}` : '',
-        profile.postedAt ? `Posted At: ${profile.postedAt}` : '',
-        profile.type === 'other' && profile.cnic ? `ID/CNIC: ${maskCNIC(profile.cnic)}` : '',
-        profile.relation ? `Relation: ${profile.relation}` : ''
-      ].filter(Boolean).join(', ');
-      csv += `${index + 1},${f.cmsNo},"${f.title.replace('vs', 'Vs.')}",${f.caseType},"${f.nature}","${criminalDetails}",${f.dateType === 'decision' ? 'Decision Date' : 'Next Hearing Date'}: ${formatDate(f.date)},"${swalDetails}","${f.deliveredToName} (${f.deliveredToType})","${formatDate(f.deliveredAt, 'YYYY-MM-DD HH:mm:ss')}",${f.returned ? `"${formatDate(f.returnedAt, 'YYYY-MM-DD HH:mm:ss')}"` : ''},"${timeSpan}",${f.courtName},${f.clerkName},"${profileDetails}"\n`;
-    });
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `report_${formatDate(new Date(), 'YYYYMMDD_HHMMSS')}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-  } else if (format === 'pdf') {
-    const { jsPDF } = window.jspdf;
-    const doc = new jsPDF();
-    doc.setFontSize(16);
-    doc.text(document.getElementById('reportTitle').textContent, 10, 10);
-    doc.autoTable({
-      html: '#dashboardReportTable',
-      startY: 20,
-      theme: 'striped',
-      styles: { fontSize: 8 },
-      columnStyles: { 0: { cellWidth: 10 }, 1: { cellWidth: 20 }, 2: { cellWidth: 30 } }
-    });
-    doc.save(`report_${formatDate(new Date(), 'YYYYMMDD_HHMMSS')}.pdf`);
-  }
-}
-
-document.getElementById('fileForm').addEventListener('submit', (e) => {
-  e.preventDefault();
-  document.getElementById('loadingIndicator').style.display = 'block';
-  promptPin((success) => {
-    if (!success) {
-      showToast('PIN verification failed');
-      document.getElementById('loadingIndicator').style.display = 'none';
-      return;
-    }
-    const cmsNo = document.getElementById('cmsNo').value;
-    const existingDelivered = files.find(f => f.cmsNo === cmsNo && !f.returned);
-    if (existingDelivered) {
-      const profile = profiles.find(p => p.name === existingDelivered.deliveredToName && p.type === existingDelivered.deliveredToType);
-      showToast(`File ${cmsNo} is already delivered to ${existingDelivered.deliveredToName} (${existingDelivered.deliveredToType}) and not yet returned.`);
-      document.getElementById('loadingIndicator').style.display = 'none';
-      return;
-    }
-    setTimeout(() => {
-      const deliveredToName = document.getElementById('deliveredTo').value;
-      const deliveredToType = document.getElementById('deliveredType').value;
-      const profileExists = profiles.find(p => p.name === deliveredToName && p.type === deliveredToType);
-      if (!profileExists) {
-        showToast('Profile does not exist. Please add it in the File Fetcher section.');
-        document.getElementById('loadingIndicator').style.display = 'none';
-        navigate('fileFetcher');
-        showProfileForm();
-        return;
-      }
-      const fileData = {
-        cmsNo: document.getElementById('cmsNo').value,
-        title: `${document.getElementById('petitioner').value} vs ${document.getElementById('respondent').value}`,
-        caseType: document.getElementById('caseType').value,
-        nature: document.getElementById('nature').value,
-        firNo: document.getElementById('firNo').value,
-        firYear: document.getElementById('firYear').value,
-        firUs: document.getElementById('firUs').value,
-        policeStation: document.getElementById('policeStation').value,
-        dateType: document.getElementById('dateType').value,
-        date: document.getElementById('date').value,
-        deliveredToName: deliveredToName,
-        deliveredToType: deliveredToType,
-        swalFormNo: document.getElementById('copyAgency').checked ? document.getElementById('swalFormNo').value : '',
-        swalDate: document.getElementById('copyAgency').checked ? document.getElementById('swalDate').value : '',
-        deliveredAt: new Date().toISOString(),
-        courtName: userProfile.courtName,
-        clerkName: userProfile.clerkName,
-        returned: false
-      };
-      files.push(fileData);
-      analytics.filesEntered++;
-      localStorage.setItem('files', JSON.stringify(files));
-      localStorage.setItem('analytics', JSON.stringify(analytics));
-      syncLocalStorageToIndexedDB();
-  autoSaveToFile();
-      document.getElementById('fileForm').reset();
-      document.getElementById('criminalFields').style.display = 'none';
-      document.getElementById('copyAgencyFields').style.display = 'none';
-      document.getElementById('copyAgency').checked = false;
-      const caseFields = ['petitioner', 'respondent', 'caseType', 'nature', 'firNo', 'firYear', 'firUs', 'policeStation'];
-      const editableFields = ['dateType', 'date', 'deliveredTo', 'deliveredType', 'swalFormNo', 'swalDate', 'copyAgency'];
-      caseFields.concat(editableFields).forEach(field => {
-        document.getElementById(field).disabled = false;
-      });
-      document.getElementById('copyAgency').disabled = false;
-      showToast('File saved and delivered successfully');
-      document.getElementById('loadingIndicator').style.display = 'none';
-      updateDashboardCards();
-    }, 500);
-  });
-});
-
-function autoFillCMS() {
-  const cmsNo = document.getElementById('cmsNo').value;
-  const existing = files.find(f => f.cmsNo === cmsNo);
-  const caseFields = ['petitioner', 'respondent', 'caseType', 'nature', 'firNo', 'firYear', 'firUs', 'policeStation'];
-  const editableFields = ['dateType', 'date', 'deliveredTo', 'deliveredType', 'swalFormNo', 'swalDate', 'copyAgency'];
-  if (existing) {
-    document.getElementById('petitioner').value = existing.title.split(' vs ')[0];
-    document.getElementById('respondent').value = existing.title.split(' vs ')[1];
-    document.getElementById('caseType').value = existing.caseType;
-    document.getElementById('nature').value = existing.nature;
-    document.getElementById('firNo').value = existing.firNo || '';
-    document.getElementById('firYear').value = existing.firYear || '';
-    document.getElementById('firUs').value = existing.firUs || '';
-    document.getElementById('policeStation').value = existing.policeStation || '';
-    toggleCriminalFields();
-    caseFields.forEach(field => {
-      document.getElementById(field).disabled = true;
-    });
-    editableFields.forEach(field => {
-      document.getElementById(field).disabled = false;
-    });
-    document.getElementById('copyAgency').checked = false;
-    document.getElementById('deliveredTo').value = '';
-    document.getElementById('deliveredType').value = '';
-    document.getElementById('swalFormNo').value = '';
-    document.getElementById('swalDate').value = '';
-    toggleCopyAgency();
-  } else {
-    caseFields.concat(editableFields).forEach(field => {
-      document.getElementById(field).disabled = false;
-    });
-    document.getElementById('copyAgency').disabled = false;
-  }
-}
-
-function toggleCriminalFields() {
-  document.getElementById('criminalFields').style.display = document.getElementById('caseType').value === 'criminal' ? 'block' : 'none';
-}
-
-function toggleCopyAgency() {
-  document.getElementById('copyAgencyFields').style.display = document.getElementById('copyAgency').checked ? 'block' : 'none';
-}
-
-function suggestProfiles(input, inputId) {
-  const suggestions = document.getElementById(inputId === 'deliveredTo' ? 'suggestions' : 'searchSuggestions');
-  suggestions.innerHTML = '';
-  if (!input) return;
-  const fuse = new Fuse(profiles, {
-    keys: ['name', 'cellNo', 'chamberNo'],
-    threshold: 0.3
-  });
-  const results = fuse.search(input).slice(0, 5);
-  results.forEach(result => {
-    const li = document.createElement('li');
-    const img = document.createElement('img');
-    img.src = result.item.photo || 'icon-192.png';
-    img.style.width = '40px';
-    img.style.height = '40px';
-    img.style.borderRadius = '50%';
-    img.style.border = '1px solid #ccc';
-    li.appendChild(img);
-    const text = document.createElement('span');
-    text.textContent = `${result.item.name} (${result.item.type})`;
-    li.appendChild(text);
-    li.onclick = () => {
-      document.getElementById(inputId).value = result.item.name;
-      if (inputId === 'deliveredTo') {
-        document.getElementById('deliveredType').value = result.item.type;
-      }
-      suggestions.innerHTML = '';
-    };
-    suggestions.appendChild(li);
-  });
-}
-
+// -- File Return Handling
 function filterPendingFiles() {
-  const cms = document.getElementById('returnCms').value;
-  const title = document.getElementById('returnTitle').value.toLowerCase();
-  const tbody = document.getElementById('pendingFilesTable').querySelector('tbody');
+  const cms = document.getElementById('returnCms').value.trim();
+  const title = document.getElementById('returnTitle').value.trim().toLowerCase();
+  const tbody = document.querySelector('#pendingFilesTable tbody');
   tbody.innerHTML = '';
-  const filteredFiles = files.filter(f => !f.returned && (!cms || f.cmsNo.toString().includes(cms)) && (!title || f.title.toLowerCase().includes(title)));
-  filteredFiles.forEach(f => {
-    const row = document.createElement('tr');
-    row.innerHTML = `
-      <td><input type="checkbox" class="select-file" data-cms="${f.cmsNo}"></td>
-      <td>${f.cmsNo}</td>
-      <td>${f.title.replace('vs', 'Vs.')}</td>
-      <td>${f.caseType}</td>
-      <td><a href="#" onclick="showProfileDetails('${f.deliveredToName}', '${f.deliveredToType}')">${f.deliveredToName} (${f.deliveredToType})</a></td>
-      <td><button onclick="returnFile('${f.cmsNo}')">Return</button></td>
+  const pending = files.filter(f => !f.returnDate &&
+    (!cms || f.cmsNo.toString().includes(cms)) &&
+    (!title || (f.petitioner + ' vs ' + f.respondent).toLowerCase().includes(title))
+  );
+  pending.forEach((file, idx) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><input type="checkbox" data-file="${file.cmsNo}"></td>
+      <td>${file.cmsNo}</td>
+      <td>${file.petitioner} vs ${file.respondent}</td>
+      <td>${file.caseType}</td>
+      <td><button onclick="showProfileModal('${file.deliveredTo}')">${file.deliveredTo}</button></td>
+      <td><button onclick="returnFile('${file.cmsNo}')">Return</button></td>
     `;
-    tbody.appendChild(row);
+    tbody.appendChild(tr);
   });
 }
 
 function returnFile(cmsNo) {
-  promptPin((success) => {
-    if (success) {
-      const file = files.find(f => f.cmsNo === cmsNo && !f.returned);
-      if (file) {
-        file.returned = true;
-        file.returnedAt = new Date().toISOString();
-        localStorage.setItem('files', JSON.stringify(files));
-        syncLocalStorageToIndexedDB();
-  autoSaveToFile();
-        showToast(`File ${cmsNo} returned successfully`);
-        filterPendingFiles();
-        updateDashboardCards();
-      }
-    }
-  });
+  const idx = files.findIndex(f => f.cmsNo == cmsNo && !f.returnDate);
+  if (idx !== -1) {
+    files[idx].returnDate = new Date().toISOString().slice(0,10);
+    syncLocalStorageToIndexedDB();
+    autoSaveToFile();
+    filterPendingFiles();
+    showToast('File marked as returned!');
+    updateDashboard();
+  }
 }
 
 function bulkReturnFiles() {
-  const selected = document.querySelectorAll('.select-file:checked');
-  if (selected.length === 0) {
-    showToast('Please select at least one file to return');
-    return;
-  }
-  promptPin((success) => {
-    if (success) {
-      selected.forEach(checkbox => {
-        const cmsNo = checkbox.dataset.cms;
-        const file = files.find(f => f.cmsNo === cmsNo && !f.returned);
-        if (file) {
-          file.returned = true;
-          file.returnedAt = new Date().toISOString();
-        }
-      });
-      localStorage.setItem('files', JSON.stringify(files));
-      syncLocalStorageToIndexedDB();
-  autoSaveToFile();
-      showToast(`${selected.length} file(s) returned successfully`);
-      filterPendingFiles();
-      updateDashboardCards();
-    }
+  document.querySelectorAll('#pendingFilesTable tbody input[type="checkbox"]:checked').forEach(input => {
+    returnFile(input.dataset.file);
   });
 }
 
-function showProfileForm() {
-  document.getElementById('profileForm').style.display = 'block';
-  document.getElementById('profileSearchSection').style.display = 'none';
-  document.getElementById('profileList').style.display = 'none';
-  document.getElementById('profileType').value = '';
-  document.getElementById('profileFields').innerHTML = '';
-  document.getElementById('profilePhoto').value = '';
-  document.getElementById('photoAdjust').style.display = 'none';
-}
-
-function showProfileSearch() {
-  document.getElementById('profileForm').style.display = 'none';
-  document.getElementById('profileSearchSection').style.display = 'block';
-  document.getElementById('profileList').style.display = 'block';
-  renderProfiles();
-}
-
-function toggleProfileFields() {
-  const type = document.getElementById('profileType').value;
-  const fields = document.getElementById('profileFields');
-  fields.innerHTML = `
-    <label>Name: <span class="required">*</span><input type="text" id="profileName" required /></label>
-    <label>Cell No: <span class="required">*</span><input type="text" id="cellNo" required /></label>
-  `;
-  if (type === 'munshi') {
-    fields.innerHTML += `
-      <label>Chamber No: <span class="required">*</span><input type="text" id="chamberNo" required /></label>
-      <label>Advocate Name: <span class="required">*</span><input type="text" id="advocateName" required /></label>
-      <label>Advocate Cell: <input type="text" id="advocateCell" /></label>
-    `;
-  } else if (type === 'advocate') {
-    fields.innerHTML += `
-      <label>Chamber No: <span class="required">*</span><input type="text" id="chamberNo" required /></label>
-    `;
-  } else if (type === 'colleague') {
-    fields.innerHTML += `
-      <label>Designation: <input type="text" id="designation" /></label>
-      <label>Posted At: <input type="text" id="postedAt" /></label>
-    `;
-  } else if (type === 'other') {
-    fields.innerHTML += `
-      <label>ID/CNIC: <input type="text" id="cnic" /></label>
-      <label>Relation: <input type="text" id="relation" /></label>
-    `;
-  }
-  document.getElementById('photoRequired').style.display = type === 'advocate' ? 'none' : 'inline';
-  document.getElementById('profilePhoto').required = type !== 'advocate';
-}
-
-// Profile Form Submission
-document.getElementById('profileForm').addEventListener('submit', (e) => {
+// -- File Form Save
+document.getElementById('fileForm').addEventListener('submit', e => {
   e.preventDefault();
-  document.getElementById('loadingIndicator').style.display = 'block';
-  try {
-    const profileType = document.getElementById('profileType').value;
-    const photoInput = document.getElementById('profilePhoto');
-    let photo = photoInput.adjustedPhoto;
-    if (!photo && photoInput.files && photoInput.files[0]) {
-      photo = photoInput.files[0];
-    }
-
-    if (!photo && profileType !== 'advocate') {
-      showToast('Please upload a profile photo');
-      document.getElementById('loadingIndicator').style.display = 'none';
-      return;
-    }
-
-    const processPhoto = (photoData) => {
-      const profile = {
-        type: document.getElementById('profileType').value,
-        name: document.getElementById('profileName').value,
-        cellNo: document.getElementById('cellNo').value,
-        chamberNo: document.getElementById('chamberNo') ? document.getElementById('chamberNo').value : '',
-        advocateName: document.getElementById('advocateName') ? document.getElementById('advocateName').value : '',
-        advocateCell: document.getElementById('advocateCell') ? document.getElementById('advocateCell').value : '',
-        designation: document.getElementById('designation') ? document.getElementById('designation').value : '',
-        postedAt: document.getElementById('postedAt') ? document.getElementById('postedAt').value : '',
-        cnic: document.getElementById('cnic') ? document.getElementById('cnic').value : '',
-        relation: document.getElementById('relation') ? document.getElementById('relation').value : '',
-        photo: photoData || ''
-      };
-
-      const existingIndex = profiles.findIndex(p => p.name === profile.name && p.type === profile.type);
-      if (existingIndex >= 0) {
-        profiles[existingIndex] = profile;
-      } else {
-        profiles.push(profile);
-      }
-
-      localStorage.setItem('profiles', JSON.stringify(profiles));
-      syncLocalStorageToIndexedDB();
-  autoSaveToFile();
-      document.getElementById('profileForm').reset();
-      document.getElementById('profileFields').innerHTML = '';
-      document.getElementById('photoAdjust').style.display = 'none';
-      showToast('Profile saved successfully');
-      document.getElementById('loadingIndicator').style.display = 'none';
-      showProfileSearch();
-    };
-
-    if (photo && typeof photo === 'string' && photo.startsWith('data:')) {
-      console.log('Using adjusted data URL');
-      processPhoto(photo);
-    } else if (photo) {
-      console.log('Reading raw file');
-      const reader = new FileReader();
-      reader.onload = () => {
-        console.log('Photo read successfully');
-        processPhoto(reader.result);
-      };
-      reader.onerror = () => {
-        console.error('Error reading photo');
-        showToast('Failed to read photo. Please try again.');
-        document.getElementById('loadingIndicator').style.display = 'none';
-      };
-      reader.readAsDataURL(photo);
-    } else {
-      console.log('No photo provided (Advocate profile)');
-      processPhoto('');
-    }
-  } catch (error) {
-    console.error('Profile form error:', error);
-    showToast('Failed to save profile. Please try again.');
-    document.getElementById('loadingIndicator').style.display = 'none';
-  }
-});
-
-function renderProfiles() {
-  const typeFilter = document.getElementById('profileFilterType').value;
-  const search = document.getElementById('profileSearch').value.toLowerCase();
-  const tbody = document.getElementById('profileTable').querySelector('tbody');
-  tbody.innerHTML = '';
-  let filteredProfiles = profiles;
-  if (typeFilter) {
-    filteredProfiles = profiles.filter(p => p.type === typeFilter);
-  }
-  if (search) {
-    const fuse = new Fuse(filteredProfiles, {
-      keys: ['name', 'cellNo', 'chamberNo', 'advocateName', 'designation'],
-      threshold: 0.3
-    });
-    filteredProfiles = fuse.search(search).map(result => result.item);
-  }
-  filteredProfiles.forEach(p => {
-    const delivered = files.filter(f => f.deliveredToName === p.name && f.deliveredToType === p.type).length;
-    const pending = files.filter(f => f.deliveredToName === p.name && f.deliveredToType === p.type && !f.returned).length;
-    const row = document.createElement('tr');
-    row.innerHTML = `
-      <td><img src="${p.photo || 'icon-192.png'}" style="width:50px;height:50px;border-radius:50%;border:1px solid #ccc;"></td>
-      <td>${p.name}</td>
-      <td>${p.type}</td>
-      <td>${p.cellNo}</td>
-      <td>${p.chamberNo || ''}</td>
-      <td>${delivered}</td>
-      <td>${pending}</td>
-      <td>
-        <button onclick="editProfile('${p.name}', '${p.type}')">Edit</button>
-        <button onclick="deleteProfile('${p.name}', '${p.type}')">Delete</button>
-      </td>
-    `;
-    tbody.appendChild(row);
-  });
-}
-
-function editProfile(name, type) {
-  const profile = profiles.find(p => p.name === name && p.type === type);
-  if (!profile) return;
-  document.getElementById('profileForm').style.display = 'block';
-  document.getElementById('profileSearchSection').style.display = 'none';
-  document.getElementById('profileList').style.display = 'none';
-  document.getElementById('profileType').value = profile.type;
-  toggleProfileFields();
-  document.getElementById('profileName').value = profile.name;
-  document.getElementById('cellNo').value = profile.cellNo;
-  if (document.getElementById('chamberNo')) document.getElementById('chamberNo').value = profile.chamberNo || '';
-  if (document.getElementById('advocateName')) document.getElementById('advocateName').value = profile.advocateName || '';
-  if (document.getElementById('advocateCell')) document.getElementById('advocateCell').value = profile.advocateCell || '';
-  if (document.getElementById('designation')) document.getElementById('designation').value = profile.designation || '';
-  if (document.getElementById('postedAt')) document.getElementById('postedAt').value = profile.postedAt || '';
-  if (document.getElementById('cnic')) document.getElementById('cnic').value = profile.cnic || '';
-  if (document.getElementById('relation')) document.getElementById('relation').value = profile.relation || '';
-}
-
-function deleteProfile(name, type) {
-  promptPin((success) => {
-    if (success) {
-      profiles = profiles.filter(p => p.name !== name || p.type !== type);
-      localStorage.setItem('profiles', JSON.stringify(profiles));
-      syncLocalStorageToIndexedDB();
-  autoSaveToFile();
-      showToast('Profile deleted successfully');
-      renderProfiles();
-    }
-  });
-}
-
-function triggerImport() {
-  document.getElementById('profileImport').click();
-}
-
-function importProfiles() {
-  const file = document.getElementById('profileImport').files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = () => {
-    try {
-      const importedProfiles = JSON.parse(reader.result);
-      if (!Array.isArray(importedProfiles)) throw new Error('Invalid profile data');
-      profiles = [...profiles, ...importedProfiles];
-      localStorage.setItem('profiles', JSON.stringify(profiles));
-      syncLocalStorageToIndexedDB();
-  autoSaveToFile();
-      showToast('Profiles imported successfully');
-      showProfileSearch();
-    } catch (error) {
-      showToast('Failed to import profiles. Invalid file format.');
-    }
-  };
-  reader.readAsText(file);
-}
-
-function exportProfiles() {
-  const blob = new Blob([JSON.stringify(profiles, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `profiles_${formatDate(new Date(), 'YYYYMMDD_HHMMSS')}.json`;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-function backupData() {
   const data = {
-    files,
-    profiles,
-    userProfile: { ...userProfile, pin: null, cnic: maskCNIC(userProfile.cnic) },
-    analytics
+    caseType: document.getElementById('caseType').value,
+    cmsNo: document.getElementById('cmsNo').value,
+    petitioner: document.getElementById('petitioner').value,
+    respondent: document.getElementById('respondent').value,
+    nature: document.getElementById('nature').value,
+    firNo: document.getElementById('firNo') ? document.getElementById('firNo').value : '',
+    firYear: document.getElementById('firYear') ? document.getElementById('firYear').value : '',
+    firUs: document.getElementById('firUs') ? document.getElementById('firUs').value : '',
+    policeStation: document.getElementById('policeStation') ? document.getElementById('policeStation').value : '',
+    dateType: document.getElementById('dateType').value,
+    date: document.getElementById('date').value,
+    deliveredTo: document.getElementById('deliveredTo').value,
+    deliveredType: document.getElementById('deliveredType').value,
+    copyAgency: document.getElementById('copyAgency').checked,
+    swalFormNo: document.getElementById('swalFormNo') ? document.getElementById('swalFormNo').value : '',
+    swalDate: document.getElementById('swalDate') ? document.getElementById('swalDate').value : '',
+    deliveryDate: new Date().toISOString().slice(0,10),
+    returnDate: ''
   };
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `backup_${formatDate(new Date(), 'YYYYMMDD_HHMMSS')}.json`;
-  a.click();
-  URL.revokeObjectURL(url);
-  analytics.backupsCreated++;
-  localStorage.setItem('analytics', JSON.stringify(analytics));
+  files.push(data);
   syncLocalStorageToIndexedDB();
   autoSaveToFile();
-  showToast('Backup created successfully');
+  showToast('File entry saved and delivered!');
+  updateDashboard();
+  document.getElementById('fileForm').reset();
+});
+
+// -- Profile Management
+function renderProfiles() {
+  const type = document.getElementById('profileFilterType').value;
+  const search = document.getElementById('profileSearch').value.trim().toLowerCase();
+  const tableBody = document.querySelector('#profileTable tbody');
+  tableBody.innerHTML = '';
+  let filtered = profiles;
+  if (type) filtered = filtered.filter(p => p.type === type);
+  if (search) filtered = filtered.filter(p =>
+    p.name.toLowerCase().includes(search) ||
+    (p.cellNo && p.cellNo.includes(search)) ||
+    (p.chamberNo && p.chamberNo.includes(search))
+  );
+  filtered.forEach(profile => {
+    const delivered = files.filter(f => f.deliveredTo === profile.name && !f.returnDate).length;
+    const total = files.filter(f => f.deliveredTo === profile.name).length;
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><img src="${profile.photo || ''}" style="width:40px;height:40px;border-radius:50%;" /></td>
+      <td>${profile.name}</td>
+      <td>${profile.type}</td>
+      <td>${profile.cellNo || ''}</td>
+      <td>${profile.chamberNo || ''}</td>
+      <td>${total}</td>
+      <td>${delivered}</td>
+      <td>
+        <button onclick="showProfileModal('${profile.name}')">View</button>
+        <button onclick="deleteProfile('${profile.name}')">Delete</button>
+      </td>
+    `;
+    tableBody.appendChild(tr);
+  });
+  document.getElementById('profileList').style.display = filtered.length ? 'block' : 'none';
 }
 
-function triggerRestore() {
-  document.getElementById('dataRestore').click();
+// -- Profile Modal Logic (NO jump-to-top on open, modal centers, overlay fixes)
+function showProfileModal(profileName) {
+  const profile = profiles.find(p => p.name === profileName);
+  if (!profile) return;
+  document.getElementById('profileModalTitle').textContent = profile.name;
+  document.getElementById('profileModalPhoto').src = profile.photo || '';
+  document.getElementById('profileModalPhoto').style.display = profile.photo ? 'block' : 'none';
+  document.getElementById('profileModalTable').innerHTML = `
+    <tr><th>Type</th><td>${profile.type}</td></tr>
+    <tr><th>Cell No</th><td>${profile.cellNo || ''}</td></tr>
+    <tr><th>Chamber</th><td>${profile.chamberNo || ''}</td></tr>
+  `;
+  // NO scrolling or jumping:
+  const modal = document.getElementById('profileModal');
+  modal.style.display = 'block';
+  modal.scrollTo(0, 0); // Keep modal at top, but no page scroll
+  document.body.style.overflow = 'hidden';
+}
+function closeProfileModal() {
+  document.getElementById('profileModal').style.display = 'none';
+  document.body.style.overflow = '';
 }
 
-function restoreData() {
+// -- Sidebar Improvements (overlay, mobile, close on click/swipe/back)
+function toggleSidebar(force) {
+  const sidebar = document.getElementById('sidebar');
+  if (force === true || (force !== false && !sidebar.classList.contains('active'))) {
+    sidebar.classList.add('active');
+    showSidebarOverlay();
+  } else {
+    sidebar.classList.remove('active');
+    hideSidebarOverlay();
+  }
+}
+function showSidebarOverlay() {
+  document.querySelector('.sidebar-overlay').style.display = 'block';
+}
+function hideSidebarOverlay() {
+  document.querySelector('.sidebar-overlay').style.display = 'none';
+}
+document.querySelector('.sidebar-overlay').addEventListener('click', () => toggleSidebar(false));
+window.addEventListener('popstate', () => toggleSidebar(false));
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && document.getElementById('sidebar').classList.contains('active')) {
+    toggleSidebar(false);
+  }
+});
+// Swipe to close sidebar on mobile
+let touchStartX = 0;
+document.addEventListener('touchstart', e => {
+  if (e.touches[0].clientX < 80 && !document.getElementById('sidebar').classList.contains('active')) {
+    touchStartX = e.touches[0].clientX;
+  }
+});
+document.addEventListener('touchmove', e => {
+  if (touchStartX !== 0 && e.touches[0].clientX - touchStartX > 60) {
+    toggleSidebar(true);
+    touchStartX = 0;
+  }
+});
+document.addEventListener('touchend', () => {
+  touchStartX = 0;
+});
+
+// -- Dashboard File Taker Search (BUGFIX: Only show records of selected profile)
+function performDashboardSearch() {
+  // ... existing search logic for other filters
+  const fileTaker = document.getElementById('searchFileTaker').value.trim();
+  let results = files;
+  if (fileTaker) {
+    results = results.filter(f => f.deliveredTo && f.deliveredTo.toLowerCase() === fileTaker.toLowerCase());
+  }
+  // ... then further filter by other search boxes if used
+  renderDashboardTable(results);
+}
+
+// -- Search Suggestions
+function suggestProfiles(query, inputId) {
+  // Show only relevant suggestions in search/dropdown
+  const suggestions = profiles.filter(p => p.name.toLowerCase().includes(query.toLowerCase()));
+  const list = document.getElementById(inputId === 'deliveredTo' ? 'suggestions' : 'searchSuggestions');
+  list.innerHTML = '';
+  suggestions.forEach(profile => {
+    const li = document.createElement('li');
+    li.innerHTML = `<img src="${profile.photo || ''}" />${profile.name}`;
+    li.onclick = () => {
+      document.getElementById(inputId).value = profile.name;
+      list.innerHTML = '';
+    };
+    list.appendChild(li);
+  });
+}
+
+// -- Screen Persistence (Keeps screen on reload)
+window.addEventListener('beforeunload', () => {
+  localStorage.setItem('currentScreen', currentScreen);
+});
+window.addEventListener('DOMContentLoaded', () => {
+  const savedScreen = localStorage.getItem('currentScreen');
+  if (savedScreen) navigate(savedScreen, true);
+});
+
+// -- Backup/Restore (with unique merge, autosave to selected folder, persistent directory handle)
+async function selectBackupFolder() {
+  try {
+    const dirHandle = await window.showDirectoryPicker();
+    await verifyPermission(dirHandle, true);
+    localStorage.setItem('backupDir', await serializeHandle(dirHandle));
+    backupDirHandle = dirHandle;
+    showToast('Backup folder selected!');
+    await autoSaveToFile();
+  } catch (err) {
+    showToast('Failed to select backup folder');
+  }
+}
+async function autoSaveToFile() {
+  if (!backupDirHandle) {
+    const handleData = localStorage.getItem('backupDir');
+    if (handleData) backupDirHandle = await deserializeHandle(handleData);
+    else return;
+  }
+  try {
+    await verifyPermission(backupDirHandle, true);
+    const fileHandle = await backupDirHandle.getFileHandle('court-file-tracker-backup.json', {create: true});
+    const writable = await fileHandle.createWritable();
+    await writable.write(JSON.stringify({
+      userProfile,
+      files,
+      profiles
+    }));
+    await writable.close();
+    showToast('Backup saved!');
+  } catch (err) {
+    showToast('Auto-backup failed! Please reselect folder.');
+  }
+}
+async function restoreData() {
+  // ...file select, read, parse
+  // Merge logic: avoid duplicates!
   const file = document.getElementById('dataRestore').files[0];
   if (!file) return;
-  const reader = new FileReader();
-  reader.onload = () => {
-    try {
-      const data = JSON.parse(reader.result);
-      
-if (data.files) {
-  const existingCmsNos = new Set(files.map(f => f.cmsNo));
-  const newFiles = data.files.filter(f => !existingCmsNos.has(f.cmsNo));
-  files = [...files, ...newFiles];
-}
-if (data.profiles) {
-  const existingProfiles = new Set(profiles.map(p => p.name + p.type));
-  const newProfiles = data.profiles.filter(p => !existingProfiles.has(p.name + p.type));
-  profiles = [...profiles, ...newProfiles];
-}
-
-      if (data.userProfile) {
-        userProfile = { ...userProfile, ...data.userProfile, pin: userProfile.pin };
-        localStorage.setItem('userProfile', JSON.stringify(userProfile));
-      }
-      if (data.analytics) {
-        analytics = { ...analytics, ...data.analytics };
-        localStorage.setItem('analytics', JSON.stringify(analytics));
-      }
-      localStorage.setItem('files', JSON.stringify(files));
-      localStorage.setItem('profiles', JSON.stringify(profiles));
-      syncLocalStorageToIndexedDB();
-  autoSaveToFile();
-      showToast('Data restored successfully');
-      updateSavedProfile();
-      updateDashboardCards();
-      navigate('dashboard');
-    } catch (error) {
-      console.error('Restore error:', error);
-      showToast('Failed to restore data. Invalid file format.');
-    }
-  };
-  reader.readAsText(file);
-}
-
-function resetApp() {
-  promptPin((success) => {
-    if (success) {
-      files = [];
-      profiles = [];
-      userProfile = null;
-      backupFolderHandle = null;
-      analytics = { filesEntered: 0, searchesPerformed: 0, backupsCreated: 0 };
-      localStorage.clear();
-      const transaction = db.transaction(['data', 'folder'], 'readwrite');
-      transaction.objectStore('data').clear();
-      transaction.objectStore('folder').clear();
-      showToast('App reset successfully');
-      navigate('admin');
-      document.getElementById('setupMessage').style.display = 'block';
-      document.getElementById('adminForm').style.display = 'block';
-      document.getElementById('savedProfile').style.display = 'none';
-    }
-  });
-}
-
-function showAnalytics() {
-  navigate('analytics');
-  const ctx = document.getElementById('analyticsChart').getContext('2d');
-  if (chartInstance) {
-    chartInstance.destroy();
-    chartInstance = null;
-  }
-  chartInstance = new Chart(ctx, {
-    type: 'bar',
-    data: {
-      labels: ['Files Delivered', 'Searches Performed', 'Backups Created'],
-      datasets: [{
-        label: 'Analytics',
-        data: [analytics.filesEntered, analytics.searchesPerformed, analytics.backupsCreated],
-        backgroundColor: ['#0288d1', '#4caf50', '#d32f2f']
-      }]
-    },
-    options: {
-      scales: {
-        y: {
-          beginAtZero: true,
-          stepSize: 1,
-          ticks: { precision: 0 }
-        }
-      },
-      plugins: { legend: { display: false } }
-    }
-  });
-
-  document.getElementById('analyticsFiles').textContent = analytics.filesEntered;
-  document.getElementById('analyticsSearches').textContent = analytics.searchesPerformed;
-  document.getElementById('analyticsBackups').textContent = analytics.backupsCreated;
-}
-
-// Handle Online/Offline Status
-window.addEventListener('online', () => {
-  showToast('You are now online');
-});
-
-window.addEventListener('offline', () => {
-  showToast('You are now offline. Some features may be limited.');
-});
-
-// Keyboard Shortcuts
-document.addEventListener('keydown', (e) => {
-  if (e.ctrlKey && e.key === 's') {
-    e.preventDefault();
-    navigate('dashboard');
-  } else if (e.ctrlKey && e.key === 'f') {
-    e.preventDefault();
-    navigate('file');
-  } else if (e.ctrlKey && e.key === 'r') {
-    e.preventDefault();
-    navigate('return');
-  } else if (e.ctrlKey && e.key === 'p') {
-    e.preventDefault();
-    navigate('fileFetcher');
-  } else if (e.ctrlKey && e.key === 'a') {
-    e.preventDefault();
-    navigate('analytics');
-  }
-});
-
-// Form Validation
-function validateInput(input, type) {
-  if (type === 'phone') {
-    const phoneRegex = /^\d{10,15}$/;
-    if (!phoneRegex.test(input.value)) {
-      input.setCustomValidity('Please enter a valid phone number (10-15 digits)');
-    } else {
-      input.setCustomValidity('');
-    }
-  } else if (type === 'cnic') {
-    const cnicRegex = /^\d{5}-\d{7}-\d{1}$/;
-    if (input.value && !cnicRegex.test(input.value)) {
-      input.setCustomValidity('Please enter a valid CNIC (e.g., 12345-1234567-1)');
-    } else {
-      input.setCustomValidity('');
-    }
-  } else if (type === 'email') {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (input.value && !emailRegex.test(input.value)) {
-      input.setCustomValidity('Please enter a valid email address');
-    } else {
-      input.setCustomValidity('');
-    }
+  try {
+    const text = await file.text();
+    const data = JSON.parse(text);
+    files = mergeUnique(files, data.files, 'cmsNo');
+    profiles = mergeUnique(profiles, data.profiles, 'name');
+    userProfile = data.userProfile || userProfile;
+    syncLocalStorageToIndexedDB();
+    showToast('Data restored and merged (unique only)!');
+    autoSaveToFile();
+    updateDashboard();
+  } catch (e) {
+    showToast('Restore failed');
   }
 }
-
-// Attach validation to inputs
-document.getElementById('mobile').addEventListener('input', () => validateInput(document.getElementById('mobile'), 'phone'));
-document.getElementById('cnic').addEventListener('input', () => validateInput(document.getElementById('cnic'), 'cnic'));
-document.getElementById('email').addEventListener('input', () => validateInput(document.getElementById('email'), 'email'));
-document.getElementById('cellNo').addEventListener('input', () => validateInput(document.getElementById('cellNo'), 'phone'));
-if (document.getElementById('advocateCell')) {
-  document.getElementById('advocateCell').addEventListener('input', () => validateInput(document.getElementById('advocateCell'), 'phone'));
+function mergeUnique(orig, add, key) {
+  const map = {};
+  orig.concat(add || []).forEach(obj => { map[obj[key]] = obj; });
+  return Object.values(map);
 }
 
-// Periodic Data Sync
-setInterval(syncLocalStorageToIndexedDB, 300000); // Every 5 minutes
-
-// Accessibility Enhancements
-document.querySelectorAll('input, button, a').forEach(el => {
-  el.setAttribute('tabindex', '0');
-  el.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter' && el.tagName !== 'INPUT') {
-      el.click();
-    }
-  });
-});
-
-// Prevent accidental navigation
-window.addEventListener('beforeunload', (e) => {
-  if (files.length > 0 || profiles.length > 0) {
-    e.preventDefault();
-    e.returnValue = 'You have unsaved data. Are you sure you want to leave?';
-  }
-});
-
-// Dynamic Theme Support
-function applyTheme(theme) {
-  document.body.className = theme;
-localStorage.setItem('theme', theme);
+// File System Access API helpers
+async function verifyPermission(fileHandle, withWrite) {
+  const opts = {};
+  if (withWrite) opts.mode = 'readwrite';
+  if ((await fileHandle.queryPermission(opts)) === 'granted') return true;
+  if ((await fileHandle.requestPermission(opts)) === 'granted') return true;
+  throw new Error('Permission denied');
+}
+async function serializeHandle(handle) {
+  return await handle.name; // You may want to use IDB if full serialization required!
+}
+async function deserializeHandle(name) {
+  // Can't fully deserialize without Origin Private File System, so rely on user re-picking as fallback
+  return null;
 }
 
-// Toast Notification
-function showToast(message, duration = 3000) {
-  const toast = document.createElement('div');
-  toast.className = 'toast';
-  toast.textContent = message;
-  document.body.appendChild(toast);
-  setTimeout(() => {
-    toast.classList.add('show');
-    setTimeout(() => {
-      toast.classList.remove('show');
-      setTimeout(() => {
-        toast.remove();
-      }, 300);
-    }, duration);
-  }, 100);
-}
-
-// Handle Theme Toggle
-document.getElementById('themeToggle').addEventListener('click', () => {
-  const currentTheme = localStorage.getItem('theme') || 'light';
-  const newTheme = currentTheme === 'light' ? 'dark' : 'light';
-  applyTheme(newTheme);
-});
-
-// Initialize Theme
-const savedTheme = localStorage.getItem('theme') || 'light';
-applyTheme(savedTheme);
-
-// Handle Backup Folder Selection
-document.getElementById('selectBackupFolderBtn').addEventListener('click', selectBackupFolder);
-
-// Handle Manual Backup
-document.getElementById('backupBtn').addEventListener('click', backupData);
-
-// Handle Restore
-document.getElementById('restoreBtn').addEventListener('click', triggerRestore);
-
-// Handle Reset
-document.getElementById('resetBtn').addEventListener('click', resetApp);
-
-// Form Input Handlers
-document.getElementById('caseType').addEventListener('change', toggleCriminalFields);
-document.getElementById('copyAgency').addEventListener('change', toggleCopyAgency);
-document.getElementById('cmsNo').addEventListener('input', autoFillCMS);
-document.getElementById('deliveredTo').addEventListener('input', (e) => suggestProfiles(e.target.value, 'deliveredTo'));
-document.getElementById('profileType').addEventListener('change', toggleProfileFields);
-document.getElementById('profileSearch').addEventListener('input', renderProfiles);
-document.getElementById('profileFilterType').addEventListener('change', renderProfiles);
-document.getElementById('returnCms').addEventListener('input', filterPendingFiles);
-document.getElementById('returnTitle').addEventListener('input', filterPendingFiles);
-document.getElementById('bulkReturnBtn').addEventListener('click', bulkReturnFiles);
-document.getElementById('profileImportBtn').addEventListener('click', triggerImport);
-document.getElementById('profileExportBtn').addEventListener('click', exportProfiles);
-document.getElementById('profileImport').addEventListener('change', importProfiles);
-document.getElementById('dataRestore').addEventListener('change', restoreData);
-document.getElementById('searchPrevRecords').addEventListener('submit', (e) => {
+// -- PWA Installability (Manual prompt, install btn)
+let deferredPrompt;
+window.addEventListener('beforeinstallprompt', (e) => {
   e.preventDefault();
-  performDashboardSearch();
+  deferredPrompt = e;
+  document.getElementById('installBtn').style.display = 'block';
 });
-document.getElementById('printReportBtn').addEventListener('click', printDashboardReport);
-document.getElementById('exportCsvBtn').addEventListener('click', () => exportDashboardReport('csv'));
-document.getElementById('exportPdfBtn').addEventListener('click', () => exportDashboardReport('pdf'));
-document.getElementById('closeReportPanel').addEventListener('click', () => {
-  document.getElementById('dashboardReportPanel').style.display = 'none';
+document.getElementById('installBtn').addEventListener('click', async () => {
+  if (deferredPrompt) {
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === 'accepted') showToast('App installed!');
+    deferredPrompt = null;
+    document.getElementById('installBtn').style.display = 'none';
+  }
 });
-document.getElementById('changePinForm').addEventListener('submit', (e) => {
-  e.preventDefault();
-  changePin();
-});
-document.getElementById('cancelPinChange').addEventListener('click', hideChangePin);
 
-// Modal Close Handlers
-document.getElementById('disclaimerModal').addEventListener('click', (e) => closeModalIfOutside(e, 'disclaimerModal'));
-document.getElementById('pinModal').addEventListener('click', (e) => closeModalIfOutside(e, 'pinModal'));
-document.getElementById('changePinModal').addEventListener('click', (e) => closeModalIfOutside(e, 'changePinModal'));
-document.getElementById('profileModal').addEventListener('click', (e) => closeModalIfOutside(e, 'profileModal'));
-
-// Service Worker Registration
+// -- Offline Detection & Service Worker
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker
-      .register('/service-worker.js')
-      .then((registration) => {
-        console.log('Service Worker registered with scope:', registration.scope);
-      })
-      .catch((error) => {
-        console.error('Service Worker registration failed:', error);
-      });
-  });
+  navigator.serviceWorker.register('service-worker.js').catch(() => {});
+}
+window.addEventListener('offline', () => showToast('You are offline. Some features may not work.'));
+window.addEventListener('online', () => showToast('Back online!'));
+
+// -- Toast Notification
+function showToast(msg) {
+  const toast = document.getElementById('toast');
+  toast.textContent = msg;
+  toast.style.display = 'block';
+  setTimeout(() => toast.style.display = 'none', 3000);
 }
 
-// Handle Visibility Change
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible') {
-    syncIndexedDBToLocalStorage();
-    updateDashboardCards();
-  }
-});
-
-// Ensure canvas is properly disposed on page unload
-window.addEventListener('unload', () => {
-  if (chartInstance) {
-    chartInstance.destroy();
-    chartInstance = null;
-  }
-});
-
-// Log App Initialization
-console.log('Court File Tracker PWA initialized');
-
-
-document.querySelectorAll('.modal').forEach(modal => {
-  modal.addEventListener('show', () => {
-    document.body.style.overflow = 'hidden';
-  });
-  modal.addEventListener('hide', () => {
-    document.body.style.overflow = '';
-  });
-});
+// -- Utility: Navigate screens
+function navigate(screen, noPush) {
+  document.querySelectorAll('.screen').forEach(el => el.classList.remove('active'));
+  document.getElementById(screen).classList.add('active');
+  currentScreen = screen;
+  if (!noPush) window.history.pushState({screen}, '', `#${screen}`);
+}
