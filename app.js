@@ -205,6 +205,19 @@ window.onload = () => {
   } else {
     navigate('admin');
   }
+  document.getElementById('installBtn').addEventListener('click', () => {
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      deferredPrompt.userChoice.then((choiceResult) => {
+        if (choiceResult.outcome === 'accepted') {
+          showToast('App installation started');
+        }
+        deferredPrompt = null;
+        document.getElementById('installBtn').style.display = 'none';
+      });
+    }
+  });
+};
   document.getElementById('agreeTerms').addEventListener('change', toggleSaveButton);
   updateDashboardCards();
   setupPushNotifications();
@@ -237,19 +250,6 @@ window.addEventListener('popstate', () => {
     document.getElementById('installBtn').style.display = 'block';
   });
 
-  document.getElementById('installBtn').addEventListener('click', () => {
-    if (deferredPrompt) {
-      deferredPrompt.prompt();
-      deferredPrompt.userChoice.then((choiceResult) => {
-        if (choiceResult.outcome === 'accepted') {
-          showToast('App installation started');
-        }
-        deferredPrompt = null;
-        document.getElementById('installBtn').style.display = 'none';
-      });
-    }
-  });
-};
 
 function setupPushNotifications() {
   if ('Notification' in window && navigator.serviceWorker) {
