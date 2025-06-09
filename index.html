@@ -4,13 +4,11 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1.0, user-scalable=no" />
   <title>Court File Tracker</title>
-  <meta name="theme-color" content="#0d47a1">
+  <link rel="manifest" href="offline.html" />
   <link rel="manifest" href="manifest.json" />
   <link rel="stylesheet" href="style.css" />
-  <link rel="icon" href="icon-192.png" type="image/png">
 </head>
-<body>
-  <button id="installBtn" style="display:none; position: fixed; bottom: 10px; right: 10px; z-index: 1000;">Install App</button>
+  <body>
   <!-- Top Header -->
   <header class="topbar">
     <button id="menuBtn" onclick="toggleSidebar()">☰</button>
@@ -24,19 +22,21 @@
       <button id="closeBtn" class="window-btn close-btn" title="Close">✕</button>
     </div>
   </header>
+
   <!-- Main App Container -->
   <div class="app-container">
     <!-- Sidebar -->
-    <aside id="sidebar" class="sidebar">
-      <div class="sidebar-overlay" onclick="toggleSidebar()"></div>
-      <img src="icon-192.png" alt="CFT Logo" class="sidebar-logo" />
-      <button onclick="navigate('dashboard')"><span>🏠</span> Dashboard</button>
-      <button onclick="navigate('newFile')"><span>📂</span> New Entry</button>
-      <button onclick="navigate('return')"><span>↩️</span> Return File</button>
-      <button onclick="navigate('fileFetcher')"><span>👤</span> File Fetcher</button>
-      <button onclick="navigate('admin')"><span>🛡️</span> Admin</button>
-      <button onclick="navigate('developersDisclaimer')"><span>ℹ️</span> Developers Disclaimer</button>
-    </aside>
+   <aside id="sidebar" class="sidebar">
+  <div class="sidebar-overlay" onclick="toggleSidebar()"></div>
+  <img src="icon-192.png" alt="CFT Logo" class="sidebar-logo" />
+  <button onclick="navigate('dashboard')"><span>🏠</span> Dashboard</button>
+  <button onclick="navigate('newFile')"><span>📂</span> New Entry</button>
+  <button onclick="navigate('return')"><span>↩️</span> Return File</button>
+  <button onclick="navigate('fileFetcher')"><span>👤</span> File Fetcher</button>
+  <button onclick="navigate('admin')"><span>🛡️</span> Admin</button>
+  <button onclick="navigate('developersDisclaimer')"><span>ℹ️</span> Developers Disclaimer</button>
+  <button id="installBtn" style="display:none;"><span>📱</span> Install App</button> <!-- Added Install Button -->
+</aside>
     <!-- Main Screens -->
     <main>
       <!-- Dashboard -->
@@ -65,6 +65,7 @@
             <span class="tooltip">Search all previous records</span>
           </div>
         </div>
+
         <div id="dashboardReportPanel" style="display:none; margin-top: 20px;">
           <div id="loadingIndicator" class="loading" style="display:none;">Loading...</div>
           <h3 id="reportTitle"></h3>
@@ -236,6 +237,7 @@
           <button onclick="bulkReturnFiles()" style="margin-top: 10px;">Return Selected</button>
         </div>
       </section>
+
       <!-- File Fetcher -->
       <section id="fileFetcher" class="screen">
         <h2>File Fetcher</h2>
@@ -293,6 +295,7 @@
           </table>
         </div>
       </section>
+
       <!-- Admin -->
       <section id="admin" class="screen active">
         <h2>Admin</h2>
@@ -301,23 +304,23 @@
           Please complete your profile setup to continue using the app.
         </div>
         <div id="savedProfile" style="display:none; background:white; padding:20px; border-radius:10px; max-width:600px; margin:auto;">
-          <h3>Saved Profile</h3>
-          <table class="profile-table">
-            <tr><th>Photo</th><td><img id="savedUserPhoto" src="" style="width:120px;height:120px;border-radius:50%;border:1px solid #ccc;display:none;" /></td></tr>
-            <tr><th>Name</th><td><span id="savedClerkName"></span></td></tr>
-            <tr><th>Designation</th><td><span id="savedJudgeName"></span></td></tr>
-            <tr><th>Court</th><td><span id="savedCourtName"></span></td></tr>
-            <tr><th>Mobile</th><td><a id="savedMobile" href=""></a></td></tr>
-            <tr><th>Total Files</th><td><span id="totalFiles"></span></td></tr>
-            <tr><th>Total Profiles</th><td><span id="totalProfiles"></span></td></tr>
-          </table>
-          <button onclick="editUserProfile()">Edit Profile</button>
-          <button id="changePinBtn" onclick="showChangePin()" style="display:none;">Change PIN</button>
-          <h4>Data Management</h4>
-          <button onclick="selectBackupFolder()">Select Backup Folder</button>
-          <button onclick="backupData()">Backup to Local</button>
-          <button onclick="triggerRestore()">Restore from Local</button>
-        </div>
+  <h3>Saved Profile</h3>
+  <table class="profile-table">
+    <tr><th>Photo</th><td><img id="savedUserPhoto" src="" style="width:120px;height:120px;border-radius:50%;border:1px solid #ccc;display:none;" /></td></tr>
+    <tr><th>Name</th><td><span id="savedClerkName"></span></td></tr>
+    <tr><th>Designation</th><td><span id="savedJudgeName"></span></td></tr>
+    <tr><th>Court</th><td><span id="savedCourtName"></span></td></tr>
+    <tr><th>Mobile</th><td><a id="savedMobile" href=""></a></td></tr>
+    <tr><th>Total Files</th><td><span id="totalFiles"></span></td></tr>
+    <tr><th>Total Profiles</th><td><span id="totalProfiles"></span></td></tr>
+  </table>
+  <button onclick="editUserProfile()">Edit Profile</button>
+  <button id="changePinBtn" onclick="showChangePin()" style="display:none;">Change PIN</button>
+  <h4>Data Management</h4>
+  <button onclick="selectBackupFolder()">Select Backup Folder</button>
+  <button onclick="backupData()">Backup to Local</button>
+  <button onclick="triggerRestore()">Restore from Local</button>
+</div>
         <input type="file" id="dataRestore" accept=".json" style="display:none;" onchange="restoreData()" />
         <form id="adminForm" style="display:block;">
           <label>Full Name: <span class="required">*</span><input type="text" id="clerkName" required /></label>
@@ -416,13 +419,13 @@
       <div id="toast" class="toast" style="display:none;"></div>
     </main>
   </div>
+
   <!-- External Libraries -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/fuse.js/6.6.2/fuse.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/exif-js"></script>
   <script src="app.js"></script>
-  <!-- Service Worker Registration and Install Prompt -->
   <script>
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', function () {
@@ -430,24 +433,12 @@
           .then(() => console.log("Service Worker registered"));
       });
     }
-    let deferredPrompt = null;
+
+    let deferredPrompt;
     window.addEventListener('beforeinstallprompt', (e) => {
       e.preventDefault();
       deferredPrompt = e;
-      const installBtn = document.getElementById('installBtn');
-      if (installBtn) {
-        installBtn.style.display = 'block';
-        installBtn.onclick = () => {
-          deferredPrompt.prompt();
-          deferredPrompt.userChoice.then((choiceResult) => {
-            if (choiceResult.outcome === 'accepted') {
-              console.log('User accepted the install prompt');
-            }
-            deferredPrompt = null;
-            installBtn.style.display = 'none';
-          });
-        };
-      }
+      console.log("PWA install prompt ready.");
     });
   </script>
 </body>
