@@ -200,6 +200,7 @@ window.onload = () => {
   window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();
     deferredPrompt = e;
+    console.log("PWA install prompt ready.");
     document.getElementById('installBtn').style.display = 'block';
   });
 
@@ -623,7 +624,7 @@ function showDashboardReport(type) {
 
   const today = new Date().toLocaleDateString('en-CA');
   const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toLocaleDateString('en-CA');
-  const tenDaysAgo = new Date(Date.now() - 10 * 24 * 60 * 1000);
+  const tenDaysAgo = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000);
 
   let filteredFiles = files;
   let title = '';
@@ -1577,7 +1578,7 @@ window.addEventListener('beforeunload', (e) => {
 // Dynamic Theme Support
 function applyTheme(theme) {
   document.body.className = theme;
-localStorage.setItem('theme', theme);
+  localStorage.setItem('theme', theme);
 }
 
 // Toast Notification
@@ -1616,9 +1617,6 @@ document.getElementById('backupBtn').addEventListener('click', backupData);
 
 // Handle Restore
 document.getElementById('restoreBtn').addEventListener('click', triggerRestore);
-
-// Handle Reset
-document.getElementById('resetBtn').addEventListener('click', resetApp);
 
 // Form Input Handlers
 document.getElementById('caseType').addEventListener('change', toggleCriminalFields);
