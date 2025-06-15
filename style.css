@@ -102,12 +102,11 @@ h1, h2, h3 {
   flex-direction: column;
   padding: 15px;
   min-height: calc(100vh - 60px);
-  position: fixed;
-  top: 60px;
-  left: 0;
+  position: relative;
   transition: transform 0.3s ease;
   z-index: 200;
 }
+
 .sidebar-logo {
   display: block;
   width: 60px;
@@ -152,8 +151,8 @@ h1, h2, h3 {
   height: calc(100% - 60px);
   background: rgba(0, 0, 0, 0.3);
   z-index: 100;
-  touch-action: none; /* Prevent scrolling on touch */
 }
+
 .sidebar.active + .sidebar-overlay {
   display: block;
 }
@@ -187,9 +186,8 @@ main {
 
 .screen.active p {
   text-align: center;
-  font-size: 20px;
-  font-weight: bolder;
-  color: #FFFFFF;
+  font-size: 16px;
+  color: #333;
   margin: 10px 0;
 }
 
@@ -759,19 +757,4 @@ input[type="checkbox"] {
   font-size: 20px;
   margin-bottom: 16px;
   color: #003366;
-}
-#savedProfile button {
-  margin-top: 10px;
-  padding: 10px 15px;
-  background-color: #003366;
-  color: white;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 16px;
-  transition: background-color 0.2s, transform 0.2s;
-}
-#savedProfile button:hover {
-  background-color: #00509e;
-  transform: scale(1.05);
 }
