@@ -5,10 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1.0, user-scalable=no" />
   <title>Court File Tracker</title>
   <link rel="manifest" href="/court-file-tracker/manifest.json" />
-  <link rel="stylesheet" href="style.css" />
+  <link rel="apple-touch-icon" href="/court-file-tracker/icon-192.png" />
+  <link rel="stylesheet" href="/court-file-tracker/style.css" />
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="File Tracker">
 </head>
-  <body>
-  <!-- Top Header -->
+<body>
   <header class="topbar">
     <button id="menuBtn" onclick="toggleSidebar()">☰</button>
     <div class="top-title">
@@ -18,398 +21,507 @@
     <div class="window-controls" style="display: none;">
       <button id="minimizeBtn" class="window-btn minimize-btn" title="Minimize">−</button>
       <button id="resizeBtn" class="window-btn resize-btn" title="Maximize/Restore">□</button>
-      <button id="closeBtn" class="window-btn close-btn" title="Close">✕</button>
+      <button id="closeBtn" class="window-btn close-btn" title="✕</button>
     </div>
   </header>
 
-  <!-- Main App Container -->
   <div class="app-container">
-    <!-- Sidebar -->
-   <aside id="sidebar" class="sidebar">
+    <aside id="sidebar" class="sidebar">
   <div class="sidebar-overlay" onclick="toggleSidebar()"></div>
-  <img src="icon-192.png" alt="CFT Logo" class="sidebar-logo" />
+  <img src="/court-file-tracker/icon-192.png" alt="CFT Logo" class="sidebar-logo" />
   <button onclick="navigate('dashboard')"><span>🏠</span> Dashboard</button>
-  <button onclick="navigate('newFile')"><span>📂</span> New Entry</button>
+  <button onclick="navigate('addFile')"><span>➕</span> Add New File</button>
   <button onclick="navigate('return')"><span>↩️</span> Return File</button>
-  <button onclick="navigate('fileFetcher')"><span>👤</span> File Fetcher</button>
-  <button onclick="navigate('admin')"><span>🛡️</span> Admin</button>
-  <button onclick="navigate('developersDisclaimer')"><span>ℹ️</span> Developers Disclaimer</button>
-  <button id="installBtn" style="display:none;"><span>📱</span> Install App</button> <!-- Added Install Button -->
-</aside>
-    <!-- Main Screens -->
+  <button onclick="navigate('fileFetcher')"><span>🧑‍⚖️</span> File Fetcher Profiles</button>
+  <button onclick="navigate('reports')"><span>📊</span> Reports</button>
+  <button onclick="navigate('backup')"><span>💾</span> Backup & Restore</button>
+  <button onclick="navigate('about')"><span>ℹ️</span> About App</button>
+  <button onclick="navigate('admin')"><span>⚙️</span> Admin Settings</button>
+  <button id="installBtn" style="display:none;">Install App</button>
+  </aside>
+
     <main>
-      <!-- Dashboard -->
-      <section id="dashboard" class="screen">
-        <h2>Dashboard Summary</h2>
-        <div id="dashboardStats" style="margin-bottom: 20px;">
-          <canvas id="statsChart" height="100"></canvas>
-        </div>
-        <div id="dashboardCards" class="dashboard-grid">
-          <div class="card card-deliveries" id="cardDeliveries">
+      <section id="dashboard" class="screen active">
+        <h2>Dashboard</h2>
+        <div class="dashboard-grid">
+          <div class="card" id="cardDeliveries">
             <span class="tooltip">Files delivered today</span>
+            <h3>0</h3>
+            <p>Deliveries Today</p>
           </div>
-          <div class="card card-returns" id="cardReturns">
+          <div class="card" id="cardReturns">
             <span class="tooltip">Files returned today</span>
+            <h3>0</h3>
+            <p>Returns Today</p>
           </div>
-          <div class="card card-pending" id="cardPending">
+          <div class="card" id="cardPending">
             <span class="tooltip">Files not yet returned</span>
+            <h3>0</h3>
+            <p>Pending Files</p>
           </div>
-          <div class="card card-tomorrow" id="cardTomorrow">
+          <div class="card" id="cardTomorrow">
             <span class="tooltip">Hearings scheduled for tomorrow</span>
+            <h3>0</h3>
+            <p>Tomorrow Hearings</p>
           </div>
-          <div class="card card-overdue" id="cardOverdue">
+          <div class="card" id="cardOverdue">
             <span class="tooltip">Files pending over 10 days</span>
+            <h3>0</h3>
+            <p>Overdue Files</p>
           </div>
-          <div class="card card-search-prev" id="cardSearchPrev">
+          <div class="card card-search" id="cardSearchPrev">
             <span class="tooltip">Search all previous records</span>
+            <h3>Search</h3>
+            <p>Previous Records</p>
           </div>
+        </div>
+        <div class="chart-container">
+          <canvas id="statsChart"></canvas>
         </div>
 
-        <div id="dashboardReportPanel" style="display:none; margin-top: 20px;">
-          <div id="loadingIndicator" class="loading" style="display:none;">Loading...</div>
-          <h3 id="reportTitle"></h3>
-          <div id="searchPrevRecords" style="display:none; margin-bottom: 10px;">
-            <div class="search-container">
-              <label>Title:
-                <input type="text" id="searchTitle" placeholder="A Vs. B" oninput="performDashboardSearch()" />
-              </label>
-              <label>CMS No:
-                <input type="number" id="searchCms" oninput="performDashboardSearch()" />
-              </label>
-              <label>File Taker:
-                <div class="input-container">
-                  <input type="text" id="searchFileTaker" oninput="suggestProfiles(this.value, 'searchFileTaker')" autocomplete="off" />
-                  <ul id="searchSuggestions"></ul>
-                </div>
-              </label>
-              <label>FIR No:
-                <input type="text" id="searchFirNo" oninput="performDashboardSearch()" />
-              </label>
-              <label>FIR Year:
-                <input type="number" id="searchFirYear" oninput="performDashboardSearch()" />
-              </label>
-              <label>Police Station:
-                <input type="text" id="searchPoliceStation" oninput="performDashboardSearch()" />
-              </label>
+        <div id="dashboardReportPanel" class="modal-panel">
+          <div class="modal-panel-content">
+            <button class="close-panel-btn" id="closeReportPanel">&times;</button>
+            <h3 id="reportTitle">Report</h3>
+            <div id="searchPrevRecords" style="display:none;">
+              <div class="search-filters">
+                <label>Case Type:
+                  <select id="reportSearchCaseType">
+                    <option value="">All</option>
+                    <option value="criminal">Criminal</option>
+                    <option value="civil">Civil</option>
+                  </select>
+                </label>
+                <label>Nature:
+                  <input type="text" id="reportSearchNature" placeholder="Case Nature" />
+                </label>
+                <label>CMS No.:
+                  <input type="text" id="reportSearchCmsNo" placeholder="CMS No." />
+                </label>
+                <label>File Taker Profile:
+                  <select id="reportSearchProfile">
+                    <option value="">All Profiles</option>
+                    </select>
+                </label>
+                <button onclick="performReportSearch()">Search</button>
+              </div>
             </div>
-          </div>
-          <button onclick="printDashboardReport()">Print</button>
-          <button onclick="exportDashboardReport('csv')">Export to CSV</button>
-          <button onclick="exportDashboardReport('pdf')">Export to PDF</button>
-          <div class="table-container">
-            <table id="dashboardReportTable" border="1" style="width:100%; border-collapse:collapse;">
-              <thead>
-                <tr>
-                  <th>Sr#</th>
-                  <th>CMS No</th>
-                  <th>Title</th>
-                  <th>Case Type</th>
-                  <th>Nature</th>
-                  <th>Criminal Details</th>
-                  <th>Date Type</th>
-                  <th>Swal Form Details</th>
-                  <th>Delivered To</th>
-                  <th>Delivery Date</th>
-                  <th>Return Date</th>
-                  <th>Time Span</th>
-                  <th>Court</th>
-                  <th>Clerk Name</th>
-                  <th>Profile Details</th>
-                </tr>
-              </thead>
-              <tbody></tbody>
-            </table>
-          </div>
-          <div id="pagination" style="margin-top: 10px; text-align: center;">
-            <button id="prevPage" disabled>Previous</button>
-            <span id="pageInfo"></span>
-            <button id="nextPage">Next</button>
+            <div class="table-container">
+              <table id="dashboardReportTable">
+                <thead>
+                  <tr>
+                    <th>Sr.No</th>
+                    <th>CMS No.</th>
+                    <th>Case Title</th>
+                    <th>Case Type</th>
+                    <th>Nature</th>
+                    <th>Criminal Details</th>
+                    <th>Date (Hearing/Decision)</th>
+                    <th>Swal Form No. & Date</th>
+                    <th>Delivered To</th>
+                    <th>Delivered At</th>
+                    <th>Returned At</th>
+                    <th>Time Span</th>
+                    <th>Court Name</th>
+                    <th>Clerk Name</th>
+                    <th>Profile Details</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  </tbody>
+              </table>
+            </div>
+            <div class="pagination">
+              <button id="prevPage">Previous</button>
+              <span id="pageInfo">Page 1 of 1</span>
+              <button id="nextPage">Next</button>
+            </div>
           </div>
         </div>
       </section>
 
-      <!-- New File Entry -->
-      <section id="newFile" class="screen">
-        <h2>New File Entry & Delivery</h2>
-        <div id="loadingIndicator" class="loading" style="display:none;">Saving...</div>
+      <section id="addFile" class="screen">
+        <h2>Add New File</h2>
         <form id="fileForm">
-          <label>Case Type: <span class="required">*</span>
-            <select id="caseType" required onchange="toggleCriminalFields()">
-              <option value="">Select</option>
-              <option value="civil">Civil</option>
+          <label>CMS No.:
+            <input type="text" id="cmsNo" placeholder="e.g., 12345/2023" required />
+          </label>
+          <label>Case Title:
+            <input type="text" id="caseTitle" placeholder="e.g., John Doe vs. Jane Smith" required />
+          </label>
+          <label>Case Type:
+            <select id="caseType" required>
+              <option value="">Select Case Type</option>
               <option value="criminal">Criminal</option>
-            </select>
-          </label>
-
-          <label>CMS No: <span class="required">*</span>
-            <input type="number" id="cmsNo" required onblur="autoFillCMS()" />
-          </label>
-
-          <label>Petitioner: <span class="required">*</span>
-            <input type="text" id="petitioner" required />
-          </label>
-
-          <label>Respondent: <span class="required">*</span>
-            <input type="text" id="respondent" required />
-          </label>
-
-          <label>Nature of Case: <span class="required">*</span>
-            <input type="text" id="nature" required />
-          </label>
-
-          <div id="criminalFields" style="display:none">
-            <label>FIR No: <input type="text" id="firNo" /></label>
-            <label>FIR Year: <input type="number" id="firYear" min="1947" /></label>
-            <label>FIR U/S: <input type="text" id="firUs" /></label>
-            <label>Police Station: <input type="text" id="policeStation" /></label>
-          </div>
-
-          <label>Date Type: <span class="required">*</span>
-            <select id="dateType" required>
-              <option value="">Select</option>
-              <option value="decision">Decision Date</option>
-              <option value="hearing">Next Hearing Date</option>
-            </select>
-          </label>
-
-          <label>Date: <span class="required">*</span>
-            <input type="date" id="date" required />
-          </label>
-
-          <div class="input-container">
-            <label>Delivered To (Name): <span class="required">*</span>
-              <input type="text" id="deliveredTo" oninput="suggestProfiles(this.value, 'deliveredTo')" required autocomplete="off" />
-              <ul id="suggestions"></ul>
-              <span class="hint" style="font-size:12px;color:#555;">Edit profiles in the File Fetcher section.</span>
-            </label>
-          </div>
-
-          <label>Delivered To Type: <span class="required">*</span>
-            <select id="deliveredType" required>
-              <option value="">Select</option>
-              <option value="munshi">Munshi/Clerk</option>
-              <option value="advocate">Advocate</option>
-              <option value="colleague">Colleague</option>
+              <option value="civil">Civil</option>
+              <option value="family">Family</option>
               <option value="other">Other</option>
             </select>
           </label>
-
-          <div class="copy-agency-row">
-            <input type="checkbox" id="copyAgency" onchange="toggleCopyAgency()" />
-            <label for="copyAgency">Sent to Copy Agency</label>
-          </div>
-          <div id="copyAgencyFields" style="display:none;">
-            <label>Swal Form No: <span class="required">*</span>
-              <input type="number" id="swalFormNo" />
+          <div id="criminalFields" style="display: none;">
+            <label>FIR No.:
+              <input type="text" id="firNo" placeholder="FIR No." />
             </label>
-            <label>Swal Date: <span class="required">*</span>
-              <input type="date" id="swalDate" />
+            <label>FIR Year:
+              <input type="number" id="firYear" placeholder="FIR Year" />
+            </label>
+            <label>FIR U/S:
+              <input type="text" id="firUs" placeholder="FIR U/S" />
+            </label>
+            <label>Police Station:
+              <input type="text" id="policeStation" placeholder="Police Station" />
             </label>
           </div>
-
-          <button type="submit">Save and Deliver File</button>
+          <label>Nature of Case:
+            <input type="text" id="nature" placeholder="e.g., Bail Application" required />
+          </label>
+          <label>Date Type:
+            <select id="dateType" required>
+              <option value="nextHearing">Next Hearing Date</option>
+              <option value="decision">Decision Date</option>
+            </select>
+          </label>
+          <label id="dateLabel">Next Hearing Date:
+            <input type="date" id="date" required />
+          </label>
+          <label>SWAL Form No.:
+            <input type="text" id="swalFormNo" placeholder="Optional" />
+          </label>
+          <label>SWAL Date:
+            <input type="date" id="swalDate" />
+          </label>
+          <label>Delivered To Profile:
+            <select id="deliveredToProfile" required>
+              <option value="">Select Profile</option>
+            </select>
+          </label>
+          <label>Delivered At:
+            <input type="datetime-local" id="deliveredAt" required />
+          </label>
+          <button type="submit">Add File</button>
         </form>
       </section>
 
-      <!-- Return -->
       <section id="return" class="screen">
         <h2>Return File</h2>
-        <div id="loadingIndicator" class="loading" style="display:none;">Loading...</div>
-        <form id="returnForm">
-          <label>CMS No: <input type="number" id="returnCms" oninput="filterPendingFiles()" /></label>
-          <label>Title: <input type="text" id="returnTitle" oninput="filterPendingFiles()" /></label>
-        </form>
-        <div id="pendingFiles" style="margin-top: 10px;">
-          <table id="pendingFilesTable" border="1" style="width:100%; border-collapse:collapse;">
+        <div class="search-container">
+          <label>Search by CMS No.:
+            <input type="text" id="returnSearchCmsNo" oninput="filterPendingFiles()" placeholder="Enter CMS No." />
+          </label>
+          <label>Search by Case Title:
+            <input type="text" id="returnSearchTitle" oninput="filterPendingFiles()" placeholder="Enter Case Title" />
+          </label>
+          <label>Search by Delivered To:
+            <select id="returnSearchProfile" onchange="filterPendingFiles()">
+              <option value="">All Profiles</option>
+            </select>
+          </label>
+          <button onclick="clearReturnSearch()">Clear Search</button>
+        </div>
+
+        <div class="table-container">
+          <table id="pendingFilesTable">
             <thead>
               <tr>
-                <th>Select</th>
-                <th>CMS No</th>
-                <th>Title</th>
-                <th>Case Type</th>
+                <th>Sr.No</th>
+                <th>CMS No.</th>
+                <th>Case Title</th>
                 <th>Delivered To</th>
+                <th>Delivered At</th>
                 <th>Action</th>
               </tr>
             </thead>
-            <tbody></tbody>
+            <tbody>
+              </tbody>
           </table>
-          <button onclick="bulkReturnFiles()" style="margin-top: 10px;">Return Selected</button>
         </div>
       </section>
 
-      <!-- File Fetcher -->
       <section id="fileFetcher" class="screen">
-        <h2>File Fetcher</h2>
-        <div id="loadingIndicator" class="loading" style="display:none;">Loading...</div>
-        <div class="fetcher-grid">
-          <button class="card card-add-profile" onclick="showProfileForm()">Add New Profile</button>
-          <button class="card card-search-profiles" onclick="showProfileSearch()">Search Existing Profiles</button>
-          <button class="card card-import" onclick="triggerImport()">Import Profiles</button>
-          <button class="card card-export" onclick="exportProfiles()">Export Profiles</button>
-        </div>
-        <input type="file" id="profileImport" accept=".json" style="display:none;" onchange="importProfiles()" />
-        <form id="profileForm" style="display:none; margin-top:20px;">
-          <label>Profile Type: <span class="required">*</span>
-            <select id="profileType" required onchange="toggleProfileFields()">
-              <option value="">Select</option>
-              <option value="munshi">Munshi/Clerk</option>
-              <option value="advocate">Advocate</option>
-              <option value="colleague">Colleague</option>
-              <option value="other">Other</option>
-            </select>
-          </label>
-          <div id="profileFields"></div>
-          <label>Upload Photo: <span id="photoRequired" class="required">*</span><input type="file" id="profilePhoto" accept="image/*" /></label>
-          <img id="photoPreview" style="display: none; max-width: 200px;" />
-          <div id="photoAdjust"></div>
-          <button type="submit">Add/Update Profile</button>
-        </form>
-        <div id="profileSearchSection" style="display:none; margin-top:20px;">
-          <label>Filter by Type:
-            <select id="profileFilterType" onchange="renderProfiles()">
-              <option value="">All</option>
-              <option value="munshi">Munshi/Clerk</option>
-              <option value="advocate">Advocate</option>
-              <option value="colleague">Colleague</option>
-              <option value="other">Other</option>
-            </select>
-          </label>
-          <label>Search: <input type="text" id="profileSearch" oninput="renderProfiles()" placeholder="Name, number, chamber..." /></label>
-        </div>
-        <div id="profileList" style="margin-top:20px; display:none;">
-          <table id="profileTable" border="1" style="width:100%; border-collapse:collapse;">
+        <h2>File Fetcher Profiles</h2>
+        <button onclick="showProfileForm()">Add New Profile</button>
+
+        <div class="table-container">
+          <table id="profilesTable">
             <thead>
               <tr>
-                <th>Photo</th>
+                <th>Sr.No</th>
                 <th>Name</th>
                 <th>Type</th>
-                <th>Cell No</th>
-                <th>Chamber No</th>
-                <th>Files Delivered</th>
-                <th>Pending Files</th>
+                <th>Details</th>
+                <th>Photo</th>
                 <th>Actions</th>
               </tr>
             </thead>
-            <tbody></tbody>
+            <tbody>
+              </tbody>
           </table>
         </div>
       </section>
 
-      <!-- Admin -->
-      <section id="admin" class="screen active">
-        <h2>Admin</h2>
-        <div id="loadingIndicator" class="loading" style="display:none;">Saving...</div>
-        <div id="setupMessage" style="display:block; color: #0066cc; margin-bottom: 10px;">
-          Please complete your profile setup to continue using the app.
-        </div>
-        <div id="savedProfile" style="display:none; background:white; padding:20px; border-radius:10px; max-width:600px; margin:auto;">
-  <h3>Saved Profile</h3>
-  <table class="profile-table">
-    <tr><th>Photo</th><td><img id="savedUserPhoto" src="" style="width:120px;height:120px;border-radius:50%;border:1px solid #ccc;display:none;" /></td></tr>
-    <tr><th>Name</th><td><span id="savedClerkName"></span></td></tr>
-    <tr><th>Designation</th><td><span id="savedJudgeName"></span></td></tr>
-    <tr><th>Court</th><td><span id="savedCourtName"></span></td></tr>
-    <tr><th>Mobile</th><td><a id="savedMobile" href=""></a></td></tr>
-    <tr><th>Total Files</th><td><span id="totalFiles"></span></td></tr>
-    <tr><th>Total Profiles</th><td><span id="totalProfiles"></span></td></tr>
-  </table>
-  <button onclick="editUserProfile()">Edit Profile</button>
-  <button id="changePinBtn" onclick="showChangePin()" style="display:none;">Change PIN</button>
-  <h4>Data Management</h4>
-  <button onclick="selectBackupFolder()">Select Backup Folder</button>
-  <button onclick="backupData()">Backup to Local</button>
-  <button onclick="triggerRestore()">Restore from Local</button>
-</div>
-        <input type="file" id="dataRestore" accept=".json" style="display:none;" onchange="restoreData()" />
-        <form id="adminForm" style="display:block;">
-          <label>Full Name: <span class="required">*</span><input type="text" id="clerkName" required /></label>
-          <label>Designation: <span class="required">*</span><input type="text" id="judgeName" required /></label>
-          <label>Court Name: <span class="required">*</span><input type="text" id="courtName" required /></label>
-          <label>Mobile Number: <span class="required">*</span><input type="text" id="mobile" required placeholder="0300-1234567" /></label>
-          <label>CNIC: <span class="required">*</span>
-            <input type="text" id="cnic" required placeholder="XXXXX-XXXXXXX-X" />
-            <span class="tooltip">?
-              <span class="tooltiptext">CNIC is required to reset your PIN securely. It is not stored externally.</span>
-            </span>
+      <section id="reports" class="screen">
+        <h2>Reports</h2>
+        <div class="report-controls">
+          <label>Report Type:
+            <select id="reportType">
+              <option value="all">All Files</option>
+              <option value="pending">Pending Files</option>
+              <option value="returned">Returned Files</option>
+              <option value="profile">By File Taker Profile</option>
+              <option value="dateRange">By Date Range</option>
+            </select>
           </label>
-          <label>PIN (4 digits): <span class="required">*</span><input type="password" id="pin" maxlength="4" pattern="\d{4}" required /></label>
-          <label>Email (for PIN recovery): <input type="email" id="email" placeholder="example@domain.com" /></label>
-          <label>Upload Photo: <span class="required">*</span><input type="file" id="userPhoto" accept="image/*" required /></label>
-          <img id="userPhotoPreview" style="display: none; max-width: 200px;" />
-          <div id="userPhotoAdjust"></div>
-          <label><input type="checkbox" id="agreeTerms"> I agree to the <a href="#" onclick="showDisclaimerModal()">terms and privacy policy</a>.</label>
-          <button type="submit" id="saveProfileBtn" disabled>Save</button>
-        </form>
+          <label id="reportProfileLabel" style="display:none;">Select Profile:
+            <select id="reportProfileSelect"></select>
+          </label>
+          <label id="reportStartDateLabel" style="display:none;">Start Date:
+            <input type="date" id="reportStartDate" />
+          </label>
+          <label id="reportEndDateLabel" style="display:none;">End Date:
+            <input type="date" id="reportEndDate" />
+          </label>
+          <button onclick="generateReport()">Generate Report</button>
+        </div>
+        <div id="reportOutput" class="table-container">
+          <table id="fullReportTable">
+            <thead>
+              <tr>
+                <th>Sr.No</th>
+                <th>CMS No.</th>
+                <th>Case Title</th>
+                <th>Case Type</th>
+                <th>Nature</th>
+                <th>Criminal Details</th>
+                <th>Date (Hearing/Decision)</th>
+                <th>Swal Form No. & Date</th>
+                <th>Delivered To</th>
+                <th>Delivered At</th>
+                <th>Returned At</th>
+                <th>Time Span</th>
+                <th>Court Name</th>
+                <th>Clerk Name</th>
+                <th>Profile Details</th>
+              </tr>
+            </thead>
+            <tbody>
+              </tbody>
+          </table>
+        </div>
+        <button id="exportReportBtn" onclick="exportReportToPDF()" style="display: none;">Export to PDF</button>
+        <button id="exportExcelBtn" onclick="exportReportToExcel()" style="display: none;">Export to Excel</button>
       </section>
 
-      <!-- Developers Disclaimer -->
-      <section id="developersDisclaimer" class="screen">
-        <h2>Developers Disclaimer</h2>
-        <div id="disclaimerContent">
-          <p>This Court File Tracker (CFT) PWA is developed to assist court clerks and judiciary staff in managing file records efficiently. It is not an official judiciary tool. Users are responsible for ensuring data accuracy and compliance with legal standards.</p>
-          <p>Developer: [Your Name]</p>
-          <p>Contact: [Your Email or Placeholder]</p>
-          <p>Version: 1.0.0</p>
-          <p>Last Updated: May 15, 2025</p>
+      <section id="backup" class="screen">
+        <h2>Backup & Restore</h2>
+        <div class="backup-section">
+          <h3>Local Backup</h3>
+          <p>This creates a local backup file of your app data.</p>
+          <button onclick="createBackup()">Create Manual Backup</button>
+          <button id="selectBackupFolderBtn" class="secondary-btn">Select Auto-Backup Folder</button>
+          <p id="backupFolderStatus">No auto-backup folder selected.</p>
+        </div>
+        <div class="restore-section">
+          <h3>Restore Data</h3>
+          <label>Select Backup File (.json):
+            <input type="file" id="backupFileInput" accept=".json" onchange="handleBackupFileSelect(event)" />
+          </label>
+          <button onclick="restoreBackup()">Restore Selected Backup</button>
+          <div id="restoreOptions" style="display: none;">
+            <p>Choose restore mode:</p>
+            <button onclick="confirmRestore('merge')">Merge (Add New & Update Existing)</button>
+            <button onclick="confirmRestore('overwrite')">Overwrite (Replace All)</button>
+          </div>
+        </div>
+        <div class="share-section">
+            <h3>Share Data</h3>
+            <p>Share selected backup files with others.</p>
+            <button onclick="showShareBackup()">Share Backup</button>
         </div>
       </section>
 
-      <!-- PIN Prompt Modal -->
+      <section id="about" class="screen">
+        <h2>About Court File Tracker</h2>
+        <p><strong>Version:</strong> 1.0.0</p>
+        <p><strong>Developed by:</strong> AI Assistant (with your guidance)</p>
+        <p>This Progressive Web App (PWA) is designed to streamline the management of court files, offering features for tracking file movements, managing profiles of file fetchers, and generating comprehensive reports.</p>
+        <p><strong>Key Features:</strong></p>
+        <ul>
+          <li>Efficient file delivery and return tracking.</li>
+          <li>Comprehensive profile management for advocates, clerks, and other file fetchers.</li>
+          <li>Detailed dashboard analytics and customisable reports.</li>
+          <li>Offline capabilities with PWA installation.</li>
+          <li>Local data backup and restore functionality.</li>
+        </ul>
+        <p>Your data is stored locally on your device for privacy and offline access. Regular backups are recommended.</p>
+        <button onclick="showDisclaimerModal()">Disclaimer & Privacy</button>
+      </section>
+
+      <section id="admin" class="screen">
+        <h2>Admin Settings</h2>
+        <div id="setupMessage" style="text-align: center; margin-bottom: 20px;">
+            <p>Welcome! Please set up your Clerk Profile to get started.</p>
+        </div>
+        <form id="adminForm" style="display:block;">
+          <h3>Clerk Profile Setup</h3>
+          <label>Your Name (Clerk):
+            <input type="text" id="clerkName" placeholder="e.g., Ali Khan" required />
+          </label>
+          <label>Judge's Name:
+            <input type="text" id="judgeName" placeholder="e.g., Justice A. Hussain" required />
+          </label>
+          <label>Court Name:
+            <input type="text" id="courtName" placeholder="e.g., District Court Lahore" required />
+          </label>
+          <label>Mobile Number:
+            <input type="tel" id="mobile" placeholder="e.g., 0300-1234567" />
+          </label>
+          <label>CNIC (Optional for PIN Reset):
+            <input type="text" id="cnic" placeholder="e.g., 12345-1234567-1" pattern="[0-9]{5}-[0-9]{7}-[0-9]{1}" title="Format: XXXXX-XXXXXXX-X" />
+          </label>
+          <label>Email (Optional for PIN Reset):
+            <input type="email" id="email" placeholder="e.g., your@example.com" />
+          </label>
+          <label>Set PIN (4-digit minimum):
+            <input type="password" id="pin" placeholder="Enter a 4-digit PIN" required minlength="4" maxlength="4" />
+          </label>
+          <label>Profile Photo:
+            <input type="file" id="userPhoto" accept="image/*" />
+            <div id="userPhotoAdjust" class="photo-adjust-container"></div>
+            <img id="userPhotoPreview" class="photo-preview" style="display: none;" alt="User Photo Preview">
+          </label>
+          <label style="display: flex; align-items: center; gap: 8px;">
+            <input type="checkbox" id="agreeTerms" onchange="toggleSaveButton()" required />
+            I agree to the <a href="#" onclick="showDisclaimerModal(); return false;">Terms and Conditions</a>.
+          </label>
+          <button type="submit" id="saveProfileBtn" disabled>Save Profile</button>
+        </form>
+
+        <div id="savedProfile" style="display:none;">
+            <h3>Your Saved Clerk Profile</h3>
+            <p><strong>Name:</strong> <span id="savedClerkName"></span></p>
+            <p><strong>Judge:</strong> <span id="savedJudgeName"></span></p>
+            <p><strong>Court:</strong> <span id="savedCourtName"></span></p>
+            <p><strong>Mobile:</strong> <a id="savedMobile" href="#"></a></p>
+            <img id="savedUserPhoto" class="profile-photo-lg" style="display:none;" alt="Your Profile Photo">
+            <p><strong>Total Files:</strong> <span id="totalFiles">0</span></p>
+            <p><strong>Total Profiles:</strong> <span id="totalProfiles">0</span></p>
+            <button onclick="editUserProfile()">Edit Profile</button>
+            <button id="changePinBtn" onclick="showChangePin()">Change PIN</button>
+            <button onclick="showTotalAnalytics()">View Analytics</button>
+            <button onclick="showPrivacyPolicy()">Privacy Policy</button>
+        </div>
+
+        <div id="analyticsModal" class="modal" onclick="closeModalIfOutside(event, 'analyticsModal')">
+            <div class="modal-content">
+                <h3>App Usage Analytics</h3>
+                <p>Files Entered: <span id="analyticsFilesEntered">0</span></p>
+                <p>Searches Performed: <span id="analyticsSearchesPerformed">0</span></p>
+                <p>Backups Created: <span id="analyticsBackupsCreated">0</span></p>
+                <button onclick="hideAnalytics()">Close</button>
+            </div>
+        </div>
+      </section>
+
+      <div id="profileFormModal" class="modal" onclick="closeModalIfOutside(event, 'profileFormModal')">
+        <div class="modal-content">
+          <h3>Add/Edit File Fetcher Profile</h3>
+          <form id="profileForm">
+            <input type="hidden" id="profileId" />
+            <label>Name:
+              <input type="text" id="profileName" placeholder="e.g., Advocate Junaid" required />
+            </label>
+            <label>Type:
+              <select id="profileType" required>
+                <option value="">Select Type</option>
+                <option value="advocate">Advocate</option>
+                <option value="clerk">Clerk</option>
+                <option value="other">Other</option>
+              </select>
+            </label>
+            <div id="advocateFields" style="display:none;">
+              <label>Chamber No.:
+                <input type="text" id="chamberNo" placeholder="e.g., 123" />
+              </label>
+              <label>Advocate Name:
+                <input type="text" id="advocateName" placeholder="e.g., Mr. Ahmed" />
+              </label>
+              <label>Advocate Cell No.:
+                <input type="tel" id="advocateCell" placeholder="e.g., 03XX-XXXXXXX" />
+              </label>
+            </div>
+            <div id="otherFields" style="display:none;">
+              <label>Designation:
+                <input type="text" id="designation" placeholder="e.g., Process Server" />
+              </label>
+              <label>Posted At:
+                <input type="text" id="postedAt" placeholder="e.g., Supreme Court" />
+              </label>
+              <label>Relation (if 'Other'):
+                <input type="text" id="relation" placeholder="e.g., Client, Witness" />
+              </label>
+              <label>CNIC / ID (for 'Other'):
+                <input type="text" id="otherCnic" placeholder="e.g., 12345-1234567-1" pattern="[0-9]{5}-[0-9]{7}-[0-9]{1}" title="Format: XXXXX-XXXXXXX-X" />
+              </label>
+            </div>
+            <label>Email:
+              <input type="email" id="profileEmail" placeholder="e.g., profile@example.com" />
+            </label>
+            <label>Profile Photo:
+              <input type="file" id="profilePhoto" accept="image/*" />
+              <div id="photoAdjust" class="photo-adjust-container"></div>
+              <img id="photoPreview" class="photo-preview" style="display: none;" alt="Profile Photo Preview">
+            </label>
+            <button type="submit">Save Profile</button>
+            <button type="button" onclick="hideProfileForm()">Cancel</button>
+          </form>
+        </div>
+      </div>
+
+      <div id="profileModal" class="modal" onclick="closeModalIfOutside(event, 'profileModal')">
+        <div class="modal-content">
+          <h3 id="profileModalTitle">Profile Details</h3>
+          <table id="profileModalTable">
+            </table>
+          <button onclick="hideProfileModal()">Close</button>
+        </div>
+      </div>
+
+      <div id="disclaimerModal" class="modal" onclick="closeModalIfOutside(event, 'disclaimerModal')">
+        <div class="modal-content">
+          <h3>Disclaimer & Privacy Policy</h3>
+          <p>This app stores all your data locally on your device using IndexedDB and LocalStorage for privacy and offline accessibility. No data is transmitted to any external servers or third parties.</p>
+          <p><strong>Disclaimer:</strong> This application is for record-keeping purposes only and does not constitute legal advice or guarantee accuracy of official records. Users are responsible for verifying data with official sources.</p>
+          <p><strong>Data Security:</strong> While data is local, ensure your device is secured. Backups created via the app are also stored locally on your device in the selected folder. Keep your backup files secure.</p>
+          <p><strong>PIN:</strong> Your PIN is for app access and local profile changes. It's not recoverable by us if forgotten, but can be reset using your provided CNIC or Email.</p>
+          <button onclick="hideDisclaimerModal()">Close</button>
+        </div>
+      </div>
+
       <div id="pinModal" class="modal" onclick="closeModalIfOutside(event, 'pinModal')">
         <div class="modal-content">
           <h3>Enter PIN</h3>
-          <input type="password" id="pinInput" maxlength="4" pattern="\d{4}" style="padding:8px; width:100%;" />
+          <p>Please enter your 4-digit PIN to proceed.</p>
+          <input type="password" id="pinInput" maxlength="4" placeholder="••••" />
           <button onclick="submitPin()">Submit</button>
         </div>
       </div>
 
-      <!-- Change PIN Modal -->
       <div id="changePinModal" class="modal" onclick="closeModalIfOutside(event, 'changePinModal')">
         <div class="modal-content">
           <h3>Change PIN</h3>
-          <label>CNIC or Email: <input type="text" id="resetCnic" placeholder="Enter CNIC or Email" required /></label>
-          <label>New PIN: <input type="password" id="resetPin" maxlength="4" pattern="\d{4}" required /></label>
-          <button onclick="changePin()">Change</button>
+          <p>Enter your registered CNIC or Email to change your PIN.</p>
+          <label>CNIC / Email:
+            <input type="text" id="resetCnic" placeholder="Registered CNIC or Email" />
+          </label>
+          <label>New PIN (4-digit minimum):
+            <input type="password" id="resetPin" maxlength="4" placeholder="New 4-digit PIN" />
+          </label>
+          <button onclick="changePin()">Change PIN</button>
           <button onclick="hideChangePin()">Cancel</button>
         </div>
       </div>
 
-      <!-- Disclaimer Modal -->
-      <div id="disclaimerModal" class="modal" onclick="closeModalIfOutside(event, 'disclaimerModal')">
-        <div class="modal-content">
-          <h3>Disclaimer & Privacy Policy</h3>
-          <p><strong>Disclaimer:</strong> This is not an official judiciary tool. It is designed for the convenience of clerks and judiciary staff to digitize record-keeping. Users are responsible for their use of this tool.</p>
-          <p><strong>Privacy Policy:</strong> Your data is saved locally in your browser or synced to your Google Drive via OAuth API. No data is stored externally by the app.</p>
-          <button onclick="document.getElementById('disclaimerModal').style.display='none';">Close</button>
-        </div>
-      </div>
-
-      <!-- Profile Details Modal -->
-      <div id="profileModal" class="modal" onclick="closeModalIfOutside(event, 'profileModal')">
-        <div class="modal-content">
-          <h3 id="profileModalTitle"></h3>
-          <div style="position: relative; display: inline-block;">
-            <img id="profileModalPhoto" src="" style="width:100px;height:100px;border-radius:50%;border:1px solid #ccc;margin-bottom:10px;display:none;" />
-            <div class="photo-zoom" style="display:none; position:absolute; top:0; left:110px; z-index:10;">
-              <img id="profileModalPhotoZoom" src="" style="width:200px;height:200px;border-radius:10px;border:2px solid #ccc;" />
-            </div>
-          </div>
-          <table id="profileModalTable" class="profile-modal-table"></table>
-          <button onclick="closeProfileModal()">Close</button>
-        </div>
-      </div>
-
-      <!-- Backup Folder Prompt Modal -->
-<div id="backupFolderModal" class="modal" onclick="closeModalIfOutside(event, 'backupFolderModal')">
-  <div class="modal-content">
-    <h3>Select Backup Folder</h3>
-    <p>Please select a folder to store your backups before using the app.</p>
-    <button onclick="selectBackupFolder()">Select Folder</button>
-    <button onclick="document.getElementById('backupFolderModal').style.display='none';">Cancel</button>
-  </div>
-</div>
-      <!-- Share Backup Modal -->
-      <div id="shareBackupModal" class="modal" onclick="closeModalIfOutside(event, 'shareBackupModal')">
+    <div id="shareBackupModal" class="modal" onclick="closeModalIfOutside(event, 'shareBackupModal')">
         <div class="modal-content">
           <h3>Share Backup</h3>
           <label>Select Backup:
@@ -423,25 +535,28 @@
         </div>
       </div>
 
-      <!-- Toast Notification -->
       <div id="toast" class="toast" style="display:none;"></div>
     </main>
   </div>
 
-  <!-- External Libraries -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/fuse.js/6.6.2/fuse.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/exif-js"></script>
-  <script src="app.js"></script>
+  <script src="/court-file-tracker/app.js"></script>
     <script>
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', function () {
+      // Register service worker with the correct path for GitHub Pages
       navigator.serviceWorker.register('/court-file-tracker/service-worker.js')
-        .then(() => console.log("Service Worker registered"))
-        .catch((error) => console.error("Service Worker registration failed:", error));
+        .then((registration) => {
+          console.log('Service Worker registered with scope:', registration.scope);
+        })
+        .catch((error) => {
+          console.error('Service Worker registration failed:', error);
+        });
     });
   }
-</script>
-  </body>
+  </script>
+</body>
 </html>
